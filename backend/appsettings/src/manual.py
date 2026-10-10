@@ -264,7 +264,7 @@ class ImportFolderScanner:
     def dump_mpv_thumb(media_path, idx, thumb_type):
         """write cover to disk for mkv"""
         _, media_ext = os.path.splitext(media_path)
-        new_path = f"{media_path.rstrip(media_ext)}{thumb_type}"
+        new_path = f"{media_path.removesuffix(media_ext)}{thumb_type}"
         subprocess.run(
             [
                 "ffmpeg",
@@ -360,7 +360,7 @@ class ImportFolderScanner:
     def dump_mp4_thumb(media_path, thumb_type):
         """save cover to disk"""
         _, ext = os.path.splitext(media_path)
-        new_path = f"{media_path.rstrip(ext)}.{thumb_type}"
+        new_path = f"{media_path.removesuffix(ext)}.{thumb_type}"
 
         subprocess.run(
             [

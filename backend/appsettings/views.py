@@ -479,5 +479,5 @@ class TokenView(ApiBaseView):
     def delete(request):
         """delete your API token, new will get created on next get"""
         print("revoke API token")
-        request.user.auth_token.delete()
+        Token.objects.filter(user=request.user).delete()
         return Response(status=204)
