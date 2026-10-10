@@ -37,7 +37,7 @@ class ScheduleBuilder:
 
         if schedule_conf:
             for key, value in schedule_conf.items():
-                self.set_config(task_name, key, value)
+                task = self.set_config(task_name, key, value)
 
         return task
 
