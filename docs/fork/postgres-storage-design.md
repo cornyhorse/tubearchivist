@@ -249,27 +249,58 @@ That passed on 2026-10-10.
   upstream file joins the list when it is ported. CI runs the same command
   against a Postgres service.
 
-## 4. Porting plan (next sessions)
+## 4. Download rules
 
-The call sites move app by app, each with tests and added to `.coveragerc`:
+`download.DownloadRule`: one rule per channel, plus an optional default
+(channel null) for channels without their own. A disabled channel rule
+switches the default off for that channel.
 
-1. `download/`: queue.py, queue_interact.py, yt_dlp_handler `_get_next`,
-   views, thumbnails.
-2. `video/` + `channel/` + `playlist/` index classes (`YouTubeItem`
-   `get_from_es`/`upload_to_es`/`deactivate`/`del_in_es`) and views.
-3. Search (`common/src/searching.py`) and `SearchProcess` input.
-4. `stats/`, `appsettings/` (config, backup, snapshot → pg_dump,
-   reindex, filesystem rescan), `task/notify.py`, `user_config`.
-5. Startup and connection checks, then delete `es_connect.py` and the ES
-   settings.
-6. Emby writer as a Celery task after downloads and refreshes, plus a UI
-   setting for `emby_numbering`.
-7. Image `ghcr.io/cornyhorse/tubearchivist`. Ansible image override with
-   `TA_DB_*`, run `es_export` then `ta_import_es` at cutover, and roll back
-   by switching back to the stock image (ES stays untouched until the fork
-   is accepted).
+The conditions are min/max duration, allowed video types, a title
+include regex, a title exclude regex, and an earliest upload date. Each
+empty condition matches everything, and unknown values pass.
 
-## 5. Upstream tracking
+Rules apply to channel extractions: channel URLs and subscription scans.
+They do not apply to single videos added by URL or to playlists, which
+are explicit choices. A video that fails the rule is either queued as
+`ignore` with `ignore_reason` (shown in the queue) or left out of the
+queue (`skip`).
+
+The UI is on the channel About page, with the default rule in the
+application settings. The API is the channel endpoint (`download_rule`)
+and `/api/download/rule/`.
+
+## 5. Emby tree location
+
+Hardlinks cannot cross mount points, even on the same disk, so the tree
+lives inside TA's media mount: `TA_EMBY_ROOT=/youtube/.emby`. TA's
+scanners skip dot folders. Any other path inside the media dir is
+refused.
+
+On apps the media is a CIFS mount of the NAS share. `link()`, atomic
+replace and rename were verified over SMB3 with `seal` against Samba on
+2026-10-10: one inode, two links, and the inode is kept through renames.
+
+## 6. Status (2026-10-10)
+
+- Elasticsearch is gone from the code. Every call site has been ported,
+  and `es_connect.py`, index setup and the mapping file are deleted.
+- `ta_import_sqlite`, then `ta_import_es`, make up the migration. Both
+  were proven on the real export and in a full stack running the built
+  image.
+- Backups keep the ES bulk zip format. They also carry fork-only data:
+  `emby_numbering`, download rules and frozen episode numbers.
+- Snapshots are `pg_dump` runs on a daily beat schedule.
+- **Acceptance in a real Emby 4.10** (scratch server, test media):
+  CoasterFan2105 is 59 episodes for both an admin and a non-admin
+  viewer. There are 0 multi-version entries and 0 titles with `[id]`.
+- 1,113 tests. CI enforces 100% line and branch coverage of the whole
+  backend; there are 3 `pragma: no cover`, each with a reason.
+- The `fork_image` workflow publishes `ghcr.io/cornyhorse/tubearchivist`
+  on `fork-v*` tags.
+- Deployment is in MattsTools: the apps playbook `flavour`, and
+  `docker-compose.fork.yaml`.
+
+## 7. Upstream tracking
 
 Pinned at v0.5.12. For each upstream release, port by hand the yt-dlp
 bumps, bgutil/PO-token changes and YouTube-breakage fixes. Skip anything
