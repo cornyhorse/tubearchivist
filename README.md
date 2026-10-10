@@ -161,15 +161,7 @@ TubeArchivist container and that `TA_DB_PASSWORD` matches `POSTGRES_PASSWORD`.
 
 ### Disk usage
 
-The Elasticsearch index will turn to ***read only*** if the disk usage of the container goes above 95% until the usage drops below 90% again, you will see error messages like `disk usage exceeded flood-stage watermark`.
-
-Similar to that, TubeArchivist will become all sorts of messed up when running out of disk space. There are some error messages in the logs when that happens, but it's best to make sure to have enough disk space before starting to download.
-
-## `error setting rlimit`
-
-If you are seeing errors like `failed to create shim: OCI runtime create failed` and `error during container init: error setting rlimits`, this means docker can't set these limits, usually because they are set at another place or are incompatible because of other reasons. Solution is to remove the `ulimits` key from the ES container in your docker compose and start again.
-
-This can happen if you have nested virtualizations, e.g. LXC running Docker in Proxmox.
+TubeArchivist and Postgres will become all sorts of messed up when running out of disk space. There are some error messages in the logs when that happens, but it's best to make sure to have enough disk space before starting to download.
 
 ## Known limitations
 
