@@ -4,6 +4,7 @@ Functionality:
 - load config variables into redis
 """
 
+import copy
 from random import randint
 from time import sleep
 from typing import Literal, TypedDict
@@ -119,8 +120,8 @@ class AppConfig:
 
     def update_config(self, data: dict) -> AppConfigType:
         """update single config value"""
-        new_config = self.config.copy()
-        for key, value in data.items():
+        new_config = copy.deepcopy(self.config)
+        for key, value in copy.deepcopy(data).items():
             if (
                 isinstance(value, dict)
                 and key in new_config
