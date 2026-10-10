@@ -48,7 +48,11 @@ def test_str():
     assert str(Download(youtube_id="d1", status="ignore")) == "d1 (ignore)"
     assert str(ConfigDocument(key="appsettings")) == "appsettings"
     number = EpisodeNumber(
-        series_id="UC1", scheme="date", youtube_id="v1", season=2025, episode=10
+        series_id="UC1",
+        scheme="date",
+        youtube_id="v1",
+        season=2025,
+        episode=10,
     )
     assert str(number) == "UC1/date: v1 S2025E10"
 
@@ -71,7 +75,9 @@ def test_video_optional_fields_round_trip(channel):
 
 def test_video_playlists_queried(channel):
     Video.from_doc(video_doc()).save()
-    Playlist.objects.create(**Playlist.fields_from_doc(playlist_doc("PL1", [])))
+    Playlist.objects.create(
+        **Playlist.fields_from_doc(playlist_doc("PL1", []))
+    )
     playlist = Playlist.objects.get()
     playlist.entries.create(idx=0, youtube_id="vid00000001")
 
@@ -103,13 +109,17 @@ def test_playlist_channel_and_entries(channel):
 
     playlist = Playlist.objects.get()
     assert playlist.channel == channel
-    downloaded = [e["downloaded"] for e in playlist.to_doc()["playlist_entries"]]
+    downloaded = [
+        e["downloaded"] for e in playlist.to_doc()["playlist_entries"]
+    ]
     assert downloaded == [True, False]
 
 
 def test_download_channel_indexed(channel):
     item = Download.upsert_doc(download_doc())
-    other = Download.upsert_doc(download_doc(youtube_id="d2", channel_id="UCx"))
+    other = Download.upsert_doc(
+        download_doc(youtube_id="d2", channel_id="UCx")
+    )
 
     assert item.channel_indexed is True
     assert other.to_doc()["channel_indexed"] is False
@@ -130,4 +140,6 @@ def test_download_matching_without_error_and_plain_status():
 def test_download_timestamp_is_aware():
     item = Download.from_doc(download_doc())
     assert item.timestamp.tzinfo == timezone.utc
-    assert item.published == datetime.fromtimestamp(1700000000, tz=timezone.utc)
+    assert item.published == datetime.fromtimestamp(
+        1700000000, tz=timezone.utc
+    )

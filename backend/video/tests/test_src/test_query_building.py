@@ -21,7 +21,9 @@ def fixture_videos():
     )
     docs = [
         video_doc(youtube_id="a", published=100, media_size=3),
-        video_doc(youtube_id="b", published=300, media_size=1, vid_type="shorts"),
+        video_doc(
+            youtube_id="b", published=300, media_size=1, vid_type="shorts"
+        ),
         video_doc(
             channel=channel_doc(channel_id="UCother"),
             youtube_id="c",
@@ -51,9 +53,15 @@ def test_initialization():
 def test_filters(videos):
     """filters combine"""
     channel_id = channel_doc()["channel_id"]
-    assert ids(QueryBuilder(1, channel=channel_id, sort="published").build_queryset()) == ["b", "a"]
+    assert ids(
+        QueryBuilder(1, channel=channel_id, sort="published").build_queryset()
+    ) == ["b", "a"]
     assert ids(QueryBuilder(1, watch="watched").build_queryset()) == ["b"]
-    assert ids(QueryBuilder(1, watch="unwatched", sort="published", order="asc").build_queryset()) == ["a", "c"]
+    assert ids(
+        QueryBuilder(
+            1, watch="unwatched", sort="published", order="asc"
+        ).build_queryset()
+    ) == ["a", "c"]
     assert ids(QueryBuilder(1, type="shorts").build_queryset()) == ["b"]
     assert ids(QueryBuilder(1, height="720").build_queryset()) == ["b"]
     del videos
@@ -72,7 +80,9 @@ def test_playlist_sort(videos):
 def test_sort(videos):
     """sort field and order"""
     del videos
-    assert ids(QueryBuilder(1, sort="mediasize", order="asc").build_queryset()) == ["b", "c", "a"]
+    assert ids(
+        QueryBuilder(1, sort="mediasize", order="asc").build_queryset()
+    ) == ["b", "c", "a"]
     assert ids(QueryBuilder(1).build_queryset()) == ["a", "b", "c"]
 
     with pytest.raises(ValueError):

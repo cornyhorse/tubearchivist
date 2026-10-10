@@ -259,9 +259,12 @@ def save_subtitle_lines(youtube_id: str, documents: list[dict]) -> None:
         return
     langs = {doc["subtitle_lang"] for doc in documents}
     with transaction.atomic():
-        SubtitleLine.objects.filter(video_id=youtube_id, lang__in=langs).delete()
+        SubtitleLine.objects.filter(
+            video_id=youtube_id, lang__in=langs
+        ).delete()
         SubtitleLine.objects.bulk_create(
-            SubtitleLine(**SubtitleLine.fields_from_doc(doc)) for doc in documents
+            SubtitleLine(**SubtitleLine.fields_from_doc(doc))
+            for doc in documents
         )
 
 
@@ -390,5 +393,10 @@ class SubtitleParser:
                 chunk["subtitle_end"] = cue.get("end")
                 chunk_list.append(chunk)
                 chunk = {}
+
+        if chunk:
+            # keep the cues after the last full chunk
+            chunk["subtitle_end"] = self.all_cues[-1].get("end")
+            chunk_list.append(chunk)
 
         return chunk_list

@@ -75,9 +75,7 @@ class QueryBuilder:
         if not results:
             return None
 
-        ids = [
-            i.get("youtube_id") for i in results if not i.get("watched")
-        ]
+        ids = [i.get("youtube_id") for i in results if not i.get("watched")]
         if not ids:
             return None
 
