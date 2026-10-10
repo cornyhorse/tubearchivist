@@ -277,7 +277,7 @@ button:disabled:hover {
   position: relative;
   width: 70px;
   height: 30px;
-  background-color: var(--line);
+  background-color: var(--accent-soft);
   border-color: var(--line);
   appearance: none;
   border-radius: 15px;
@@ -326,6 +326,7 @@ button:disabled:hover {
   top: 45%;
   transform: translate(50%, -50%);
   font-family: Sen-Regular, sans-serif;
+  color: var(--accent-text);
 }
 
 .toggleBox > .ofbtn {
@@ -1605,6 +1606,8 @@ video:-webkit-full-screen {
 }
 
 .theme-picker summary {
+  font-family: Sen-Regular, sans-serif;
+  font-size: 1.1em;
   cursor: pointer;
   color: var(--accent);
   list-style: none;
@@ -1632,6 +1635,7 @@ video:-webkit-full-screen {
 }
 
 .theme-option {
+  font-family: Sen-Regular, sans-serif;
   white-space: nowrap;
   text-align: left;
   margin: 0;
