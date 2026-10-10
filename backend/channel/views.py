@@ -171,7 +171,10 @@ class ChannelApiView(ApiBaseView):
             .values_list("emby_numbering", flat=True)
             .first()
         )
-        return {"emby_numbering": numbering, "download_rule": get_rule(channel_id)}
+        return {
+            "emby_numbering": numbering,
+            "download_rule": get_rule(channel_id),
+        }
 
     @extend_schema(
         responses={
@@ -272,11 +275,8 @@ class ChannelApiSearchView(ApiBaseView):
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
 
-        query = validated_data.get("q")
-        if not query:
-            message = "missing expected q parameter"
-            return Response({"message": message, "data": False}, status=400)
-
+        # required non blank q, the serializer answers 400 without it
+        query = validated_data["q"]
         try:
             parsed = Parser(query).parse()[0]
         except (ValueError, IndexError, AttributeError):
