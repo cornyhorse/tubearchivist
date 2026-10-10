@@ -122,7 +122,7 @@ def test_without_dotenv_and_redis(env):
 
     module = reload_settings(env)
 
-    assert not hasattr(module, "TA_START")
+    assert module.TA_START is None
     assert module.CORS_ALLOWED_ORIGIN_REGEXES
 
 
