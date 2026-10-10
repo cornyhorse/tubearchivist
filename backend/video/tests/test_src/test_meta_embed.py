@@ -204,9 +204,7 @@ class TestRoundTrip:
         IndexFromEmbed(str(archived)).run_index()
 
         assert Video.objects.get().title == "kept"
-        assert set(Comment.objects.values_list("text", flat=True)) == {
-            "kept"
-        }
+        assert set(Comment.objects.values_list("text", flat=True)) == {"kept"}
         assert set(SubtitleLine.objects.values_list("line", flat=True)) == {
             "kept"
         }

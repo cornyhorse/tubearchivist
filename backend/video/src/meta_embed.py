@@ -16,13 +16,13 @@ from download.src.thumbnails import ThumbManager
 from mutagen.mp4 import MP4, MP4FreeForm
 from playlist.serializers import PlaylistSerializer
 from playlist.src.index import YoutubePlaylist
+from video.models import Video
 from video.serializers import (
     CommentsSerializer,
     SubtitleFragmentSerializer,
     VideoSerializer,
 )
 from video.src.comments import Comments
-from video.models import Video
 from video.src.index import YoutubeVideo
 from video.src.subtitle import (
     SubtitleParser,

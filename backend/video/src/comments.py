@@ -10,8 +10,8 @@ from datetime import datetime
 from appsettings.src.config import AppConfig
 from common.src.db import from_epoch, to_epoch
 from common.src.helper import rand_sleep
-from django.db import transaction
 from common.src.ta_redis import RedisQueue
+from django.db import transaction
 from download.src.yt_dlp_base import YtWrap
 
 
@@ -152,7 +152,9 @@ class Comments:
         with transaction.atomic():
             Comment.objects.filter(video_id=self.youtube_id).delete()
             Comment.objects.bulk_create(
-                Comment(video_id=self.youtube_id, **Comment.fields_from_doc(c, i))
+                Comment(
+                    video_id=self.youtube_id, **Comment.fields_from_doc(c, i)
+                )
                 for i, c in enumerate(comments)
             )
             CommentRefresh.objects.update_or_create(

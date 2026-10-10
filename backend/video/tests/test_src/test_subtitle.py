@@ -129,7 +129,9 @@ class TestDownloadSubtitles:
         }
         handler = YoutubeSubtitle(video)
         with mock.patch.object(
-            handler, "_make_request", side_effect=lambda u, lang: responses[lang]
+            handler,
+            "_make_request",
+            side_effect=lambda u, lang: responses[lang],
         ):
             indexed = handler.download_subtitles(relevant)
 
@@ -283,7 +285,10 @@ def test_save_subtitle_lines(video):
     save_subtitle_lines(youtube_id, [subtitle_doc(youtube_id, 1, "new")])
 
     lines = SubtitleLine.objects.order_by("lang")
-    assert [(i.lang, i.line) for i in lines] == [("de", "hallo"), ("en", "new")]
+    assert [(i.lang, i.line) for i in lines] == [
+        ("de", "hallo"),
+        ("en", "new"),
+    ]
 
 
 class TestSubtitleParser:
@@ -300,13 +305,27 @@ class TestSubtitleParser:
         parser = SubtitleParser(json.dumps({"events": events}), "en", "user")
         parser.process()
         assert parser.all_cues == [
-            {"start": "00:00:00.000", "end": "00:00:01.000", "text": "a", "idx": 1},
-            {"start": "00:00:01.000", "end": "00:00:02.000", "text": "b", "idx": 3},
+            {
+                "start": "00:00:00.000",
+                "end": "00:00:01.000",
+                "text": "a",
+                "idx": 1,
+            },
+            {
+                "start": "00:00:01.000",
+                "end": "00:00:02.000",
+                "text": "b",
+                "idx": 3,
+            },
         ]
 
     def test_auto_flatten(self):
         events = [
-            {"tStartMs": 0, "dDurationMs": 2000, "segs": [{"utf8": "a"}, {"utf8": "b"}]},
+            {
+                "tStartMs": 0,
+                "dDurationMs": 2000,
+                "segs": [{"utf8": "a"}, {"utf8": "b"}],
+            },
             {"tStartMs": 500},
             {"tStartMs": 500, "dDurationMs": 100, "segs": [{"utf8": " "}]},
             {"tStartMs": 1000, "dDurationMs": 100, "segs": [{"utf8": "c"}]},

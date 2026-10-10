@@ -75,9 +75,7 @@ def fixture_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(IndexFromEmbed, "HOST_GID", 0)
     monkeypatch.setattr(ThumbManagerBase, "CACHE_DIR", str(cache))
     monkeypatch.setattr(ThumbManagerBase, "MEDIA_DIR", str(media))
-    monkeypatch.setattr(
-        ThumbManagerBase, "VIDEO_DIR", str(cache / "videos")
-    )
+    monkeypatch.setattr(ThumbManagerBase, "VIDEO_DIR", str(cache / "videos"))
     monkeypatch.setattr(
         ThumbManagerBase, "CHANNEL_DIR", str(cache / "channels")
     )

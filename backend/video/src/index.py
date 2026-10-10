@@ -19,8 +19,8 @@ from mutagen.mp4 import MP4, MP4MetadataError
 from playlist.src import index as ta_playlist
 from ryd_client import ryd_client
 from user.src.user_config import UserConfig
-from video.src.comments import Comments
 from video.models import Video
+from video.src.comments import Comments
 from video.src.constants import VideoTypeEnum
 from video.src.media_streams import MediaStreamExtractor
 from video.src.subtitle import YoutubeSubtitle, save_subtitle_lines
@@ -356,7 +356,10 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         for playlist_id in self.json_data.get("playlist") or []:
             playlist = ta_playlist.YoutubePlaylist(playlist_id)
             playlist.get_from_db()
-            if playlist.json_data and playlist.json_data["playlist_type"] == "custom":
+            if (
+                playlist.json_data
+                and playlist.json_data["playlist_type"] == "custom"
+            ):
                 print(f"{playlist_id}: delete video {self.youtube_id}")
                 playlist.del_video(self.youtube_id)
                 playlist.save_to_db()

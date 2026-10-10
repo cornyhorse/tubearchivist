@@ -99,9 +99,10 @@ def test_build_json_and_upload(enabled, video):
     assert Video.objects.get().comment_count == 1
     stored = Comments(video.youtube_id).get_comments()
     assert stored["comment_channel_id"] == "UCchannel000000000000001"
-    assert stored["comment_last_refresh"] == comments.json_data[
-        "comment_last_refresh"
-    ]
+    assert (
+        stored["comment_last_refresh"]
+        == comments.json_data["comment_last_refresh"]
+    )
     assert stored["comment_comments"][0]["comment_text"] == "niceride"
 
 

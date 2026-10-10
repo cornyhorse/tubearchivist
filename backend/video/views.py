@@ -8,6 +8,7 @@ from common.views_base import AdminWriteOnly, ApiBaseView
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from playlist.src.index import YoutubePlaylist
 from rest_framework.response import Response
+from video.models import Video
 from video.serializers import (
     CommentItemSerializer,
     PlayerSerializer,
@@ -17,7 +18,6 @@ from video.serializers import (
     VideoProgressUpdateSerializer,
     VideoSerializer,
 )
-from video.models import Video
 from video.src.comments import Comments
 from video.src.index import YoutubeVideo
 from video.src.query_building import QueryBuilder
@@ -85,7 +85,9 @@ class VideoApiView(ApiBaseView):
     def get(self, request, video_id):
         """get video"""
         self.get_document(
-            "ta_video", Video.load_doc(video_id), progress_match=request.user.id
+            "ta_video",
+            Video.load_doc(video_id),
+            progress_match=request.user.id,
         )
         if not self.response:
             error = ErrorResponseSerializer({"error": "video not found"})
@@ -131,7 +133,9 @@ class VideoCommentView(ApiBaseView):
     def get(self, request, video_id):
         """get video comments"""
         # pylint: disable=unused-argument
-        self.get_document("ta_comment", Comments(video_id).get_comments() or None)
+        self.get_document(
+            "ta_comment", Comments(video_id).get_comments() or None
+        )
         if self.status_code == 404:
             error = ErrorResponseSerializer({"error": "video not found"})
             return Response(error.data, status=404)
