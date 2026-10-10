@@ -258,4 +258,3 @@ def test_cookie_validate_failure(redis_ns, ydl):
     message = RedisArchivist().get_message_dict("message:download")
     assert message["title"] == "Cookie validation failed, exiting..."
     assert RedisArchivist().get_message_str("cookie") is None
-

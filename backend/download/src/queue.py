@@ -176,13 +176,15 @@ class PendingList(PendingIndex):
             PendingInteract(youtube_id=url, status="priority").update_status()
             return None
 
-        if not self.force and (
-            url in self.missing_videos or url in self.to_skip
-        ):
+        missing_ids = {i["youtube_id"] for i in self.missing_videos}
+        if not self.force and (url in missing_ids or url in self.to_skip):
             print(f"{url}: skipped adding already indexed video to download.")
             return None
 
-        if self.force and url in self.all_ignored or url in self.all_pending:
+        queued_ids = {
+            i["youtube_id"] for i in self.all_ignored + self.all_pending
+        }
+        if self.force and url in queued_ids:
             print(f"{url}: skipped adding force video already in queue.")
             return None
 

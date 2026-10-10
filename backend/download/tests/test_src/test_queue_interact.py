@@ -11,7 +11,9 @@ pytestmark = pytest.mark.django_db
 
 def add(youtube_id, **overrides):
     """add a queue item from a legacy doc"""
-    return Download.upsert_doc(download_doc(youtube_id=youtube_id, **overrides))
+    return Download.upsert_doc(
+        download_doc(youtube_id=youtube_id, **overrides)
+    )
 
 
 def test_delete_item():

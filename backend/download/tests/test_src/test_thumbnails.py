@@ -316,9 +316,7 @@ def test_validate(cache_dir, http):
     Video.save_doc(video_doc(channel=channel_doc(channel_id="UCabc")))
     Download.upsert_doc(download_doc(youtube_id="dl1"))
     Download.upsert_doc(download_doc(youtube_id="dl2", status="ignore"))
-    Playlist.save_doc(
-        playlist_doc("PL1", [], playlist_thumbnail="https://pl")
-    )
+    Playlist.save_doc(playlist_doc("PL1", [], playlist_thumbnail="https://pl"))
     task = FakeTask()
 
     ThumbValidator(task=task).validate()
@@ -392,7 +390,9 @@ def test_embed_all(cache_dir, fake_mp4):
 
     ThumbFilesystem(task=task).embed()
 
-    assert [i.file_path for i in fake_mp4.instances] == [str(media / "vid1.mp4")]
+    assert [i.file_path for i in fake_mp4.instances] == [
+        str(media / "vid1.mp4")
+    ]
     assert task.lines == ["Processing Videos 2/2"]
 
 
