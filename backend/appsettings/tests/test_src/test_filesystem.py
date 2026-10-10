@@ -106,9 +106,7 @@ def test_scan(media, task):
         ("new00000001", "UCa/new00000001.mp4"),
         ("new00000002", "UCb/new00000002.mp4"),
     }
-    assert scanner.to_delete == {
-        ("gone0000001", "UCa/gone0000001.mp4")
-    }
+    assert scanner.to_delete == {("gone0000001", "UCa/gone0000001.mp4")}
     assert task.lines == [
         "Scan your filesystem for videos.",
         "Get all videos indexed.",
@@ -135,7 +133,9 @@ def test_apply_deletes_and_indexes(media, calls, app_config, task):
     assert recorded.count(("sleep",)) == 2
     assert not Download.objects.exists()
     assert "Remove 1 videos from index." in task.lines
-    progress = [p for lines, p, _ in task.messages if "Index missing" in lines[0]]
+    progress = [
+        p for lines, p, _ in task.messages if "Index missing" in lines[0]
+    ]
     assert progress == [0.5, 1.0]
 
 

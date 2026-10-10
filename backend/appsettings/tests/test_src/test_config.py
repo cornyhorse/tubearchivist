@@ -66,6 +66,7 @@ def test_post_process_updated_runs_snapshot_setup(app_config, monkeypatch):
 
 
 def test_fail_message(redis_clean):
+    # pylint: disable=unused-argument
     AppConfig._fail_message("cookie broken")  # pylint: disable=W0212
 
     message = RedisArchivist().get_message_dict("message:setting")
@@ -167,7 +168,8 @@ def test_unstable_same_version_is_update(release, settings):
 
 
 @pytest.mark.parametrize(
-    "version, expected", [("v0.5.12", (0, 5, 12)), ("1.2.3-unstable", (1, 2, 3))]
+    "version, expected",
+    [("v0.5.12", (0, 5, 12)), ("1.2.3-unstable", (1, 2, 3))],
 )
 def test_parse_version(version, expected):
     assert ReleaseVersion._parse_version(version) == expected  # noqa
@@ -179,6 +181,7 @@ def test_is_updated_without_message(release):
 
 
 def test_is_updated_after_upgrade(release, settings):
+    # pylint: disable=unused-argument
     RedisArchivist().set_message(
         ReleaseVersion.NEW_KEY, {"status": True, "version": "v0.5.12"}
     )

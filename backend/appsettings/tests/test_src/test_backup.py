@@ -106,7 +106,9 @@ def table_state() -> dict[str, list[dict]]:
     for model in MODELS:
         rows = []
         for row in model.objects.order_by("pk").values():
-            rows.append({k: v for k, v in row.items() if k not in NOT_COMPARED})
+            rows.append(
+                {k: v for k, v in row.items() if k not in NOT_COMPARED}
+            )
         state[model.__name__] = sorted(
             rows, key=lambda row: json.dumps(row, sort_keys=True, default=str)
         )

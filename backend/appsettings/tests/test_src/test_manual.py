@@ -152,7 +152,10 @@ def test_scan_runs_manual_import(
     assert task.messages == [
         (["Scanning your import folder."], False, "info"),
         (
-            ["Import queue processing video 1/2", f"short [{YT_ID[::-1]}].mp4"],
+            [
+                "Import queue processing video 1/2",
+                f"short [{YT_ID[::-1]}].mp4",
+            ],
             0.5,
             "info",
         ),

@@ -213,8 +213,12 @@ def test_remove_schedule(snap, runs, clock):
 
 def test_retention(snap, runs, clock):
     # pylint: disable=unused-argument
-    old = [write_snapshot(snap, NOW - timedelta(days=40 + i)) for i in range(7)]
-    recent = [write_snapshot(snap, NOW - timedelta(hours=i + 1)) for i in range(3)]
+    old = [
+        write_snapshot(snap, NOW - timedelta(days=40 + i)) for i in range(7)
+    ]
+    recent = [
+        write_snapshot(snap, NOW - timedelta(hours=i + 1)) for i in range(3)
+    ]
 
     snap.take_snapshot_now()
 
@@ -307,9 +311,10 @@ def test_restore(snap, runs, clock, settings):
         str(snap.snapshot_dir / f"{name}.dump"),
     ]
     assert kwargs["env"]["PGDATABASE"] == db_name
-    assert kwargs["env"]["PGPASSWORD"] == settings.DATABASES["default"][
-        "PASSWORD"
-    ]
+    assert (
+        kwargs["env"]["PGPASSWORD"]
+        == settings.DATABASES["default"]["PASSWORD"]
+    )
 
 
 def test_restore_not_found(snap, runs):
