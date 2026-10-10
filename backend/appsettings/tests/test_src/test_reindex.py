@@ -234,8 +234,9 @@ def test_progress_processing(env):
 # reindex
 
 
+# fakes are defined inline, so mccabe counts their methods here
 @pytest.fixture(name="yt")
-def fixture_yt(monkeypatch):
+def fixture_yt(monkeypatch):  # noqa: C901
     """fake youtube facing classes, recording calls"""
     state = {
         "videos": {},

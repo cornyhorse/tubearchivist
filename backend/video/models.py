@@ -196,9 +196,8 @@ class Video(models.Model):
         playlists: ids of playlists containing this video, queried if None
         """
         if playlists is None:
-            from playlist.models import (  # pylint: disable=import-outside-toplevel
-                PlaylistEntry,
-            )
+            # pylint: disable=import-outside-toplevel
+            from playlist.models import PlaylistEntry
 
             playlists = sorted(
                 set(

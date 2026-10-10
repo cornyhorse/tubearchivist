@@ -9,6 +9,7 @@ Functionality:
 import json
 import random
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Iterator
 
@@ -17,12 +18,31 @@ from channel.models import Channel
 from common.src.db import from_epoch
 from django.db import transaction
 from django.db.models import Sum
-from download.models import Download
+from download.models import Download, DownloadRule
+from emby.models import EpisodeNumber
 from playlist.models import Playlist, PlaylistEntry
 from user.models import Account, UserConfig
 from video.models import Comment, CommentRefresh, SubtitleLine, Video
 
 BATCH_SIZE = 2000
+RULE_DOC_FIELDS = [
+    "enabled",
+    "min_duration",
+    "max_duration",
+    "vid_types",
+    "title_include",
+    "title_exclude",
+    "published_after",
+    "action",
+]
+EPISODE_DOC_FIELDS = [
+    "series_kind",
+    "series_id",
+    "scheme",
+    "youtube_id",
+    "season",
+    "episode",
+]
 # list values with set semantics, rebuilt in sorted order
 UNORDERED_KEYS = {"playlist"}
 
@@ -87,6 +107,8 @@ class EsImporter:
             self.import_subtitles()
             self.import_comments()
             self.import_config()
+            self.import_download_rules()
+            self.import_episode_numbers()
 
         self.verify()
         return self.report
@@ -132,7 +154,8 @@ class EsImporter:
                 channels[channel_id] = Channel.from_doc(embedded)
                 self.report.skip(
                     "ta_channel",
-                    f"{channel_id}: missing, rebuilt from video {doc['youtube_id']}",
+                    f"{channel_id}: missing, rebuilt from video "
+                    f"{doc['youtube_id']}",
                 )
 
         self._upsert(Channel, list(channels.values()), ["channel_id"])
@@ -194,7 +217,9 @@ class EsImporter:
                 self.report.skip("ta_comment", f"{_id}: video not indexed")
                 continue
             video_ids.append(youtube_id)
-            for position, comment in enumerate(doc.get("comment_comments") or []):
+            for position, comment in enumerate(
+                doc.get("comment_comments") or []
+            ):
                 comments.append(
                     Comment(
                         video_id=youtube_id,
@@ -235,9 +260,46 @@ class EsImporter:
 
         self.report.counts["config"] = imported
 
+    def import_download_rules(self):
+        """ta_download_rule: fork backups only"""
+        rules = []
+        for _id, doc in self.docs("ta_download_rule"):
+            channel_id = doc.get("channel_id")
+            if (
+                channel_id
+                and not Channel.objects.filter(pk=channel_id).exists()
+            ):
+                self.report.skip("ta_download_rule", f"{_id}: channel gone")
+                continue
+            fields = {k: doc.get(k) for k in RULE_DOC_FIELDS if k in doc}
+            if fields.get("published_after"):
+                fields["published_after"] = date.fromisoformat(
+                    fields["published_after"]
+                )
+            DownloadRule.objects.update_or_create(
+                channel_id=channel_id, defaults=fields
+            )
+            rules.append(_id)
+        if rules:
+            self.report.counts["download_rule"] = len(rules)
+
+    def import_episode_numbers(self):
+        """ta_emby_episode: fork backups only, numbers are kept as they were"""
+        numbers = [
+            EpisodeNumber(
+                **{k: doc[k] for k in EPISODE_DOC_FIELDS},
+            )
+            for _, doc in self.docs("ta_emby_episode")
+        ]
+        if numbers:
+            EpisodeNumber.objects.bulk_create(numbers, ignore_conflicts=True)
+            self.report.counts["emby_episode"] = len(numbers)
+
     def verify(self):
         """compare the database against the export"""
-        self._verify_count("ta_channel", Channel.objects.count(), at_least=True)
+        self._verify_count(
+            "ta_channel", Channel.objects.count(), at_least=True
+        )
         self._verify_count("ta_video", Video.objects.count())
         self._verify_count("ta_playlist", Playlist.objects.count())
         self._verify_count("ta_download", Download.objects.count())
@@ -357,3 +419,17 @@ def _normalize(value):
     if value in (None, [], "", {}):
         return None
     return json.loads(json.dumps(value, sort_keys=True))
+
+
+def rule_to_doc(rule) -> dict:
+    """DownloadRule as a backup document"""
+    doc = {key: getattr(rule, key) for key in RULE_DOC_FIELDS}
+    doc["channel_id"] = rule.channel_id
+    if rule.published_after:
+        doc["published_after"] = rule.published_after.isoformat()
+    return doc
+
+
+def episode_to_doc(number) -> dict:
+    """EpisodeNumber as a backup document"""
+    return {key: getattr(number, key) for key in EPISODE_DOC_FIELDS}

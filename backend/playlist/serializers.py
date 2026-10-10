@@ -2,8 +2,8 @@
 
 # pylint: disable=abstract-method
 
-from common.serializers import PaginationSerializer
 from channel.models import EmbyNumbering
+from common.serializers import PaginationSerializer
 from rest_framework import serializers
 
 

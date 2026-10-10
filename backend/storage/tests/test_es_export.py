@@ -81,7 +81,8 @@ def test_export_pages_and_manifest(fake, tmp_path):
     assert counts["ta_video"] == 5
     assert counts["ta_subtitle"] == 0
     lines = (tmp_path / "ta_video.ndjson").read_text().splitlines()
-    assert [json.loads(l)["_id"] for l in lines] == [f"v{i}" for i in range(5)]
+    ids = [json.loads(line)["_id"] for line in lines]
+    assert ids == [f"v{i}" for i in range(5)]
     assert json.loads((tmp_path / "manifest.json").read_text()) == counts
     assert not fake.open_pits
     assert all(m in ("GET", "POST", "DELETE") for m, _ in fake.calls)

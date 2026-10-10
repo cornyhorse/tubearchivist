@@ -25,7 +25,10 @@ class Migration(migrations.Migration):
                 (
                     "series_kind",
                     models.CharField(
-                        choices=[("channel", "Channel"), ("playlist", "Playlist")],
+                        choices=[
+                            ("channel", "Channel"),
+                            ("playlist", "Playlist"),
+                        ],
                         max_length=16,
                     ),
                 ),
@@ -39,7 +42,12 @@ class Migration(migrations.Migration):
             options={
                 "constraints": [
                     models.UniqueConstraint(
-                        fields=("series_kind", "series_id", "scheme", "youtube_id"),
+                        fields=(
+                            "series_kind",
+                            "series_id",
+                            "scheme",
+                            "youtube_id",
+                        ),
                         name="episode_number_one_per_video",
                     ),
                     models.UniqueConstraint(

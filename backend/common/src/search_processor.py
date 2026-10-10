@@ -6,7 +6,7 @@ Functionality:
 import urllib.parse
 
 from common.src.env_settings import EnvironmentSettings
-from common.src.helper import date_parser, get_duration_str
+from common.src.helper import date_parser
 from common.src.ta_redis import RedisArchivist
 from download.src.thumbnails import ThumbManager
 

@@ -141,10 +141,6 @@ def test_round_trip(library, backup_dir, task):
     assert task.messages[-1] == (["Restore completed."], 1, "info")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="legacy backup format has no emby_numbering or download rules",
-)
 def test_round_trip_keeps_fork_fields(backup_dir):
     # pylint: disable=unused-argument
     Channel.save_doc(channel_doc())
@@ -156,6 +152,39 @@ def test_round_trip_keeps_fork_fields(backup_dir):
     handler.restore(filename)
 
     assert Channel.objects.get().emby_numbering == "absolute_frozen"
+
+
+def test_round_trip_keeps_rules_and_episode_numbers(backup_dir):
+    # pylint: disable=unused-argument,import-outside-toplevel
+    from datetime import date
+
+    from download.models import DownloadRule
+    from emby.models import EpisodeNumber
+
+    channel = Channel.save_doc(channel_doc())
+    DownloadRule.objects.create(
+        channel=channel, min_duration=60, published_after=date(2025, 1, 2)
+    )
+    DownloadRule.objects.create(channel=None, vid_types=["videos"])
+    EpisodeNumber.objects.create(
+        series_kind="channel",
+        series_id=channel.pk,
+        scheme="year_frozen",
+        youtube_id="v1",
+        season=2025,
+        episode=7,
+    )
+    handler = DatabaseBackup(reason="manual")
+    handler.backup_all_indexes()
+    filename = handler.get_all_backup_files()[0]["filename"]
+
+    handler.restore(filename)
+
+    rule = DownloadRule.objects.get(channel_id=channel.pk)
+    assert (rule.min_duration, rule.published_after) == (60, date(2025, 1, 2))
+    assert DownloadRule.objects.get(channel=None).vid_types == ["videos"]
+    number = EpisodeNumber.objects.get()
+    assert (number.season, number.episode) == (2025, 7)
 
 
 def test_restore_failed_verification_rolls_back(

@@ -5,7 +5,7 @@ Functionality:
 - Retrieve comments as the legacy comment document
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from appsettings.src.config import AppConfig
 from common.src.db import from_epoch, to_epoch
@@ -112,7 +112,9 @@ class Comments:
             print(f"{self.youtube_id}: Failed to extract text, {comment}")
             return False
 
-        time_text_datetime = datetime.utcfromtimestamp(comment["timestamp"])
+        time_text_datetime = datetime.fromtimestamp(
+            comment["timestamp"], tz=timezone.utc
+        )
 
         if time_text_datetime.hour == 0 and time_text_datetime.minute == 0:
             format_string = "%Y-%m-%d"

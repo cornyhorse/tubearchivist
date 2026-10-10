@@ -96,7 +96,11 @@ class SqliteImporter:
         rows = self._rows(legacy, table)
         local = model._meta.local_concrete_fields
         values = [
-            {f.attname: _convert(f, row[f.column]) for f in local if f.column in row}
+            {
+                f.attname: _convert(f, row[f.column])
+                for f in local
+                if f.column in row
+            }
             for row in rows
         ]
         if values and model._meta.parents:
@@ -135,7 +139,10 @@ class SqliteImporter:
             cursor.executemany(
                 sql,
                 [
-                    [f.get_db_prep_save(v[f.attname], connection) for f in fields]
+                    [
+                        f.get_db_prep_save(v[f.attname], connection)
+                        for f in fields
+                    ]
                     for v in values
                 ],
             )
@@ -146,7 +153,12 @@ class SqliteImporter:
         table = through._meta.db_table
         rows = self._rows(legacy, table)
         objects = [
-            through(**{f.attname: row[f.column] for f in through._meta.local_fields})
+            through(
+                **{
+                    f.attname: row[f.column]
+                    for f in through._meta.local_fields
+                }
+            )
             for row in rows
         ]
         through.objects.bulk_create(objects, ignore_conflicts=True)

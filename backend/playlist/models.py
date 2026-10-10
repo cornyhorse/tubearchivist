@@ -72,6 +72,11 @@ class Playlist(models.Model):
             "sort_order": doc.get("playlist_sort_order") or "top",
             "thumbnail": doc.get("playlist_thumbnail") or "",
             "playlist_type": doc.get("playlist_type") or "regular",
+            **(
+                {"emby_numbering": doc["emby_numbering"]}
+                if doc.get("emby_numbering")
+                else {}
+            ),
         }
 
     @classmethod
@@ -122,6 +127,7 @@ class Playlist(models.Model):
             "playlist_sort_order": self.sort_order,
             "playlist_thumbnail": self.thumbnail,
             "playlist_type": self.playlist_type,
+            "emby_numbering": self.emby_numbering,
             "playlist_entries": [entry.to_doc() for entry in entries],
         }
 
@@ -131,7 +137,9 @@ class PlaylistEntryQuerySet(models.QuerySet):
 
     def with_downloaded(self):
         """annotate downloaded: the video exists in the archive"""
-        from video.models import Video  # pylint: disable=import-outside-toplevel
+        from video.models import (  # pylint: disable=import-outside-toplevel
+            Video,
+        )
 
         return self.annotate(
             downloaded=models.Exists(

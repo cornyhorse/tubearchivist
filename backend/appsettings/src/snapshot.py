@@ -177,7 +177,9 @@ class DbSnapshot:
 
     def _apply_retention(self) -> None:
         snapshots = self._get_all_snapshots() or []
-        cutoff = (datetime.now(self.tz) - timedelta(days=RETENTION_DAYS)).timestamp()
+        cutoff = (
+            datetime.now(self.tz) - timedelta(days=RETENTION_DAYS)
+        ).timestamp()
         for idx, snapshot in enumerate(snapshots):
             expired = snapshot["end_stamp"] < cutoff and idx >= MIN_COUNT
             if expired or idx >= MAX_COUNT:
@@ -292,6 +294,8 @@ class DbSnapshot:
             return False
 
         for suffix in (".dump", ".json"):
-            (self.snapshot_dir / f"{snapshot_id}{suffix}").unlink(missing_ok=True)
+            (self.snapshot_dir / f"{snapshot_id}{suffix}").unlink(
+                missing_ok=True
+            )
         print(f"snapshot: deleted {snapshot_id}")
         return {"acknowledged": True}

@@ -86,7 +86,10 @@ class Pagination:
     def get_params(self):
         """process url query parameters"""
         query_dict = self.request.GET.copy()
-        self.page_get = int(query_dict.get("page", 0))
+        try:
+            self.page_get = int(query_dict.get("page", 0))
+        except ValueError:
+            self.page_get = 0
 
         _ = query_dict.pop("page", False)
         self.params = query_dict.urlencode()

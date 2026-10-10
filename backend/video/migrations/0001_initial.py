@@ -23,7 +23,9 @@ class Migration(migrations.Migration):
             fields=[
                 (
                     "youtube_id",
-                    models.CharField(max_length=32, primary_key=True, serialize=False),
+                    models.CharField(
+                        max_length=32, primary_key=True, serialize=False
+                    ),
                 ),
                 ("title", models.TextField()),
                 ("description", models.TextField(blank=True, null=True)),
@@ -66,7 +68,10 @@ class Migration(migrations.Migration):
                 ("watched_date", models.DateTimeField(blank=True, null=True)),
                 ("view_count", models.BigIntegerField(blank=True, null=True)),
                 ("like_count", models.BigIntegerField(blank=True, null=True)),
-                ("dislike_count", models.BigIntegerField(blank=True, null=True)),
+                (
+                    "dislike_count",
+                    models.BigIntegerField(blank=True, null=True),
+                ),
                 ("average_rating", models.FloatField(blank=True, null=True)),
                 ("comment_count", models.IntegerField(blank=True, null=True)),
                 ("streams", models.JSONField(blank=True, default=list)),
@@ -127,7 +132,10 @@ class Migration(migrations.Migration):
                 ("comment_id", models.CharField(max_length=128)),
                 ("parent", models.CharField(max_length=128)),
                 ("author", models.TextField(blank=True, default="")),
-                ("author_id", models.CharField(blank=True, default="", max_length=64)),
+                (
+                    "author_id",
+                    models.CharField(blank=True, default="", max_length=64),
+                ),
                 ("author_is_uploader", models.BooleanField(default=False)),
                 ("author_thumbnail", models.TextField(blank=True, default="")),
                 ("text", models.TextField(blank=True, default="")),
@@ -197,13 +205,15 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="video",
             index=models.Index(
-                fields=["date_downloaded"], name="video_video_date_do_b6ffe1_idx"
+                fields=["date_downloaded"],
+                name="video_video_date_do_b6ffe1_idx",
             ),
         ),
         migrations.AddIndex(
             model_name="video",
             index=models.Index(
-                fields=["channel", "published"], name="video_video_channel_f13e4d_idx"
+                fields=["channel", "published"],
+                name="video_video_channel_f13e4d_idx",
             ),
         ),
         migrations.AddIndex(
@@ -221,7 +231,9 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="video",
             index=django.contrib.postgres.indexes.GinIndex(
-                fields=["title"], name="video_title_trgm", opclasses=["gin_trgm_ops"]
+                fields=["title"],
+                name="video_title_trgm",
+                opclasses=["gin_trgm_ops"],
             ),
         ),
         migrations.AddConstraint(
@@ -233,7 +245,8 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="subtitleline",
             index=models.Index(
-                fields=["video", "lang", "index"], name="video_subti_video_i_26aa0e_idx"
+                fields=["video", "lang", "index"],
+                name="video_subti_video_i_26aa0e_idx",
             ),
         ),
         migrations.AddIndex(

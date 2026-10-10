@@ -54,9 +54,7 @@ class DownloadQuerySet(models.QuerySet):
             queryset = queryset.filter(auto_start=True)
 
         return (
-            queryset.queue_order()
-            .select_for_update(skip_locked=True)
-            .first()
+            queryset.queue_order().select_for_update(skip_locked=True).first()
         )
 
     def set_status(self, new_status: str) -> int:
@@ -82,7 +80,9 @@ class DownloadQuerySet(models.QuerySet):
 
         return self.annotate(
             is_channel_indexed=models.Exists(
-                Channel.objects.filter(channel_id=models.OuterRef("channel_id"))
+                Channel.objects.filter(
+                    channel_id=models.OuterRef("channel_id")
+                )
             )
         )
 

@@ -126,7 +126,9 @@ def plan_series(
         )
         if thumb := _read(episode.thumb):
             desired.append(
-                DesiredFile(f"{stem}-thumb.jpg", "data", owner, "thumb", data=thumb)
+                DesiredFile(
+                    f"{stem}-thumb.jpg", "data", owner, "thumb", data=thumb
+                )
             )
         else:
             warnings.append(f"{info.youtube_id}: no cached thumbnail")

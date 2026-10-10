@@ -34,8 +34,9 @@ def fixture_media(tmp_path, monkeypatch):
     return root
 
 
+# fakes are defined inline, so mccabe counts their methods here
 @pytest.fixture(name="calls")
-def fixture_calls(monkeypatch):
+def fixture_calls(monkeypatch):  # noqa: C901
     """replace every external effect of indexing with a recorder"""
     calls = []
     state = {"remote_fails": set(), "embed_ok": set()}

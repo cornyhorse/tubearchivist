@@ -198,7 +198,8 @@ class Command(BaseCommand):
             if var in os.environ:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"    {var} is set but unused since the move to Postgres"
+                        f"    {var} is set but unused since the move "
+                        "to Postgres"
                     )
                 )
 

@@ -87,7 +87,9 @@ def test_emby_sync_modes(library):
 
     assert "created 3," in channel and "warning:" in channel
     assert "created 3," in playlist
-    assert "created 0, updated 0, renamed 0, deleted 0, unchanged 6" in everything
+    assert (
+        "created 0, updated 0, renamed 0, deleted 0, unchanged 6" in everything
+    )
 
 
 def test_emby_sync_verbose_dry_run(library):

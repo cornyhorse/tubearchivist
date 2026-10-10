@@ -21,25 +21,42 @@ class Migration(migrations.Migration):
             fields=[
                 (
                     "playlist_id",
-                    models.CharField(max_length=64, primary_key=True, serialize=False),
+                    models.CharField(
+                        max_length=64, primary_key=True, serialize=False
+                    ),
                 ),
                 ("name", models.TextField()),
                 ("description", models.TextField(blank=True, null=True)),
-                ("channel_id", models.CharField(blank=True, default="", max_length=64)),
+                (
+                    "channel_id",
+                    models.CharField(blank=True, default="", max_length=64),
+                ),
                 ("channel_name", models.TextField(blank=True, default="")),
                 ("active", models.BooleanField(default=True)),
                 ("subscribed", models.BooleanField(default=False)),
                 ("last_refresh", models.DateTimeField(blank=True, null=True)),
                 ("sort_order", models.CharField(default="top", max_length=16)),
                 ("thumbnail", models.TextField(blank=True, default="")),
-                ("playlist_type", models.CharField(default="regular", max_length=16)),
+                (
+                    "playlist_type",
+                    models.CharField(default="regular", max_length=16),
+                ),
                 (
                     "emby_numbering",
                     models.CharField(
                         choices=[
-                            ("date", "Date: season = year, episode = MMDD*10+n"),
-                            ("year_frozen", "Year: season = year, frozen order"),
-                            ("absolute_frozen", "Absolute: season 1, frozen order"),
+                            (
+                                "date",
+                                "Date: season = year, episode = MMDD*10+n",
+                            ),
+                            (
+                                "year_frozen",
+                                "Year: season = year, frozen order",
+                            ),
+                            (
+                                "absolute_frozen",
+                                "Absolute: season 1, frozen order",
+                            ),
                             ("playlist_position", "Playlist position"),
                         ],
                         default="playlist_position",
@@ -62,7 +79,8 @@ class Migration(migrations.Migration):
             options={
                 "indexes": [
                     models.Index(
-                        fields=["channel_id"], name="playlist_pl_channel_b7e94f_idx"
+                        fields=["channel_id"],
+                        name="playlist_pl_channel_b7e94f_idx",
                     ),
                     django.contrib.postgres.indexes.GinIndex(
                         fields=["search"], name="playlist_search_gin"
@@ -104,7 +122,8 @@ class Migration(migrations.Migration):
                 "ordering": ["playlist", "idx"],
                 "constraints": [
                     models.UniqueConstraint(
-                        fields=("playlist", "idx"), name="playlist_entry_unique_idx"
+                        fields=("playlist", "idx"),
+                        name="playlist_entry_unique_idx",
                     )
                 ],
             },

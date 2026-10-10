@@ -6,6 +6,7 @@ from common.serializers import (
 )
 from common.views_base import AdminOnly, ApiBaseView
 from django.db.models import Count
+from django.http import JsonResponse
 from download.models import Download
 from download.serializers import (
     AddToDownloadListSerializer,
@@ -337,7 +338,8 @@ class DownloadRuleDefaultView(ApiBaseView):
         # pylint: disable=unused-argument
         rule = get_rule(None)
         if rule is None:
-            return Response(None)
+            # JSON null, so the frontend can parse "no default rule"
+            return JsonResponse(None, safe=False)
         return Response(DownloadRuleSerializer(rule).data)
 
     @staticmethod

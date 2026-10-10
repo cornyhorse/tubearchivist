@@ -92,7 +92,9 @@ class Command(BaseCommand):
                 return
             except OperationalError as err:
                 error = err
-                self.stdout.write(f"    ... waiting for Postgres [{i}/{total}]")
+                self.stdout.write(
+                    f"    ... waiting for Postgres [{i}/{total}]"
+                )
                 connection.close()
                 sleep(5)
 
@@ -128,14 +130,19 @@ class Command(BaseCommand):
         client = 0
         if binary:
             output = subprocess.run(
-                [binary, "--version"], capture_output=True, text=True, check=False
+                [binary, "--version"],
+                capture_output=True,
+                text=True,
+                check=False,
             ).stdout
             if found := re.search(r"(\d+)\.", output):
                 client = int(found.group(1))
 
         if client >= server:
             self.stdout.write(
-                self.style.SUCCESS(f"    ✓ pg_dump {client} can dump Postgres {server}")
+                self.style.SUCCESS(
+                    f"    ✓ pg_dump {client} can dump Postgres {server}"
+                )
             )
             return
 

@@ -12,7 +12,12 @@ from zoneinfo import ZoneInfo
 from channel.models import Channel
 from django.db import transaction
 from emby.models import EpisodeNumber, SeriesKind
-from emby.src.layout import EpisodeSource, SeriesSource, plan_series, series_dir
+from emby.src.layout import (
+    EpisodeSource,
+    SeriesSource,
+    plan_series,
+    series_dir,
+)
 from emby.src.nfo import EpisodeInfo, SeriesInfo
 from emby.src.numbering import FROZEN_SCHEMES, NumberingItem, assign_numbers
 from emby.src.writer import EmbyWriter, SyncReport
@@ -32,7 +37,10 @@ class EmbyPaths:
     def video_thumb(self, youtube_id: str) -> Path:
         """TA cache path of a video thumbnail"""
         return (
-            self.cache_root / "videos" / youtube_id[0].lower() / f"{youtube_id}.jpg"
+            self.cache_root
+            / "videos"
+            / youtube_id[0].lower()
+            / f"{youtube_id}.jpg"
         )
 
     def channel_art(self, channel_id: str, kind: str) -> Path:
@@ -71,7 +79,8 @@ def paths_from_env() -> EmbyPaths | None:
     if not EnvironmentSettings.EMBY_ROOT:
         return None
     validate_output_root(
-        Path(EnvironmentSettings.MEDIA_DIR), Path(EnvironmentSettings.EMBY_ROOT)
+        Path(EnvironmentSettings.MEDIA_DIR),
+        Path(EnvironmentSettings.EMBY_ROOT),
     )
     return EmbyPaths(
         media_root=Path(EnvironmentSettings.MEDIA_DIR),
@@ -180,9 +189,7 @@ def channel_series(
         fanart=paths.channel_art(channel.channel_id, "tvart"),
         banner=paths.channel_art(channel.channel_id, "banner"),
     )
-    episodes = [
-        _episode(v, numbers[v.youtube_id], paths, tz) for v in videos
-    ]
+    episodes = [_episode(v, numbers[v.youtube_id], paths, tz) for v in videos]
     return series, episodes, warnings
 
 
@@ -205,7 +212,10 @@ def playlist_series(
         for v in videos
     ]
     numbers, warnings = ensure_numbers(
-        SeriesKind.PLAYLIST, playlist.playlist_id, playlist.emby_numbering, items
+        SeriesKind.PLAYLIST,
+        playlist.playlist_id,
+        playlist.emby_numbering,
+        items,
     )
     series = SeriesSource(
         kind="playlists",
@@ -217,9 +227,7 @@ def playlist_series(
         ),
         poster=paths.playlist_thumb(playlist.playlist_id),
     )
-    episodes = [
-        _episode(v, numbers[v.youtube_id], paths, tz) for v in videos
-    ]
+    episodes = [_episode(v, numbers[v.youtube_id], paths, tz) for v in videos]
     return series, episodes, warnings
 
 

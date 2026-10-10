@@ -14,10 +14,10 @@ from channel.src.index import YoutubeChannel, channel_overwrites
 from channel.src.nav import ChannelNav
 from common.serializers import ErrorResponseSerializer
 from common.src.helper import get_duration_str
-from download.src.rules import get_rule, set_rule
 from common.src.urlparser import Parser
-from django.db.models import Count, Sum
 from common.views_base import AdminWriteOnly, ApiBaseView
+from django.db.models import Count, Sum
+from download.src.rules import get_rule, set_rule
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiResponse,

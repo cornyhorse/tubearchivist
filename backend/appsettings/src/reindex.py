@@ -4,11 +4,8 @@ functionality:
 - refresh indexed items from youtube
 """
 
-import json
 import os
 from datetime import datetime, timezone
-
-from django.db import transaction
 from typing import Literal, TypedDict
 
 from appsettings.src.config import AppConfig
@@ -17,6 +14,7 @@ from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
 from common.src.helper import rand_sleep
 from common.src.ta_redis import RedisArchivist, RedisQueue
+from django.db import transaction
 from download.src.thumbnails import ThumbManager
 from download.src.yt_dlp_base import CookieHandler
 from playlist.src.index import YoutubePlaylist

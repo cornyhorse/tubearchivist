@@ -242,9 +242,9 @@ def test_aggs(client):
 
 def test_default_rule(client):
     """get, set and delete the default rule"""
-    # no rule renders as an empty body, not a json null
+    # no rule renders as json null
     empty = client.get("/api/download/rule/")
-    assert (empty.status_code, empty.content) == (200, b"")
+    assert (empty.status_code, empty.json()) == (200, None)
 
     response = client.post(
         "/api/download/rule/",

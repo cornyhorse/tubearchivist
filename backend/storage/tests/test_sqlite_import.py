@@ -123,7 +123,6 @@ def test_missing_file(tmp_path):
         SqliteImporter(tmp_path / "nope.sqlite3")
 
 
-
 def test_convert_keeps_aware_datetimes():
     # pylint: disable=import-outside-toplevel,protected-access
     from storage.sqlite_import import _convert

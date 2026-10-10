@@ -4,9 +4,9 @@ import xml.etree.ElementTree as ET
 
 import pytest
 from channel.models import Channel
+from common.src.env_settings import EnvironmentSettings
 from common.tests.docs import channel_doc, playlist_doc, video_doc
 from emby.models import EpisodeNumber
-from common.src.env_settings import EnvironmentSettings
 from emby.src.sync import (
     EmbyPaths,
     paths_from_env,
@@ -24,7 +24,9 @@ pytestmark = pytest.mark.django_db
 @pytest.fixture(name="paths")
 def fixture_paths(tmp_path):
     """scratch roots with art for channel and playlist in the cache"""
-    paths = EmbyPaths(tmp_path / "media", tmp_path / "cache", tmp_path / "emby")
+    paths = EmbyPaths(
+        tmp_path / "media", tmp_path / "cache", tmp_path / "emby"
+    )
     channel_id = channel_doc()["channel_id"]
     for kind in ("thumb", "tvart", "banner"):
         art = paths.channel_art(channel_id, kind)
@@ -38,7 +40,9 @@ def fixture_paths(tmp_path):
 
 def add_video(paths, youtube_id, published):
     """video with placeholder media and thumb"""
-    video = Video.from_doc(video_doc(youtube_id=youtube_id, published=published))
+    video = Video.from_doc(
+        video_doc(youtube_id=youtube_id, published=published)
+    )
     video.save()
     media = paths.media_root / video.media_url
     media.parent.mkdir(parents=True, exist_ok=True)
@@ -96,7 +100,10 @@ def test_playlist_reorder_renumbers(library):
     assert numbers(library.output_root) == {"v1": (1, 1), "v3": (1, 2)}
     assert len(report.renamed) == 6
     stored = EpisodeNumber.objects.filter(series_id="PL1")
-    assert {(n.youtube_id, n.episode) for n in stored} == {("v1", 1), ("v3", 2)}
+    assert {(n.youtube_id, n.episode) for n in stored} == {
+        ("v1", 1),
+        ("v3", 2),
+    }
 
 
 def test_channel_art_from_cache(library):
@@ -144,7 +151,9 @@ def test_video_without_published_date(library):
     ]
     undated = next(n for n in nfos if n.findtext("uniqueid") == "v2")
     assert undated.find("aired") is None
-    assert len({(n.findtext("season"), n.findtext("episode")) for n in nfos}) == 3
+    assert (
+        len({(n.findtext("season"), n.findtext("episode")) for n in nfos}) == 3
+    )
 
 
 @pytest.mark.parametrize(

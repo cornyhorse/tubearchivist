@@ -15,7 +15,9 @@ class Migration(migrations.Migration):
             fields=[
                 (
                     "youtube_id",
-                    models.CharField(max_length=32, primary_key=True, serialize=False),
+                    models.CharField(
+                        max_length=32, primary_key=True, serialize=False
+                    ),
                 ),
                 ("title", models.TextField(blank=True, default="")),
                 ("channel_id", models.CharField(max_length=64)),
@@ -33,7 +35,10 @@ class Migration(migrations.Migration):
                         max_length=16,
                     ),
                 ),
-                ("duration", models.CharField(blank=True, default="", max_length=32)),
+                (
+                    "duration",
+                    models.CharField(blank=True, default="", max_length=32),
+                ),
                 ("published", models.DateTimeField(blank=True, null=True)),
                 ("timestamp", models.DateTimeField()),
                 (
@@ -55,7 +60,8 @@ class Migration(migrations.Migration):
                         name="download_queue_order",
                     ),
                     models.Index(
-                        fields=["channel_id"], name="download_do_channel_c78bbb_idx"
+                        fields=["channel_id"],
+                        name="download_do_channel_c78bbb_idx",
                     ),
                 ],
             },

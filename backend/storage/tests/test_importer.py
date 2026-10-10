@@ -100,7 +100,9 @@ def test_import_is_idempotent(export_dir):
 
     assert report.ok, report.lines()
     assert Video.objects.count() == 3
-    assert Video.objects.get(pk="vid00000001").title == "Riding the Big Coaster"
+    assert (
+        Video.objects.get(pk="vid00000001").title == "Riding the Big Coaster"
+    )
 
 
 def test_import_round_trips_video_doc(export_dir):
@@ -175,7 +177,10 @@ def test_import_comments_users_and_missing_files(full_export):
 
     assert report.ok, report.lines()
     assert report.counts["comment"] == 2
-    assert [c.parent for c in Comment.objects.order_by("position")] == ["root", "c1"]
+    assert [c.parent for c in Comment.objects.order_by("position")] == [
+        "root",
+        "c1",
+    ]
     assert CommentRefresh.objects.get().video_id == "vid00000001"
     assert report.skipped["ta_video"] == ["nochannel01: no channel"]
     assert report.skipped["ta_comment"] == ["gone0000001: video not indexed"]
@@ -236,3 +241,15 @@ def test_verify_reports_missing_video(full_export):
     importer.verify()
 
     assert "video vid00000001: missing" in importer.report.mismatches
+
+
+def test_rule_of_missing_channel_is_skipped(tmp_path):
+    rule = {"channel_id": "UCgone", "min_duration": 60}
+    write_export(
+        tmp_path,
+        {"ta_channel": [], "ta_download_rule": [("1", rule)]},
+    )
+
+    report = EsImporter(tmp_path).run()
+
+    assert report.skipped["ta_download_rule"] == ["1: channel gone"]

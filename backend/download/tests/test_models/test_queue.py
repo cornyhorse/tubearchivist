@@ -13,7 +13,9 @@ pytestmark = pytest.mark.django_db
 
 def add(youtube_id, **overrides):
     """add a queue item from a legacy doc"""
-    return Download.upsert_doc(download_doc(youtube_id=youtube_id, **overrides))
+    return Download.upsert_doc(
+        download_doc(youtube_id=youtube_id, **overrides)
+    )
 
 
 def test_doc_round_trip():
@@ -33,7 +35,9 @@ def test_next_pending_order():
     with transaction.atomic():
         assert Download.objects.next_pending().youtube_id == "auto"
     with transaction.atomic():
-        assert Download.objects.next_pending(auto_only=True).youtube_id == "auto"
+        assert (
+            Download.objects.next_pending(auto_only=True).youtube_id == "auto"
+        )
 
     Download.objects.filter(pk="auto").delete()
     with transaction.atomic():
@@ -73,7 +77,11 @@ def test_set_status_actions():
 
     assert Download.objects.matching(error=True).set_status("priority") == 1
     item = Download.objects.get(pk="a")
-    assert (item.status, item.auto_start, item.message) == ("pending", True, None)
+    assert (item.status, item.auto_start, item.message) == (
+        "pending",
+        True,
+        None,
+    )
 
     Download.objects.filter(pk="b").update(message="x")
     Download.objects.matching(status="ignore").set_status("clear_error")
@@ -105,4 +113,6 @@ def test_reset_auto_start():
 def test_epoch_fields_are_aware_datetimes():
     item = add("a", timestamp=1785000000)
 
-    assert item.timestamp == datetime.fromtimestamp(1785000000, tz=timezone.utc)
+    assert item.timestamp == datetime.fromtimestamp(
+        1785000000, tz=timezone.utc
+    )

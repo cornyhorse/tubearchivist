@@ -12,11 +12,19 @@ def item(youtube_id, day, idx=None):
 
 
 def test_date_scheme():
-    items = [item("b", "2025-03-14"), item("a", "2025-03-14"), item("c", "2024-12-31")]
+    items = [
+        item("b", "2025-03-14"),
+        item("a", "2025-03-14"),
+        item("c", "2024-12-31"),
+    ]
 
     numbers, warnings = assign_numbers("date", items)
 
-    assert numbers == {"a": (2025, 3140), "b": (2025, 3141), "c": (2024, 12310)}
+    assert numbers == {
+        "a": (2025, 3140),
+        "b": (2025, 3141),
+        "c": (2024, 12310),
+    }
     assert not warnings
 
 
@@ -47,7 +55,11 @@ def test_year_frozen_backfill_gets_next_number():
     )
     numbers, _ = assign_numbers(
         "year_frozen",
-        [item("old", "2025-02-01"), item("a", "2025-01-01"), item("b", "2025-06-01")],
+        [
+            item("old", "2025-02-01"),
+            item("a", "2025-01-01"),
+            item("b", "2025-06-01"),
+        ],
         first,
     )
 
@@ -58,7 +70,9 @@ def test_year_frozen_never_reuses_numbers_of_removed_videos():
     first, _ = assign_numbers(
         "year_frozen", [item("a", "2025-01-01"), item("b", "2025-06-01")]
     )
-    numbers, _ = assign_numbers("year_frozen", [item("c", "2025-07-01")], first)
+    numbers, _ = assign_numbers(
+        "year_frozen", [item("c", "2025-07-01")], first
+    )
 
     assert numbers["c"] == (2025, 3)
 
@@ -85,7 +99,9 @@ def test_errors():
     with pytest.raises(NumberingError):
         assign_numbers("nope", [])
     with pytest.raises(NumberingError):
-        assign_numbers("date", [item("a", "2025-01-01"), item("a", "2025-01-02")])
+        assign_numbers(
+            "date", [item("a", "2025-01-01"), item("a", "2025-01-02")]
+        )
     with pytest.raises(NumberingError):
         assign_numbers("playlist_position", [item("a", "2025-01-01")])
     with pytest.raises(NumberingError):

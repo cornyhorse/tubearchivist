@@ -8,7 +8,12 @@ from pathlib import Path
 
 import pytest
 from emby.src import writer as writer_module
-from emby.src.layout import EpisodeSource, SeriesSource, plan_series, series_dir
+from emby.src.layout import (
+    EpisodeSource,
+    SeriesSource,
+    plan_series,
+    series_dir,
+)
 from emby.src.nfo import EpisodeInfo, SeriesInfo
 from emby.src.writer import MANIFEST_NAME, DesiredFile, EmbyWriter
 
@@ -21,10 +26,14 @@ def fixture_media(tmp_path):
     (root / "UC1").mkdir(parents=True)
     (cache / "videos").mkdir(parents=True)
     for youtube_id in ("aaa", "bbb", "ccc"):
-        (root / "UC1" / f"{youtube_id}.mp4").write_bytes(b"video " + youtube_id.encode())
+        (root / "UC1" / f"{youtube_id}.mp4").write_bytes(
+            b"video " + youtube_id.encode()
+        )
         thumb_dir = cache / "videos" / youtube_id[0]
         thumb_dir.mkdir(exist_ok=True)
-        (thumb_dir / f"{youtube_id}.jpg").write_bytes(b"jpg " + youtube_id.encode())
+        (thumb_dir / f"{youtube_id}.jpg").write_bytes(
+            b"jpg " + youtube_id.encode()
+        )
     return root, cache
 
 
@@ -75,7 +84,9 @@ def test_first_run_creates_tree(tmp_path, media):
     link = season / "My Channel - S2025E01 - First.mp4"
     assert link.stat().st_ino == (media[0] / "UC1" / "aaa.mp4").stat().st_ino
     assert (season / "My Channel - S2025E01 - First.nfo").exists()
-    assert (season / "My Channel - S2025E01 - First-thumb.jpg").read_bytes() == b"jpg aaa"
+    assert (
+        season / "My Channel - S2025E01 - First-thumb.jpg"
+    ).read_bytes() == b"jpg aaa"
 
 
 def test_second_run_changes_nothing(tmp_path, media):
@@ -147,7 +158,8 @@ def test_foreign_file_is_never_overwritten(tmp_path, media):
     report = EmbyWriter(out).sync(desired, scope)
 
     assert nfo.read_text() == "hand written"
-    assert report.conflicts == [f"{scope}/Season 2025/My Channel - S2025E01 - First.nfo: not owned, kept"]
+    nfo_path = f"{scope}/Season 2025/My Channel - S2025E01 - First.nfo"
+    assert report.conflicts == [f"{nfo_path}: not owned, kept"]
 
 
 def test_lost_manifest_rebuilds_without_writes(tmp_path, media):
@@ -195,7 +207,9 @@ def test_paths_cannot_escape_root(tmp_path, media):
 
     EmbyWriter(out).sync(desired, scope)
 
-    assert all(os.path.commonpath([out, p]) == str(out) for p in out.rglob("*"))
+    assert all(
+        os.path.commonpath([out, p]) == str(out) for p in out.rglob("*")
+    )
 
 
 def data_file(relpath, data=b"x", owner="o", role="r"):
@@ -222,7 +236,9 @@ def test_unsupported_manifest_version(tmp_path):
 
 
 def test_missing_source_is_skipped(tmp_path):
-    item = DesiredFile("a/x.mp4", "link", "o", "media", source=tmp_path / "nope")
+    item = DesiredFile(
+        "a/x.mp4", "link", "o", "media", source=tmp_path / "nope"
+    )
 
     report = EmbyWriter(tmp_path / "out").sync([item], "a")
 
@@ -371,7 +387,9 @@ def test_plan_series_warnings(tmp_path, media):
     info = EpisodeInfo("aaa", "First", "", 2025, 1, date(2025, 1, 1))
     episodes = [
         EpisodeSource(info, root / "UC1" / "aaa.mp4", thumb=None),
-        EpisodeSource(replace(info, youtube_id="zzz"), root / "UC1" / "zzz.mp4"),
+        EpisodeSource(
+            replace(info, youtube_id="zzz"), root / "UC1" / "zzz.mp4"
+        ),
     ]
 
     desired, warnings = plan_series(series, episodes)
@@ -408,20 +426,27 @@ def test_swapped_numbers_keep_inodes(tmp_path, media):
     report, scope = swap_files(media, out)
 
     season = out / scope / "Season 2025"
-    assert (season / "My Channel - S2025E02 - Same.mp4").stat().st_ino == source_a
+    assert (
+        season / "My Channel - S2025E02 - Same.mp4"
+    ).stat().st_ino == source_a
     assert len(report.renamed) == 6
     assert not report.created and not report.deleted
     assert not [p for p in season.iterdir() if p.name.startswith(".ta-move")]
     nfo = (season / "My Channel - S2025E02 - Same.nfo").read_text()
     assert "<uniqueid" in nfo and ">aaa<" in nfo
-    assert EmbyWriter(out).sync(
-        series_files(
-            media,
-            {"aaa": "Same", "bbb": "Same"},
-            episodes={"aaa": (2025, 2), "bbb": (2025, 1)},
-        )[0],
-        scope,
-    ).changed == 0
+    assert (
+        EmbyWriter(out)
+        .sync(
+            series_files(
+                media,
+                {"aaa": "Same", "bbb": "Same"},
+                episodes={"aaa": (2025, 2), "bbb": (2025, 1)},
+            )[0],
+            scope,
+        )
+        .changed
+        == 0
+    )
 
 
 def test_swap_dry_run_matches_real_run(tmp_path, media):

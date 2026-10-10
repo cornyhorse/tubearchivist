@@ -114,6 +114,9 @@ class Channel(models.Model):
         }
         for key in OVERWRITE_FIELDS:
             fields[key] = overwrites.get(key)
+        # fork setting: only in docs written by the fork, ES docs keep default
+        if doc.get("emby_numbering"):
+            fields["emby_numbering"] = doc["emby_numbering"]
 
         return fields
 
@@ -153,6 +156,7 @@ class Channel(models.Model):
             "channel_tvart_url": self.tvart_url,
             "channel_tags": list(self.tags),
             "channel_tabs": list(self.tabs),
+            "emby_numbering": self.emby_numbering,
         }
         if overwrites := self.overwrites:
             doc["channel_overwrites"] = overwrites

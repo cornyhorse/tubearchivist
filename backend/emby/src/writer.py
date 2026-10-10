@@ -77,7 +77,8 @@ class Manifest:
             self.files = raw["files"]
             self.dirs = set(raw["dirs"])
         self._by_owner = {
-            (e["owner"], e["role"]): relpath for relpath, e in self.files.items()
+            (e["owner"], e["role"]): relpath
+            for relpath, e in self.files.items()
         }
 
     def owned_by(self, owner: str, role: str) -> str | None:
@@ -166,7 +167,9 @@ class EmbyWriter:
         self._vacated: set[str] = set()
         self._moved_from: dict[str, str] = {}
 
-    def sync(self, desired: list[DesiredFile], scope: str | None) -> SyncReport:
+    def sync(
+        self, desired: list[DesiredFile], scope: str | None
+    ) -> SyncReport:
         """
         make root match desired within scope (a relpath prefix such as
         "channels/Name [id]"), None for the whole root
@@ -345,7 +348,9 @@ class EmbyWriter:
                 parent = parent.parent
 
         candidates = [
-            d for d in self.manifest.dirs if _within(d, scope) and d not in needed
+            d
+            for d in self.manifest.dirs
+            if _within(d, scope) and d not in needed
         ]
         # in a dry run nothing is removed, so count what would be gone
         gone = {p.rstrip("/") for p in self.report.deleted}

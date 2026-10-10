@@ -330,7 +330,9 @@ class ThumbValidator:
         )
         print("ta_video: validate artwork")
         for idx, (youtube_id, url) in enumerate(videos, start=1):
-            ThumbManager(youtube_id).download_video_thumb(url, skip_existing=True)
+            ThumbManager(youtube_id).download_video_thumb(
+                url, skip_existing=True
+            )
             _progress(self.task, "Videos", idx, len(videos))
 
         channels = list(Channel.objects.filter(active=True))

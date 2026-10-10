@@ -15,6 +15,7 @@ BASE_CHANNEL = {
     "channel_tvart_url": "https://yt3.example/tvart",
     "channel_tags": ["trains", "coasters"],
     "channel_tabs": ["videos", "shorts"],
+    "emby_numbering": "date",
 }
 
 BASE_VIDEO = {
@@ -107,6 +108,7 @@ def playlist_doc(playlist_id: str, entries: list[str], **overrides) -> dict:
         "playlist_sort_order": "top",
         "playlist_thumbnail": "https://i.ytimg.com/pl.jpg",
         "playlist_type": "regular",
+        "emby_numbering": "playlist_position",
         "playlist_entries": [
             {
                 "youtube_id": youtube_id,

@@ -21,7 +21,9 @@ class Migration(migrations.Migration):
             fields=[
                 (
                     "channel_id",
-                    models.CharField(max_length=64, primary_key=True, serialize=False),
+                    models.CharField(
+                        max_length=64, primary_key=True, serialize=False
+                    ),
                 ),
                 ("name", models.TextField()),
                 ("description", models.TextField(blank=True, null=True)),
@@ -45,9 +47,18 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ("download_format", models.TextField(blank=True, null=True)),
-                ("autodelete_days", models.IntegerField(blank=True, null=True)),
-                ("index_playlists", models.BooleanField(blank=True, null=True)),
-                ("integrate_sponsorblock", models.BooleanField(blank=True, null=True)),
+                (
+                    "autodelete_days",
+                    models.IntegerField(blank=True, null=True),
+                ),
+                (
+                    "index_playlists",
+                    models.BooleanField(blank=True, null=True),
+                ),
+                (
+                    "integrate_sponsorblock",
+                    models.BooleanField(blank=True, null=True),
+                ),
                 (
                     "subscriptions_channel_size",
                     models.IntegerField(blank=True, null=True),
@@ -64,9 +75,18 @@ class Migration(migrations.Migration):
                     "emby_numbering",
                     models.CharField(
                         choices=[
-                            ("date", "Date: season = year, episode = MMDD*10+n"),
-                            ("year_frozen", "Year: season = year, frozen order"),
-                            ("absolute_frozen", "Absolute: season 1, frozen order"),
+                            (
+                                "date",
+                                "Date: season = year, episode = MMDD*10+n",
+                            ),
+                            (
+                                "year_frozen",
+                                "Year: season = year, frozen order",
+                            ),
+                            (
+                                "absolute_frozen",
+                                "Absolute: season 1, frozen order",
+                            ),
                             ("playlist_position", "Playlist position"),
                         ],
                         default="date",

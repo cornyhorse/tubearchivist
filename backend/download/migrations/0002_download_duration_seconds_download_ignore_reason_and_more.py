@@ -54,7 +54,10 @@ class Migration(migrations.Migration):
                     "action",
                     models.CharField(
                         choices=[
-                            ("ignore", "Add to queue as ignored, with the reason"),
+                            (
+                                "ignore",
+                                "Add to queue as ignored, with the reason",
+                            ),
                             ("skip", "Don't add to queue"),
                         ],
                         default="ignore",

@@ -15,7 +15,9 @@ class Migration(migrations.Migration):
             fields=[
                 (
                     "key",
-                    models.CharField(max_length=64, primary_key=True, serialize=False),
+                    models.CharField(
+                        max_length=64, primary_key=True, serialize=False
+                    ),
                 ),
                 ("value", models.JSONField(default=dict)),
                 ("updated", models.DateTimeField(auto_now=True)),

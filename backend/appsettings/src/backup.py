@@ -24,49 +24,87 @@ from common.src.helper import ignore_filelist
 from django.db import transaction
 from task.models import CustomPeriodicTask
 
-INDEXES = ["config", "channel", "video", "playlist", "download", "comment", "subtitle"]
+INDEXES = [
+    "config",
+    "channel",
+    "video",
+    "playlist",
+    "download",
+    "comment",
+    "subtitle",
+    # fork only, ignored by stock TA
+    "download_rule",
+    "emby_episode",
+]
 CHUNK_SIZE = 500
 
 
-def iter_documents(index: str):
-    """yield (_id, legacy document) of every row behind index"""
+def _document_sources() -> dict:
+    """index name -> function yielding (_id, legacy document)"""
     # pylint: disable=import-outside-toplevel
     from appsettings.models import ConfigDocument
     from channel.models import Channel
-    from download.models import Download
+    from download.models import Download, DownloadRule
+    from emby.models import EpisodeNumber
     from playlist.models import Playlist
+    from storage.importer import episode_to_doc, rule_to_doc
     from user.models import UserConfig
     from video.models import CommentRefresh, SubtitleLine, Video
     from video.src.comments import Comments
 
-    if index == "config":
+    def config():
         for document in ConfigDocument.objects.order_by("key"):
             yield document.key, document.value
         for user_config in UserConfig.objects.order_by("user_id"):
             yield f"user_{user_config.user_id}", {"config": user_config.config}
-    elif index == "channel":
-        for channel in Channel.objects.order_by("pk").iterator():
-            yield channel.pk, channel.to_doc()
-    elif index == "video":
-        videos = Video.objects.select_related("channel").order_by("pk")
-        for video in videos.iterator(chunk_size=CHUNK_SIZE):
+
+    def videos():
+        queryset = Video.objects.select_related("channel").order_by("pk")
+        for video in queryset.iterator(chunk_size=CHUNK_SIZE):
             yield video.pk, video.to_doc()
-    elif index == "playlist":
-        for playlist in Playlist.objects.order_by("pk"):
-            yield playlist.pk, playlist.to_doc()
-    elif index == "download":
+
+    def downloads():
         queue = Download.objects.with_channel_indexed().order_by("pk")
         for item in queue.iterator(chunk_size=CHUNK_SIZE):
             yield item.pk, item.to_doc()
-    elif index == "comment":
-        for refresh in CommentRefresh.objects.order_by("video_id"):
-            yield refresh.video_id, Comments(refresh.video_id).get_comments()
-    elif index == "subtitle":
+
+    def subtitles():
         lines = SubtitleLine.objects.select_related("video__channel")
         for line in lines.order_by("fragment_id").iterator(chunk_size=5000):
             yield line.fragment_id, line.to_doc()
-    else:
+
+    return {
+        "config": config,
+        "channel": lambda: (
+            (c.pk, c.to_doc()) for c in Channel.objects.order_by("pk")
+        ),
+        "video": videos,
+        "playlist": lambda: (
+            (p.pk, p.to_doc()) for p in Playlist.objects.order_by("pk")
+        ),
+        "download": downloads,
+        "comment": lambda: (
+            (r.video_id, Comments(r.video_id).get_comments())
+            for r in CommentRefresh.objects.order_by("video_id")
+        ),
+        "subtitle": subtitles,
+        "download_rule": lambda: (
+            (str(r.pk), rule_to_doc(r))
+            for r in DownloadRule.objects.order_by("pk")
+        ),
+        "emby_episode": lambda: (
+            (str(n.pk), episode_to_doc(n))
+            for n in EpisodeNumber.objects.order_by("pk")
+        ),
+    }
+
+
+def iter_documents(index: str):
+    """yield (_id, legacy document) of every row behind index"""
+    sources = _document_sources()
+    if index not in sources:
         raise ValueError(f"unknown index: {index}")
+    yield from sources[index]()
 
 
 def wipe_data() -> None:
@@ -74,12 +112,15 @@ def wipe_data() -> None:
     # pylint: disable=import-outside-toplevel
     from appsettings.models import ConfigDocument
     from channel.models import Channel
-    from download.models import Download
+    from download.models import Download, DownloadRule
+    from emby.models import EpisodeNumber
     from playlist.models import Playlist
     from user.models import UserConfig
     from video.models import Comment, CommentRefresh, SubtitleLine, Video
 
     for model in (
+        DownloadRule,
+        EpisodeNumber,
         Comment,
         CommentRefresh,
         SubtitleLine,
@@ -246,19 +287,28 @@ class DatabaseBackup:
         try:
             with zipfile.ZipFile(zip_path, "r") as zip_f:
                 for name in sorted(zip_f.namelist()):
-                    if not name.startswith("es_") or not name.endswith(".json"):
+                    if not name.startswith("es_") or not name.endswith(
+                        ".json"
+                    ):
                         continue
                     lines = zip_f.read(name).decode("utf-8").splitlines()
                     lines = [line for line in lines if line.strip()]
-                    for action_line, source_line in zip(lines[::2], lines[1::2]):
+                    for action_line, source_line in zip(
+                        lines[::2], lines[1::2]
+                    ):
                         action = json.loads(action_line)["index"]
                         index = re.sub(r"_v\d+$", "", action["_index"])
                         if index not in handles:
                             handles[index] = open(
-                                export_dir / f"{index}.ndjson", "w", encoding="utf-8"
+                                export_dir / f"{index}.ndjson",
+                                "w",
+                                encoding="utf-8",
                             )
                             counts[index] = 0
-                        hit = {"_id": action["_id"], "_source": json.loads(source_line)}
+                        hit = {
+                            "_id": action["_id"],
+                            "_source": json.loads(source_line),
+                        }
                         handles[index].write(json.dumps(hit) + "\n")
                         counts[index] += 1
         finally:

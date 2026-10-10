@@ -1,24 +1,14 @@
-# Coverage is enforced at 100% for code the fork owns. Upstream files join
-# this list as they are ported off Elasticsearch.
+# 100% line and branch coverage of the whole backend is enforced in CI.
+# Preference for an uncovered line: a real test, then a mock, and
+# `# pragma: no cover` (with a reason) only when neither is possible.
 [run]
 branch = True
 source = backend
-
-[report]
-include =
-    backend/storage/*
-    backend/emby/*
-    backend/common/src/db.py
-    backend/channel/models.py
-    backend/video/models.py
-    backend/playlist/models.py
-    backend/download/models.py
-    backend/appsettings/models.py
-    backend/config/management/commands/ta_import_es.py
-    backend/config/management/commands/ta_emby_sync.py
 omit =
     */tests/*
     */migrations/*
+
+[report]
 fail_under = 100
 show_missing = True
 skip_covered = True

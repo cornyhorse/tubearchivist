@@ -115,6 +115,13 @@ def test_pagination_first_page(account):
 
 
 @pytest.mark.django_db
+def test_pagination_non_numeric_page_is_first(account):
+    pagination = make_pagination(account, "page=abc")
+    assert pagination.pagination["current_page"] == 0
+    assert pagination.pagination["page_from"] == 0
+
+
+@pytest.mark.django_db
 def test_pagination_later_page_keeps_params(account):
     pagination = make_pagination(account, "page=8&sort=views", page_size=10)
 

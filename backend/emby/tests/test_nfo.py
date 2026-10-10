@@ -28,7 +28,10 @@ def test_episode_fields():
     assert root.findtext("aired") == "2025-03-14"
     assert root.findtext("premiered") == "2025-03-14"
     assert root.findtext("runtime") == "8"
-    assert root.find("uniqueid").attrib == {"type": "youtube", "default": "true"}
+    assert root.find("uniqueid").attrib == {
+        "type": "youtube",
+        "default": "true",
+    }
     assert root.findtext("uniqueid") == "abc123"
     assert root.find("lockdata") is None
 

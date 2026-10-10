@@ -51,10 +51,12 @@ def add_media(paths: EmbyPaths, video: Video) -> None:
 
 def load_fixture(paths: EmbyPaths, scheme: str) -> list[Video]:
     """channel plus 59 videos with real upload times"""
-    channel = channel_doc(channel_id=CHANNEL_ID, channel_name="CoasterFan2105")
-    Channel.objects.create(
-        **Channel.fields_from_doc(channel), emby_numbering=scheme
+    channel = channel_doc(
+        channel_id=CHANNEL_ID,
+        channel_name="CoasterFan2105",
+        emby_numbering=scheme,
     )
+    Channel.save_doc(channel)
     videos = []
     for item in json.loads(FIXTURE.read_text())["videos"]:
         doc = video_doc(
@@ -73,7 +75,11 @@ def load_fixture(paths: EmbyPaths, scheme: str) -> list[Video]:
 
 def episodes_on_disk(root: Path) -> list[ET.Element]:
     """parsed episode NFOs under root"""
-    return [ET.parse(p).getroot() for p in sorted(root.rglob("*.nfo")) if p.name != "tvshow.nfo"]
+    return [
+        ET.parse(p).getroot()
+        for p in sorted(root.rglob("*.nfo"))
+        if p.name != "tvshow.nfo"
+    ]
 
 
 def assert_59_distinct(paths: EmbyPaths, videos: list[Video]):
@@ -97,9 +103,7 @@ def assert_59_distinct(paths: EmbyPaths, videos: list[Video]):
     assert len(stems) == 59
 
 
-@pytest.mark.parametrize(
-    "scheme", ["date", "year_frozen", "absolute_frozen"]
-)
+@pytest.mark.parametrize("scheme", ["date", "year_frozen", "absolute_frozen"])
 def test_coasterfan_59_episodes(tmp_path, scheme):
     paths = make_paths(tmp_path)
     videos = load_fixture(paths, scheme)
@@ -117,11 +121,15 @@ def test_coasterfan_date_numbers(tmp_path):
 
     first = json.loads(FIXTURE.read_text())["videos"][0]
     nfo = next(
-        n for n in episodes_on_disk(paths.output_root)
+        n
+        for n in episodes_on_disk(paths.output_root)
         if n.findtext("uniqueid") == first["youtube_id"]
     )
     # 2025-06-20 16:01 UTC = 12:01 in New York
-    assert (nfo.findtext("season"), nfo.findtext("episode")) == ("2025", "6200")
+    assert (nfo.findtext("season"), nfo.findtext("episode")) == (
+        "2025",
+        "6200",
+    )
     assert nfo.findtext("aired") == "2025-06-20"
 
 
@@ -132,7 +140,8 @@ def test_coasterfan_rerun_and_backfill(tmp_path):
     root = paths.output_root
     before = {
         p: (p.stat().st_ino, p.stat().st_mtime_ns)
-        for p in root.rglob("*") if p.is_file() and p.name != MANIFEST_NAME
+        for p in root.rglob("*")
+        if p.is_file() and p.name != MANIFEST_NAME
     }
 
     assert sync_channel(CHANNEL_ID, paths).changed == 0
@@ -143,7 +152,9 @@ def test_coasterfan_rerun_and_backfill(tmp_path):
             channel=videos[0].channel.to_doc(),
             youtube_id="cfbackfill1",
             title="Backfilled 2025 ride",
-            published=int(datetime(2025, 7, 1, tzinfo=timezone.utc).timestamp()),
+            published=int(
+                datetime(2025, 7, 1, tzinfo=timezone.utc).timestamp()
+            ),
         )
     )
     old.save()
@@ -154,7 +165,8 @@ def test_coasterfan_rerun_and_backfill(tmp_path):
     assert not report.updated and not report.renamed and not report.deleted
     after = {
         p: (p.stat().st_ino, p.stat().st_mtime_ns)
-        for p in root.rglob("*") if p.is_file() and p.name != MANIFEST_NAME
+        for p in root.rglob("*")
+        if p.is_file() and p.name != MANIFEST_NAME
     }
     assert {p: after[p] for p in before} == before
 

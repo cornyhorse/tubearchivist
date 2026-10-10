@@ -25,6 +25,17 @@ class Command(BaseCommand):
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--verbose-changes", action="store_true")
 
+    def _write_changes(self, report, prefix: str) -> None:
+        """one line per filesystem change"""
+        changes = (
+            [f"create {path}" for path in report.created]
+            + [f"update {path}" for path in report.updated]
+            + [f"rename {old} -> {new}" for old, new in report.renamed]
+            + [f"delete {path}" for path in report.deleted]
+        )
+        for change in changes:
+            self.stdout.write(f"{prefix}{change}")
+
     def handle(self, *args, **options):
         output_root = options["output_root"].resolve()
         media_root = Path(EnvironmentSettings.MEDIA_DIR).resolve()
@@ -49,14 +60,7 @@ class Command(BaseCommand):
 
         prefix = "[dry-run] " if dry_run else ""
         if options["verbose_changes"]:
-            for path in report.created:
-                self.stdout.write(f"{prefix}create {path}")
-            for path in report.updated:
-                self.stdout.write(f"{prefix}update {path}")
-            for old, new in report.renamed:
-                self.stdout.write(f"{prefix}rename {old} -> {new}")
-            for path in report.deleted:
-                self.stdout.write(f"{prefix}delete {path}")
+            self._write_changes(report, prefix)
         for line in report.conflicts + report.warnings[:50]:
             self.stdout.write(f"warning: {line}")
 

@@ -31,7 +31,13 @@ class EpisodeNumber(models.Model):
                 name="episode_number_one_per_video",
             ),
             models.UniqueConstraint(
-                fields=["series_kind", "series_id", "scheme", "season", "episode"],
+                fields=[
+                    "series_kind",
+                    "series_id",
+                    "scheme",
+                    "season",
+                    "episode",
+                ],
                 name="episode_number_unique_slot",
             ),
         ]

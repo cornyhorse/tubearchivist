@@ -341,8 +341,9 @@ def fixture_archive(tmp_path, monkeypatch):
     return media
 
 
+# fakes are defined inline, so mccabe counts their methods here
 @pytest.fixture(name="meta")
-def fixture_meta(monkeypatch):
+def fixture_meta(monkeypatch):  # noqa: C901
     """fake YoutubeVideo, ThumbManager, Comments, IndexFromEmbed"""
     state = {
         "json_data": {

@@ -24,7 +24,9 @@ repos:
       - id: flake8
         alias: python
         files: ^backend/
-        args: ["--jobs=1", "--max-complexity=10", "--max-line-length=79"]
+        # E203 conflicts with black's slice spacing; migrations are generated
+        exclude: /migrations/
+        args: ["--jobs=1", "--max-complexity=10", "--max-line-length=79", "--extend-ignore=E203"]
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.2
     hooks:
