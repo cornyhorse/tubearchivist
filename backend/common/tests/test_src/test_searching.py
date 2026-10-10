@@ -98,12 +98,8 @@ def fixture_library(db):  # pylint: disable=unused-argument
 
     save_line("coaster0001", 0, "here comes the big drop")
     save_line("coaster0001", 1, "the big drop again, big fun")
-    save_line(
-        "coaster0001", 2, "big drop in german", subtitle_lang="de"
-    )
-    save_line(
-        "coaster0001", 3, "big drop by a human", subtitle_source="user"
-    )
+    save_line("coaster0001", 2, "big drop in german", subtitle_lang="de")
+    save_line("coaster0001", 3, "big drop by a human", subtitle_source="user")
     save_line("rail0000001", 0, "the steam whistle before the big drop")
 
 
@@ -125,7 +121,10 @@ def ids(results: list[dict], key: str) -> list[str]:
     [
         (
             "Big Coaster",
-            {"index": "ta_video,ta_channel,ta_playlist", "term": "big coaster"},
+            {
+                "index": "ta_video,ta_channel,ta_playlist",
+                "term": "big coaster",
+            },
             "simple",
         ),
         (
@@ -286,7 +285,11 @@ def test_simple_search_sorts_hits_of_all_indexes_by_score(library):
     scores = [hit[2] for hit in hits]
 
     assert scores == sorted(scores, reverse=True)
-    assert {hit[0] for hit in hits} == {"ta_video", "ta_channel", "ta_playlist"}
+    assert {hit[0] for hit in hits} == {
+        "ta_video",
+        "ta_channel",
+        "ta_playlist",
+    }
     assert all(hit[3] is None for hit in hits)
 
 

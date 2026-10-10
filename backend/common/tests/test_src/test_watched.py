@@ -26,7 +26,9 @@ def fixture_videos():
     for youtube_id in ("vid00000001", "vid00000002", "vid00000003"):
         Video.save_doc(video_doc(channel=channel, youtube_id=youtube_id))
     Video.save_doc(video_doc(channel=other, youtube_id="vid00000004"))
-    Playlist.save_doc(playlist_doc(PLAYLIST_ID, ["vid00000002", "vid00000004"]))
+    Playlist.save_doc(
+        playlist_doc(PLAYLIST_ID, ["vid00000002", "vid00000004"])
+    )
 
 
 def set_progress(*video_ids, user=USER):

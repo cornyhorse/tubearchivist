@@ -226,9 +226,7 @@ class QueryBuilder:
             return matched.order_by("-score", "pk"), True
 
         similar = (
-            queryset.annotate(
-                score=TrigramWordSimilarity(term, name_field)
-            )
+            queryset.annotate(score=TrigramWordSimilarity(term, name_field))
             .filter(score__gte=TRIGRAM_THRESHOLD[fuzzy])
             .order_by("-score", "pk")
         )
@@ -263,7 +261,9 @@ class QueryBuilder:
     def _build_simple(self):
         """cross index search, best RESULT_SIZE overall"""
         term = self.query_map.get("term")
-        hits = self._videos(term) + self._channels(term) + self._playlists(term)
+        hits = (
+            self._videos(term) + self._channels(term) + self._playlists(term)
+        )
         hits.sort(key=lambda hit: -hit[2])
         return hits[:RESULT_SIZE]
 
@@ -309,7 +309,9 @@ class QueryBuilder:
             lines = lines.filter(lang=lang[0])
         if (source := self.query_map.get("source")) is not None:
             lines = lines.filter(source=source[0])
-        if (channel_q := self._channel_filter("video__channel_id")) is not None:
+        if (
+            channel_q := self._channel_filter("video__channel_id")
+        ) is not None:
             lines = lines.filter(channel_q)
 
         term = self.query_map.get("term")

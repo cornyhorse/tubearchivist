@@ -42,7 +42,9 @@ def fixture_fake_yt(monkeypatch):
 def test_build_url_and_get_from_youtube(app_config, fake_yt):
     del app_config
     item = ChannelItem(CHANNEL_ID)
-    assert item.build_yt_url() == f"https://www.youtube.com/channel/{CHANNEL_ID}"
+    assert (
+        item.build_yt_url() == f"https://www.youtube.com/channel/{CHANNEL_ID}"
+    )
     assert item.youtube_meta is False and item.json_data is False
 
     item.get_from_youtube()
