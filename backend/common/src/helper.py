@@ -244,25 +244,28 @@ def ta_host_parser(ta_host: str) -> tuple[list[str], list[str]]:
     return allowed_hosts, csrf_trusted_origins
 
 
+THEMES = ["device", "light", "dark", "paper", "contrast", "colourblind"]
+# themes before the fork, as stored in older user settings
+LEGACY_THEMES = {
+    "dark.css": "dark",
+    "light.css": "light",
+    "matrix.css": "dark",
+    "midnight.css": "dark",
+    "custom.css": "device",
+}
+
+
 def get_stylesheets() -> list:
-    """Get all valid stylesheets from /static/css"""
-
-    stylesheets = [
-        "dark.css",
-        "light.css",
-        "matrix.css",
-        "midnight.css",
-        "custom.css",
-    ]
-    return stylesheets
+    """the theme slugs a user can choose; "device" follows the system"""
+    return list(THEMES)
 
 
-def check_stylesheet(stylesheet: str):
-    """Check if a stylesheet exists. Return dark.css as a fallback"""
-    if stylesheet in get_stylesheets():
+def check_stylesheet(stylesheet) -> str:
+    """a valid theme slug: known, migrated from a legacy value, or device"""
+    if stylesheet in THEMES:
         return stylesheet
 
-    return "dark.css"
+    return LEGACY_THEMES.get(stylesheet, "device")
 
 
 def _project(doc: dict, source: list[str] | None) -> dict:

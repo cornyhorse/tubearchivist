@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import Routes from '../configuration/routes/RouteList';
 import { useNavigate } from 'react-router-dom';
-import Colours from '../configuration/colours/Colours';
 import Button from '../components/Button';
 import signIn from '../api/actions/signIn';
 import loadAuth from '../api/loader/loadAuth';
@@ -75,7 +74,6 @@ const Login = () => {
   return (
     <>
       <title>TA | Welcome</title>
-      <Colours />
       <div className="boxed-content login-page">
         <img alt="tube-archivist-logo" />
         <h1>Tube Archivist</h1>

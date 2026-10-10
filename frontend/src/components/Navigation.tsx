@@ -6,6 +6,7 @@ import Routes from '../configuration/routes/RouteList';
 import NavigationItem from './NavigationItem';
 import logOut from '../api/actions/logOut';
 import useIsAdmin from '../functions/useIsAdmin';
+import ThemePicker from './ThemePicker';
 
 const Navigation = () => {
   const isAdmin = useIsAdmin();
@@ -33,6 +34,7 @@ const Navigation = () => {
           </div>
         </div>
         <div className="nav-icons">
+          <ThemePicker />
           <Link to={Routes.Search}>
             <img src={iconSearch} alt="search-icon" title="Search" />
           </Link>

@@ -2,6 +2,17 @@ import { create } from 'zustand';
 import { UserConfigType } from '../api/actions/updateUserConfig';
 import { ViewStylesEnum, ViewStylesType } from '../configuration/constants/ViewStyle';
 import { SortOrderEnum, SortOrderType } from '../api/loader/loadVideoListByPage';
+import { DEFAULT_THEME, isTheme, THEME_CACHE_KEY, ThemeSlug } from '../configuration/theme/theme';
+
+// start from the cached theme, so nothing changes before the user's config loads
+const cachedTheme = (): ThemeSlug => {
+  try {
+    const cached = localStorage.getItem(THEME_CACHE_KEY);
+    return isTheme(cached) ? cached : DEFAULT_THEME;
+  } catch {
+    return DEFAULT_THEME;
+  }
+};
 
 interface UserConfigState {
   userConfig: UserConfigType;
@@ -10,7 +21,7 @@ interface UserConfigState {
 
 export const useUserConfigStore = create<UserConfigState>(set => ({
   userConfig: {
-    stylesheet: 'dark.css',
+    stylesheet: cachedTheme(),
     page_size: 12,
     sort_by: 'published',
     sort_order: SortOrderEnum.Desc as SortOrderType,

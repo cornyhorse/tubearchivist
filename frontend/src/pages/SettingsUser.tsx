@@ -1,9 +1,5 @@
-import updateUserConfig, {
-  ColourConstant,
-  ColourVariants,
-  FileSizeUnits,
-  UserConfigType,
-} from '../api/actions/updateUserConfig';
+import updateUserConfig, { FileSizeUnits, UserConfigType } from '../api/actions/updateUserConfig';
+import { applyTheme, THEMES, ThemeSlug } from '../configuration/theme/theme';
 import SettingsNavigation from '../components/SettingsNavigation';
 import Notifications from '../components/Notifications';
 import Button from '../components/Button';
@@ -16,7 +12,7 @@ const SettingsUser = () => {
   const { userConfig, setUserConfig } = useUserConfigStore();
   const isAdmin = useIsAdmin();
 
-  const [styleSheet, setStyleSheet] = useState<ColourVariants>(userConfig.stylesheet);
+  const [styleSheet, setStyleSheet] = useState<ThemeSlug>(userConfig.stylesheet);
   const [pageSize, setPageSize] = useState<number>(userConfig.page_size);
   const [showHelpText, setShowHelpText] = useState(userConfig.show_help_text);
   const [selectedFileSizeUnit, setSelectedFileSizeUnit] = useState(FileSizeUnits.Binary);
@@ -35,12 +31,10 @@ const SettingsUser = () => {
     userConfig.file_size_unit,
   ]);
 
-  const handleStyleSheetChange = async (selectedStyleSheet: ColourVariants) => {
-    handleUserConfigUpdate({ stylesheet: selectedStyleSheet });
+  const handleStyleSheetChange = async (selectedStyleSheet: ThemeSlug) => {
+    applyTheme(selectedStyleSheet);
     setStyleSheet(selectedStyleSheet);
-
-    // Store in local storage for pages like login, without a userConfig
-    localStorage.setItem('stylesheet', selectedStyleSheet);
+    handleUserConfigUpdate({ stylesheet: selectedStyleSheet });
   };
 
   const handlePageSizeChange = async () => {
@@ -79,7 +73,7 @@ const SettingsUser = () => {
             <h2>Customize user Interface</h2>
             <div className="settings-box-wrapper">
               <div>
-                <p>Switch your color scheme</p>
+                <p>Theme</p>
               </div>
               <div>
                 <select
@@ -87,16 +81,14 @@ const SettingsUser = () => {
                   id="id_stylesheet"
                   value={styleSheet}
                   onChange={event => {
-                    handleStyleSheetChange(event.target.value as ColourVariants);
+                    handleStyleSheetChange(event.target.value as ThemeSlug);
                   }}
                 >
-                  {Object.entries(ColourConstant).map(([key, value]) => {
-                    return (
-                      <option key={key} value={value}>
-                        {key}
-                      </option>
-                    );
-                  })}
+                  {THEMES.map(theme => (
+                    <option key={theme.slug} value={theme.slug}>
+                      {theme.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
