@@ -11,7 +11,7 @@ https://docs.djangoproject.com/en/3.2/ref/settings/
 """
 
 import hashlib
-from os import environ, path
+from os import environ
 from pathlib import Path
 
 from common.src.env_settings import EnvironmentSettings
@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "django.contrib.staticfiles",
     "django.contrib.humanize",
+    "django.contrib.postgres",
     "rest_framework",
     "rest_framework.authtoken",
     "drf_spectacular",
@@ -70,6 +71,7 @@ INSTALLED_APPS = [
     "stats",
     "user",
     "config",
+    "emby",
 ]
 
 MIDDLEWARE = [
@@ -108,11 +110,16 @@ WSGI_APPLICATION = "config.wsgi.application"
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
 
 CACHE_DIR = EnvironmentSettings.CACHE_DIR
-DB_PATH = path.join(CACHE_DIR, "db.sqlite3")
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": DB_PATH,
+        "ENGINE": "django.db.backends.postgresql",
+        "HOST": EnvironmentSettings.TA_DB_HOST,
+        "PORT": EnvironmentSettings.TA_DB_PORT,
+        "NAME": EnvironmentSettings.TA_DB_NAME,
+        "USER": EnvironmentSettings.TA_DB_USER,
+        "PASSWORD": EnvironmentSettings.TA_DB_PASSWORD,
+        "CONN_MAX_AGE": 60,
+        "CONN_HEALTH_CHECKS": True,
     }
 }
 

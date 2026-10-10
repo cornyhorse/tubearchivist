@@ -52,3 +52,16 @@ class Account(AbstractBaseUser, PermissionsMixin):
 
     USERNAME_FIELD = "name"
     REQUIRED_FIELDS = ["password"]
+
+
+class UserConfig(models.Model):
+    """per user UI preferences, validated by UserConfig serializers"""
+
+    user = models.OneToOneField(
+        Account,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name="ta_config",
+    )
+    config = models.JSONField(default=dict)
+    updated = models.DateTimeField(auto_now=True)

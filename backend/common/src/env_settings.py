@@ -66,6 +66,13 @@ class EnvironmentSettings:
     REDIS_CON: str = str(environ.get("REDIS_CON"))
     REDIS_NAME_SPACE: str = str(environ.get("REDIS_NAME_SPACE", "ta:"))
 
+    # Postgres
+    TA_DB_HOST: str = str(environ.get("TA_DB_HOST", "localhost"))
+    TA_DB_PORT: int = int(environ.get("TA_DB_PORT", 5432))
+    TA_DB_NAME: str = str(environ.get("TA_DB_NAME", "tubearchivist"))
+    TA_DB_USER: str = str(environ.get("TA_DB_USER", "tubearchivist"))
+    TA_DB_PASSWORD: str = get_password_from_file("TA_DB_PASSWORD")
+
     # ElasticSearch
     ES_URL: str = str(environ.get("ES_URL"))
     ES_PASS: str = get_password_from_file("ELASTIC_PASSWORD")
@@ -116,6 +123,15 @@ class EnvironmentSettings:
             REDIS_CON: {self.REDIS_CON}
             REDIS_NAME_SPACE: {self.REDIS_NAME_SPACE}""")
 
+    def print_db_conf(self):
+        """debug postgres conf"""
+        print(f"""
+            TA_DB_HOST: {self.TA_DB_HOST}
+            TA_DB_PORT: {self.TA_DB_PORT}
+            TA_DB_NAME: {self.TA_DB_NAME}
+            TA_DB_USER: {self.TA_DB_USER}
+            TA_DB_PASSWORD: *****""")
+
     def print_es_paths(self):
         """debug es conf"""
         print(f"""
@@ -130,4 +146,5 @@ class EnvironmentSettings:
         self.print_generic()
         self.print_paths()
         self.print_redis_conf()
+        self.print_db_conf()
         self.print_es_paths()
