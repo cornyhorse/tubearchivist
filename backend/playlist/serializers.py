@@ -3,6 +3,7 @@
 # pylint: disable=abstract-method
 
 from common.serializers import PaginationSerializer
+from channel.models import EmbyNumbering
 from rest_framework import serializers
 
 
@@ -33,6 +34,9 @@ class PlaylistSerializer(serializers.Serializer):
     playlist_sort_order = serializers.ChoiceField(choices=["top", "bottom"])
     playlist_thumbnail = serializers.CharField()
     playlist_type = serializers.ChoiceField(choices=["regular", "custom"])
+    emby_numbering = serializers.ChoiceField(
+        choices=EmbyNumbering.values, required=False
+    )
     _index = serializers.CharField(required=False)
     _score = serializers.IntegerField(required=False)
 
@@ -74,6 +78,9 @@ class PlaylistSingleUpdate(serializers.Serializer):
     playlist_subscribed = serializers.BooleanField(required=False)
     playlist_sort_order = serializers.ChoiceField(
         choices=["top", "bottom"], required=False
+    )
+    emby_numbering = serializers.ChoiceField(
+        choices=EmbyNumbering.values, required=False
     )
 
 

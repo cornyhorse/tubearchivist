@@ -122,8 +122,8 @@ class SnapshotItemSerializer(serializers.Serializer):
 class SnapshotListSerializer(serializers.Serializer):
     """serialize snapshot list response"""
 
-    next_exec = serializers.IntegerField()
-    next_exec_str = serializers.CharField()
+    next_exec = serializers.IntegerField(allow_null=True)
+    next_exec_str = serializers.CharField(allow_null=True)
     expire_after = serializers.CharField()
     snapshots = SnapshotItemSerializer(many=True)
 

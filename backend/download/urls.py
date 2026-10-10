@@ -11,6 +11,11 @@ urlpatterns = [
         name="api-download-aggs",
     ),
     path(
+        "rule/",
+        views.DownloadRuleDefaultView.as_view(),
+        name="api-download-rule",
+    ),
+    path(
         "<slug:video_id>/",
         views.DownloadApiView.as_view(),
         name="api-download",

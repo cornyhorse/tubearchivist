@@ -211,6 +211,11 @@ class PlaylistApiView(ApiBaseView):
             error = ErrorResponseSerializer({"error": "playlist not found"})
             return Response(error.data, status=404)
 
+        self.response["emby_numbering"] = (
+            Playlist.objects.filter(playlist_id=playlist_id)
+            .values_list("emby_numbering", flat=True)
+            .first()
+        )
         response_serializer = PlaylistSerializer(self.response)
 
         return Response(response_serializer.data)
@@ -255,9 +260,19 @@ class PlaylistApiView(ApiBaseView):
                 new_sort_order=sort_order
             )
 
+        if numbering := validated_data.get("emby_numbering"):
+            Playlist.objects.filter(playlist_id=playlist_id).update(
+                emby_numbering=numbering
+            )
+            json_data = Playlist.load_doc(playlist_id)
+            json_data["emby_numbering"] = numbering
+
         if not json_data:
             error = ErrorResponseSerializer(
-                {"error": "expect playlist_subscribed or playlist_sort_order"}
+                {
+                    "error": "expect playlist_subscribed, playlist_sort_order"
+                    + " or emby_numbering"
+                }
             )
             return Response(error.data, status=400)
 

@@ -223,25 +223,28 @@ class DbSnapshot:
 
         return sorted(found, key=lambda s: s["end_stamp"], reverse=True)
 
-    def get_snapshot_stats(self) -> dict | bool:
-        """policy details plus snapshots, for the frontend"""
+    def get_snapshot_stats(self) -> dict:
+        """schedule details plus snapshots, for the frontend"""
         # pylint: disable=import-outside-toplevel
         from django_celery_beat.models import PeriodicTask
 
-        if not PeriodicTask.objects.filter(name=TASK_NAME, enabled=True).exists():
-            return False
-
-        now = datetime.now(self.tz)
-        next_exec = now.replace(hour=SCHEDULE_HOUR, minute=0, second=0, microsecond=0)
-        if next_exec <= now:
-            next_exec += timedelta(days=1)
-
-        return {
-            "next_exec": int(next_exec.timestamp()),
-            "next_exec_str": next_exec.strftime("%Y-%m-%d %H:%M"),
+        stats = {
+            "next_exec": None,
+            "next_exec_str": None,
             "expire_after": f"{RETENTION_DAYS}d",
-            "snapshots": self._get_all_snapshots(),
+            "snapshots": self._get_all_snapshots() or [],
         }
+        if PeriodicTask.objects.filter(name=TASK_NAME, enabled=True).exists():
+            now = datetime.now(self.tz)
+            next_exec = now.replace(
+                hour=SCHEDULE_HOUR, minute=0, second=0, microsecond=0
+            )
+            if next_exec <= now:
+                next_exec += timedelta(days=1)
+            stats["next_exec"] = int(next_exec.timestamp())
+            stats["next_exec_str"] = next_exec.strftime("%Y-%m-%d %H:%M")
+
+        return stats
 
     def get_single_snapshot(self, snapshot_id: str) -> dict | bool:
         """metadata of one snapshot"""

@@ -18,8 +18,10 @@ from download.serializers import (
     DownloadListQueueDeleteQuerySerializer,
     DownloadListSerializer,
     DownloadQueueItemUpdateSerializer,
+    DownloadRuleSerializer,
 )
 from download.src.queue_interact import PendingInteract
+from download.src.rules import get_rule, set_rule
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.response import Response
 from task.tasks import download_pending, extrac_dl
@@ -325,3 +327,43 @@ class DownloadAggsApiView(ApiBaseView):
         serializer = DownloadAggsSerializer(response)
 
         return Response(serializer.data)
+
+
+class DownloadRuleDefaultView(ApiBaseView):
+    """resolves to /api/download/rule/
+    GET: the default download rule, for channels without their own
+    POST: set it
+    DELETE: remove it, download everything
+    """
+
+    permission_classes = [AdminOnly]
+
+    @staticmethod
+    @extend_schema(responses={200: OpenApiResponse(DownloadRuleSerializer())})
+    def get(request):
+        """get default rule"""
+        # pylint: disable=unused-argument
+        rule = get_rule(None)
+        if rule is None:
+            return Response(None)
+        return Response(DownloadRuleSerializer(rule).data)
+
+    @staticmethod
+    @extend_schema(
+        request=DownloadRuleSerializer(),
+        responses={200: OpenApiResponse(DownloadRuleSerializer())},
+    )
+    def post(request):
+        """set default rule"""
+        serializer = DownloadRuleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        rule = set_rule(None, dict(serializer.validated_data))
+        return Response(DownloadRuleSerializer(rule).data)
+
+    @staticmethod
+    @extend_schema(responses={204: OpenApiResponse(description="deleted")})
+    def delete(request):
+        """remove default rule"""
+        # pylint: disable=unused-argument
+        set_rule(None, None)
+        return Response(status=204)

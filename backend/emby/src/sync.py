@@ -44,6 +44,21 @@ class EmbyPaths:
         return self.cache_root / "playlists" / f"{playlist_id}.jpg"
 
 
+def paths_from_env() -> EmbyPaths | None:
+    """paths from the environment, None if the Emby writer is disabled"""
+    # pylint: disable=import-outside-toplevel
+    from common.src.env_settings import EnvironmentSettings
+
+    if not EnvironmentSettings.EMBY_ROOT:
+        return None
+    return EmbyPaths(
+        media_root=Path(EnvironmentSettings.MEDIA_DIR),
+        cache_root=Path(EnvironmentSettings.CACHE_DIR),
+        output_root=Path(EnvironmentSettings.EMBY_ROOT),
+        timezone=EnvironmentSettings.TZ,
+    )
+
+
 def _local_date(value: datetime | None, tz: ZoneInfo):
     if value is None:
         return None

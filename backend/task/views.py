@@ -35,7 +35,7 @@ class TaskListView(ApiBaseView):
     def get(self, request):
         """get all stored task results"""
         # pylint: disable=unused-argument
-        all_results = TaskManager().get_all_results()
+        all_results = TaskManager().get_all_results() or []
         serializer = TaskResultSerializer(all_results, many=True)
 
         return Response(serializer.data)

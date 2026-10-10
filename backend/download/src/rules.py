@@ -72,3 +72,35 @@ def failed_reason(rule: DownloadRule, entry: dict) -> str | None:
         return f"published {published} before {rule.published_after}"
 
     return None
+
+
+RULE_FIELDS = [
+    "enabled",
+    "min_duration",
+    "max_duration",
+    "vid_types",
+    "title_include",
+    "title_exclude",
+    "published_after",
+    "action",
+]
+
+
+def get_rule(channel_id: str | None) -> dict | None:
+    """rule of a channel (None for the default) as a dict"""
+    rule = DownloadRule.objects.filter(channel_id=channel_id).first()
+    if not rule:
+        return None
+    return {key: getattr(rule, key) for key in RULE_FIELDS}
+
+
+def set_rule(channel_id: str | None, data: dict | None) -> dict | None:
+    """create, replace or (with None) delete a rule"""
+    if data is None:
+        DownloadRule.objects.filter(channel_id=channel_id).delete()
+        return None
+    DownloadRule.objects.update_or_create(
+        channel_id=channel_id,
+        defaults={key: data.get(key) for key in RULE_FIELDS if key in data},
+    )
+    return get_rule(channel_id)

@@ -14,6 +14,7 @@ from channel.src.index import YoutubeChannel, channel_overwrites
 from channel.src.nav import ChannelNav
 from common.serializers import ErrorResponseSerializer
 from common.src.helper import get_duration_str
+from download.src.rules import get_rule, set_rule
 from common.src.urlparser import Parser
 from django.db.models import Count, Sum
 from common.views_base import AdminWriteOnly, ApiBaseView
@@ -112,6 +113,8 @@ class ChannelApiView(ApiBaseView):
             error = ErrorResponseSerializer({"error": "channel not found"})
             return Response(error.data, status=404)
 
+        self.response.update(self._fork_settings(channel_id))
+
         response_serializer = ChannelSerializer(self.response)
         return Response(response_serializer.data, status=self.status_code)
 
@@ -150,7 +153,25 @@ class ChannelApiView(ApiBaseView):
             if overwrites.get("index_playlists"):
                 index_channel_playlists.delay(channel_id)
 
+        if numbering := validated_data.get("emby_numbering"):
+            Channel.objects.filter(channel_id=channel_id).update(
+                emby_numbering=numbering
+            )
+
+        if "download_rule" in validated_data:
+            set_rule(channel_id, validated_data["download_rule"])
+
         return Response(serializer.data, status=200)
+
+    @staticmethod
+    def _fork_settings(channel_id: str) -> dict:
+        """emby numbering and download rule of the channel"""
+        numbering = (
+            Channel.objects.filter(channel_id=channel_id)
+            .values_list("emby_numbering", flat=True)
+            .first()
+        )
+        return {"emby_numbering": numbering, "download_rule": get_rule(channel_id)}
 
     @extend_schema(
         responses={

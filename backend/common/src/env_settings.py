@@ -67,6 +67,10 @@ class EnvironmentSettings:
     REDIS_CON: str = str(environ.get("REDIS_CON"))
     REDIS_NAME_SPACE: str = str(environ.get("REDIS_NAME_SPACE", "ta:"))
 
+    # native Emby library, disabled when empty; must share a filesystem
+    # with MEDIA_DIR because media files are hardlinked
+    EMBY_ROOT: str = str(environ.get("TA_EMBY_ROOT", ""))
+
     # Postgres
     TA_DB_HOST: str = str(environ.get("TA_DB_HOST", "localhost"))
     TA_DB_PORT: int = int(environ.get("TA_DB_PORT", 5432))

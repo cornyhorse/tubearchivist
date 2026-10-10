@@ -2,6 +2,8 @@
 
 # pylint: disable=abstract-method
 
+import re
+
 from common.serializers import PaginationSerializer, ValidateUnknownFieldsMixin
 from rest_framework import serializers
 from video.src.constants import VideoTypeEnum
@@ -127,3 +129,55 @@ class DownloadAggsSerializer(serializers.Serializer):
     doc_count_error_upper_bound = serializers.IntegerField()
     sum_other_doc_count = serializers.IntegerField()
     buckets = DownloadAggBucketSerializer(many=True)
+
+
+class DownloadRuleSerializer(serializers.Serializer):
+    """which videos of a channel to download; empty conditions match all"""
+
+    enabled = serializers.BooleanField(default=True)
+    min_duration = serializers.IntegerField(
+        required=False, allow_null=True, min_value=0, help_text="seconds"
+    )
+    max_duration = serializers.IntegerField(
+        required=False, allow_null=True, min_value=0, help_text="seconds"
+    )
+    vid_types = serializers.ListField(
+        child=serializers.ChoiceField(choices=VideoTypeEnum.values_known()),
+        required=False,
+        default=list,
+    )
+    title_include = serializers.CharField(
+        required=False, allow_blank=True, default="", help_text="regex"
+    )
+    title_exclude = serializers.CharField(
+        required=False, allow_blank=True, default="", help_text="regex"
+    )
+    published_after = serializers.DateField(required=False, allow_null=True)
+    action = serializers.ChoiceField(
+        choices=["ignore", "skip"], required=False, default="ignore"
+    )
+
+    @staticmethod
+    def _validate_regex(value: str) -> str:
+        try:
+            re.compile(value)
+        except re.error as err:
+            raise serializers.ValidationError(f"invalid regex: {err}") from err
+        return value
+
+    def validate_title_include(self, value):
+        """must compile"""
+        return self._validate_regex(value)
+
+    def validate_title_exclude(self, value):
+        """must compile"""
+        return self._validate_regex(value)
+
+    def validate(self, attrs):
+        """min below max"""
+        low, high = attrs.get("min_duration"), attrs.get("max_duration")
+        if low is not None and high is not None and low > high:
+            raise serializers.ValidationError(
+                "min_duration must not exceed max_duration"
+            )
+        return attrs
