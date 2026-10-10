@@ -99,9 +99,8 @@ class Pagination:
         """build first guess before api call"""
         page_get = self.page_get
         page_from = 0
-        if page_get in [0, 1]:
-            prev_pages = None
-        elif page_get > 1:
+        prev_pages = None
+        if page_get > 1:
             page_from = (page_get - 1) * self.page_size
             prev_pages = [
                 i for i in range(page_get - 1, page_get - 6, -1) if i > 1
