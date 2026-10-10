@@ -42,7 +42,8 @@ class SponsorBlock:
             raise ValueError("missing request user id")
 
         user = UserConfig(self.user_id)
-        sb_id = user.get_value("sponsorblock_id")
+        # not a default user setting, get_value would raise KeyError
+        sb_id = user.get_config().get("sponsorblock_id")
         if not sb_id:
             sb_id = randomizor(32)
             user.set_value("sponsorblock_id", sb_id)
@@ -194,12 +195,9 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         """check if need to run sponsor block"""
         integrate = self.config["downloads"]["integrate_sponsorblock"]
 
-        if overwrite := self.json_data["channel"].get("channel_overwrites"):
-            if not overwrite:
-                return integrate
-
-            if "integrate_sponsorblock" in overwrite:
-                return overwrite.get("integrate_sponsorblock")
+        overwrite = self.json_data["channel"].get("channel_overwrites") or {}
+        if "integrate_sponsorblock" in overwrite:
+            return overwrite.get("integrate_sponsorblock")
 
         return integrate
 

@@ -1,6 +1,7 @@
 """shared fixtures for video tests"""
 
 import copy
+import struct
 
 import pytest
 from appsettings.models import ConfigDocument
@@ -22,6 +23,20 @@ def fixture_app_config(db):
     config["downloads"]["sleep_interval"] = 0
     ConfigDocument.objects.create(key=AppConfig.KEY, value=config)
     return config
+
+
+def tiny_mp4(path) -> str:
+    """write a minimal mp4 that mutagen can read and tag"""
+
+    def box(kind: bytes, payload: bytes) -> bytes:
+        return struct.pack(">I4s", 8 + len(payload), kind) + payload
+
+    header = b"\x00" * 4 + struct.pack(">IIII", 0, 0, 1000, 0)
+    mvhd = box(b"mvhd", header + b"\x00" * 80)
+    ftyp = box(b"ftyp", b"isom\x00\x00\x02\x00isomiso2mp41")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(ftyp + box(b"moov", mvhd))
+    return str(path)
 
 
 def set_config(**downloads) -> dict:
