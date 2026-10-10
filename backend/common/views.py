@@ -137,15 +137,9 @@ class WatchedView(ApiBaseView):
         data_serializer = WatchedDataSerializer(data=request.data)
         data_serializer.is_valid(raise_exception=True)
         validated_data = data_serializer.validated_data
-        youtube_id = validated_data.get("id")
-        is_watched = validated_data.get("is_watched")
-
         # both fields are required by the serializer
-        if not youtube_id or is_watched is None:  # pragma: no cover
-            error = ErrorResponseSerializer(
-                {"error": "missing id or is_watched"}
-            )
-            return Response(error.data, status=400)
+        youtube_id = validated_data["id"]
+        is_watched = validated_data["is_watched"]
 
         WatchState(youtube_id, is_watched, request.user.id).change()
         return Response(data_serializer.data)

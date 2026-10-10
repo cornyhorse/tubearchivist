@@ -294,7 +294,7 @@ replace and rename were verified over SMB3 with `seal` against Samba on
   CoasterFan2105 is 59 episodes for both an admin and a non-admin
   viewer. There are 0 multi-version entries and 0 titles with `[id]`.
 - 1,113 tests. CI enforces 100% line and branch coverage of the whole
-  backend; there are 3 `pragma: no cover`, each with a reason.
+  backend, with no `pragma: no cover` anywhere.
 - The `fork_image` workflow publishes `ghcr.io/cornyhorse/tubearchivist`
   on `fork-v*` tags.
 - Deployment is in MattsTools: the apps playbook `flavour`, and
