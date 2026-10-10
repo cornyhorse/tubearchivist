@@ -278,8 +278,6 @@ class DownloadAggsApiView(ApiBaseView):
     GET: get download aggregations
     """
 
-    valid_filter_view = ["ignore", "pending"]
-
     @extend_schema(
         parameters=[DownloadListQueueDeleteQuerySerializer()],
         responses={
@@ -297,14 +295,8 @@ class DownloadAggsApiView(ApiBaseView):
         serializer.is_valid(raise_exception=True)
         validated_query = serializer.validated_data
 
-        filter_view = validated_query.get("filter")
-        queue = Download.objects.all()
-        if filter_view:
-            if filter_view not in self.valid_filter_view:
-                message = f"invalid filter: {filter_view}"
-                return Response({"message": message}, status=400)
-
-            queue = queue.filter(status=filter_view)
+        # filter is required and validated against pending and ignore
+        queue = Download.objects.filter(status=validated_query["filter"])
 
         counts = list(
             queue.values("channel_name", "channel_id")
