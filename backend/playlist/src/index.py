@@ -252,13 +252,14 @@ class YoutubePlaylist(YouTubeItem):
             video_id = playlist[i]["youtube_id"]
             video = ta_video.YoutubeVideo(video_id)
             video.get_from_db()
-            if (
-                channel_id is None
-                or video.json_data["channel"]["channel_id"] == channel_id
+            if channel_id is None or (
+                video.json_data
+                and video.json_data["channel"]["channel_id"] == channel_id
             ):
                 playlist.pop(i)
                 i -= 1
             i += 1
+        self._renumber_entries()
         self.set_playlist_thumbnail()
         self.save_to_db()
 
@@ -266,6 +267,9 @@ class YoutubePlaylist(YouTubeItem):
         """delete playlist with all videos"""
         print(f"{self.youtube_id}: delete playlist")
         self.get_from_db()
+        if not self.json_data:
+            return
+
         all_youtube_id = [
             i["youtube_id"]
             for i in self.json_data["playlist_entries"]
@@ -314,6 +318,9 @@ class YoutubePlaylist(YouTubeItem):
         """move video within custion playlist based on action"""
         self.get_from_db()
         video_index = self.get_video_index(video_id)
+        if video_index == -1:
+            return False
+
         playlist = self.json_data["playlist_entries"]
         item = playlist[video_index]
         playlist.pop(video_index)
@@ -353,9 +360,7 @@ class YoutubePlaylist(YouTubeItem):
             datetime.now().timestamp()
         )
 
-        for i, item in enumerate(playlist):
-            item["idx"] = i
-
+        self._renumber_entries()
         self.set_playlist_thumbnail()
         self.save_to_db()
 
@@ -371,6 +376,13 @@ class YoutubePlaylist(YouTubeItem):
                 self.set_playlist_thumbnail()
                 i -= 1
             i += 1
+
+        self._renumber_entries()
+
+    def _renumber_entries(self):
+        """idx follows list position, unique and without gaps"""
+        for i, item in enumerate(self.json_data["playlist_entries"]):
+            item["idx"] = i
 
     def get_video_index(self, video_id):
         for i, child in enumerate(self.json_data["playlist_entries"]):
@@ -400,11 +412,12 @@ class YoutubePlaylist(YouTubeItem):
         playlist = self.json_data["playlist_entries"]
         self.json_data["playlist_thumbnail"] = False
 
-        for video in playlist:
-            url = ThumbManager(video["youtube_id"]).vid_thumb_path()
-            if url is not None:
-                self.json_data["playlist_thumbnail"] = url
-                break
+        if playlist:
+            # the expected cache path of the first video's thumbnail
+            first_id = playlist[0]["youtube_id"]
+            url = ThumbManager(first_id).vid_thumb_path()
+            self.json_data["playlist_thumbnail"] = url
+
         self.get_playlist_art()
 
     def get_video_metadata(self, video_id):

@@ -172,7 +172,8 @@ class YoutubeChannel(YouTubeItem):
         print(f"{self.youtube_id}: index all playlists")
         self.get_from_db()
         channel_name = self.json_data["channel_name"]
-        self.task.send_progress([f"{channel_name}: Looking for Playlists"])
+        if self.task:
+            self.task.send_progress([f"{channel_name}: Looking for Playlists"])
         self.get_all_playlists()
         if not self.all_playlists:
             print(f"{self.youtube_id}: no playlists found.")

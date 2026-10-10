@@ -125,7 +125,9 @@ class PlaylistCustomApiListView(ApiBaseView):
         custom_playlist = YoutubePlaylist(playlist_id)
         custom_playlist.create(custom_name)
 
-        response_serializer = PlaylistSerializer(custom_playlist.json_data)
+        # stored doc, like GET: json_data has False placeholders
+        self.get_document("ta_playlist", Playlist.load_doc(playlist_id))
+        response_serializer = PlaylistSerializer(self.response)
 
         return Response(response_serializer.data)
 
@@ -180,9 +182,15 @@ class PlaylistCustomApiView(ApiBaseView):
                 return Response(error.data, status=400)
         else:
             hide = UserConfig(request.user.id).get_value("hide_watched")
-            playlist.move_video(video_id, action, hide_watched=hide)
+            moved = playlist.move_video(video_id, action, hide_watched=hide)
+            if not moved:
+                error = ErrorResponseSerializer(
+                    {"error": f"video {video_id} not in playlist"}
+                )
+                return Response(error.data, status=400)
 
-        response_serializer = PlaylistSerializer(playlist.json_data)
+        self.get_document("ta_playlist", Playlist.load_doc(playlist_id))
+        response_serializer = PlaylistSerializer(self.response)
 
         return Response(response_serializer.data)
 

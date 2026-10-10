@@ -54,7 +54,9 @@ def test_search_vector_weights_title_over_description():
         )
     ).save()
 
-    query = SearchQuery("steam & locomotive", search_type="raw", config="simple")
+    query = SearchQuery(
+        "steam & locomotive", search_type="raw", config="simple"
+    )
     found = Video.objects.filter(search=query).values_list("pk", flat=True)
 
     assert set(found) == {"vid_title01", "vid_descr01"}
@@ -65,3 +67,20 @@ def test_channel_search_on_tags():
 
     query = SearchQuery("coasters", config="simple")
     assert Channel.objects.filter(search=query).count() == 1
+
+
+def test_channel_save_doc_creates_and_replaces():
+    Channel.save_doc(channel_doc(channel_overwrites={"autodelete_days": 5}))
+    Channel.save_doc(channel_doc(channel_name="Renamed"))
+
+    channel = Channel.objects.get()
+    assert channel.name == "Renamed"
+    assert channel.autodelete_days is None
+    assert str(channel) == "UCchannel000000000000001 (Renamed)"
+
+
+def test_channel_load_doc():
+    assert Channel.load_doc("UCmissing") is None
+
+    Channel.save_doc(channel_doc())
+    assert Channel.load_doc("UCchannel000000000000001") == channel_doc()
