@@ -92,7 +92,7 @@ class SearchParser:
         key_word_map = self._get_map()
 
         if ":" in first_word:
-            index_match, query_string = first_word.split(":")
+            index_match, query_string = first_word.split(":", 1)
             if index_match in key_word_map:
                 self.query_map.update(key_word_map.get(index_match))
                 self.query_words[0] = query_string
@@ -137,8 +137,8 @@ class SearchParser:
         """append word by word"""
         for word in self.query_words:
             if ":" in word:
-                keyword, search_string = word.split(":")
-                if keyword in self.query_map:
+                keyword, search_string = word.split(":", 1)
+                if isinstance(self.query_map.get(keyword), list):
                     self.append_to = keyword
                     word = search_string
 
