@@ -72,7 +72,15 @@ def plan_series(
 ) -> tuple[list[DesiredFile], list[str]]:
     """desired files for one series, plus warnings; nothing if no episodes"""
     warnings = []
-    if not episodes:
+    available = []
+    for episode in episodes:
+        if episode.media.is_file():
+            available.append(episode)
+        else:
+            youtube_id = episode.info.youtube_id
+            warnings.append(f"{youtube_id}: missing media {episode.media}")
+    if not available:
+        # a series without any media would show up empty in Emby
         return [], warnings
     base = series_dir(series)
     # owners are qualified by series: one video can be in several series
@@ -98,12 +106,8 @@ def plan_series(
         elif path:
             warnings.append(f"{sid}: no cached {role} at {path}")
 
-    for episode in episodes:
+    for episode in available:
         info = replace(episode.info, show_title=series.info.title)
-        if not episode.media.is_file():
-            warnings.append(f"{info.youtube_id}: missing media {episode.media}")
-            continue
-
         stem = f"{base}/Season {info.season}/{episode_basename(series, info)}"
         owner = f"{sid}/{info.youtube_id}"
         desired.append(

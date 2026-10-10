@@ -378,11 +378,15 @@ def test_plan_series_warnings(tmp_path, media):
 
     assert {d.role for d in desired} == {"tvshow", "poster", "media", "nfo"}
     assert warnings == [
+        f"zzz: missing media {root / 'UC1' / 'zzz.mp4'}",
         f"channels/UC1: no cached fanart at {channels / 'UC1_tvart.jpg'}",
         "aaa: no cached thumbnail",
-        f"zzz: missing media {root / 'UC1' / 'zzz.mp4'}",
     ]
     assert plan_series(series, []) == ([], [])
+    assert plan_series(series, episodes[1:]) == (
+        [],
+        [f"zzz: missing media {root / 'UC1' / 'zzz.mp4'}"],
+    )
 
 
 def swap_files(media, out, dry_run=False):

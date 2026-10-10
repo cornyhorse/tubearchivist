@@ -122,3 +122,13 @@ def test_missing_file(tmp_path):
     with pytest.raises(FileNotFoundError):
         SqliteImporter(tmp_path / "nope.sqlite3")
 
+
+
+def test_convert_keeps_aware_datetimes():
+    # pylint: disable=import-outside-toplevel,protected-access
+    from storage.sqlite_import import _convert
+
+    field = Account._meta.get_field("last_login")
+    value = _convert(field, "2026-08-23T10:00:00+02:00")
+    assert value.utcoffset().total_seconds() == 7200
+    assert _convert(field, None) is None
