@@ -74,7 +74,7 @@ Both `TA_PASSWORD` and `TA_DB_PASSWORD` can be suffixed with `_FILE` to allow pa
 | TA_DB_PORT                    | Postgres port, default `5432` | Optional |
 | TA_DB_NAME                    | Postgres database, default `tubearchivist` | Optional |
 | TA_DB_USER                    | Postgres user, default `tubearchivist` | Optional |
-| TA_EMBY_ROOT                  | Folder for the native Emby library, on the same filesystem as the media | Optional |
+| TA_EMBY_ROOT                  | Native Emby library folder: a dot folder in the media mount, e.g. `/youtube/.emby` (media is hardlinked, which can't cross mounts) | Optional |
 | REDIS_CON                     | Connection string to Redis | Required |
 | TZ                            | Set your timezone for the scheduler | Required |
 | TA_PORT                       | Overwrite Nginx port | Optional |

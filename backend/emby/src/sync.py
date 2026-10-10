@@ -44,6 +44,25 @@ class EmbyPaths:
         return self.cache_root / "playlists" / f"{playlist_id}.jpg"
 
 
+def validate_output_root(media_root: Path, output_root: Path) -> None:
+    """
+    the Emby root must not overlap TA's media, except as a dot folder
+    directly in it (TA's scanners skip dot folders, and being on the same
+    mount is what lets media be hardlinked)
+    """
+    media = Path(media_root).resolve()
+    output = Path(output_root).resolve()
+    if output == media or output in media.parents:
+        raise ValueError(f"Emby root {output} contains the media dir")
+    if media in output.parents:
+        first = output.relative_to(media).parts[0]
+        if not first.startswith("."):
+            raise ValueError(
+                f"Emby root {output} is inside the media dir; "
+                f"use a dot folder such as {media / '.emby'}"
+            )
+
+
 def paths_from_env() -> EmbyPaths | None:
     """paths from the environment, None if the Emby writer is disabled"""
     # pylint: disable=import-outside-toplevel
@@ -51,6 +70,9 @@ def paths_from_env() -> EmbyPaths | None:
 
     if not EnvironmentSettings.EMBY_ROOT:
         return None
+    validate_output_root(
+        Path(EnvironmentSettings.MEDIA_DIR), Path(EnvironmentSettings.EMBY_ROOT)
+    )
     return EmbyPaths(
         media_root=Path(EnvironmentSettings.MEDIA_DIR),
         cache_root=Path(EnvironmentSettings.CACHE_DIR),

@@ -8,8 +8,6 @@ services:
     volumes:
       - media:/youtube
       - cache:/cache
-      # optional native Emby library, must be on the same filesystem as media
-      # - emby:/emby
     environment:
       - TA_DB_HOST=archivist-postgres
       - TA_DB_PASSWORD=verysecret            # match POSTGRES_PASSWORD below
@@ -20,7 +18,9 @@ services:
       - TA_USERNAME=tubearchivist           # your initial TA credentials
       - TA_PASSWORD=verysecret              # your initial TA credentials
       - TZ=America/New_York                 # set your time zone
-      # - TA_EMBY_ROOT=/emby                # enable the native Emby library writer
+      # native Emby library: a dot folder inside the media mount, because
+      # media is hardlinked (and hardlinks can't cross mounts)
+      # - TA_EMBY_ROOT=/youtube/.emby
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
       interval: 2m

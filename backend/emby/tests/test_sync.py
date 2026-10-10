@@ -6,7 +6,15 @@ import pytest
 from channel.models import Channel
 from common.tests.docs import channel_doc, playlist_doc, video_doc
 from emby.models import EpisodeNumber
-from emby.src.sync import EmbyPaths, sync_all, sync_channel, sync_playlist
+from common.src.env_settings import EnvironmentSettings
+from emby.src.sync import (
+    EmbyPaths,
+    paths_from_env,
+    sync_all,
+    sync_channel,
+    sync_playlist,
+    validate_output_root,
+)
 from playlist.models import Playlist
 from video.models import Video
 
@@ -137,3 +145,42 @@ def test_video_without_published_date(library):
     undated = next(n for n in nfos if n.findtext("uniqueid") == "v2")
     assert undated.find("aired") is None
     assert len({(n.findtext("season"), n.findtext("episode")) for n in nfos}) == 3
+
+
+@pytest.mark.parametrize(
+    "output, ok",
+    [
+        ("emby", True),
+        ("media/.emby", True),
+        ("media/.emby/deeper", True),
+        ("media/channels", False),
+        ("media", False),
+        (".", False),
+    ],
+)
+def test_validate_output_root(tmp_path, output, ok):
+    media = tmp_path / "media"
+    media.mkdir()
+    if ok:
+        validate_output_root(media, tmp_path / output)
+    else:
+        with pytest.raises(ValueError):
+            validate_output_root(media, tmp_path / output)
+
+
+def test_paths_from_env(monkeypatch, tmp_path):
+    env = EnvironmentSettings
+    monkeypatch.setattr(env, "EMBY_ROOT", "")
+    assert paths_from_env() is None
+
+    monkeypatch.setattr(env, "MEDIA_DIR", str(tmp_path / "media"))
+    monkeypatch.setattr(env, "CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setattr(env, "TZ", "America/New_York")
+    monkeypatch.setattr(env, "EMBY_ROOT", str(tmp_path / "media" / ".emby"))
+    paths = paths_from_env()
+    assert paths.output_root == tmp_path / "media" / ".emby"
+    assert paths.timezone == "America/New_York"
+
+    monkeypatch.setattr(env, "EMBY_ROOT", str(tmp_path / "media" / "x"))
+    with pytest.raises(ValueError):
+        paths_from_env()

@@ -4,7 +4,13 @@ from pathlib import Path
 
 from common.src.env_settings import EnvironmentSettings
 from django.core.management.base import BaseCommand, CommandError
-from emby.src.sync import EmbyPaths, sync_all, sync_channel, sync_playlist
+from emby.src.sync import (
+    EmbyPaths,
+    sync_all,
+    sync_channel,
+    sync_playlist,
+    validate_output_root,
+)
 
 
 class Command(BaseCommand):
@@ -22,8 +28,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         output_root = options["output_root"].resolve()
         media_root = Path(EnvironmentSettings.MEDIA_DIR).resolve()
-        if output_root == media_root or media_root in output_root.parents:
-            raise CommandError("output root must be outside the media dir")
+        try:
+            validate_output_root(media_root, output_root)
+        except ValueError as err:
+            raise CommandError(str(err)) from err
 
         paths = EmbyPaths(
             media_root=media_root,

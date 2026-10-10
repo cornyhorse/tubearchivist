@@ -117,5 +117,5 @@ def test_emby_sync_verbose_create(library):
 
 
 def test_emby_sync_refuses_media_dir(library):
-    with pytest.raises(CommandError, match="outside the media dir"):
+    with pytest.raises(CommandError, match="dot folder"):
         run("ta_emby_sync", str(library / "media" / "emby"))
