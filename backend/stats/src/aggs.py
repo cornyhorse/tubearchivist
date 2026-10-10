@@ -131,7 +131,9 @@ class DownloadHist:
     def process(self):
         """per day in TZ since 7 days ago, newest first, gaps filled"""
         tz = ZoneInfo(EnvironmentSettings.TZ)
-        today = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        today = datetime.now(tz).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
         since = today - timedelta(days=7)
         rows = (
             VideoModel.objects.filter(date_downloaded__gte=since)

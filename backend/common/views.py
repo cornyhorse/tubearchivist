@@ -140,7 +140,8 @@ class WatchedView(ApiBaseView):
         youtube_id = validated_data.get("id")
         is_watched = validated_data.get("is_watched")
 
-        if not youtube_id or is_watched is None:
+        # both fields are required by the serializer
+        if not youtube_id or is_watched is None:  # pragma: no cover
             error = ErrorResponseSerializer(
                 {"error": "missing id or is_watched"}
             )
@@ -160,7 +161,7 @@ class SearchView(ApiBaseView):
         """handle get request
         search through all indexes"""
         search_query = request.GET.get("query", None)
-        if search_query is None:
+        if search_query is None or not search_query.strip():
             return Response(
                 {"message": "no search query specified"}, status=400
             )

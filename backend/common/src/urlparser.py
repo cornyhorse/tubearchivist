@@ -165,7 +165,7 @@ class Parser:
             return None
 
         handle = path.split("/")[0]
-        if not handle:
+        if not handle:  # pragma: no cover - path starts with "@"
             return None
 
         cache_key = f"channel:handlesearch:{handle.lower()}"
@@ -183,7 +183,7 @@ class Parser:
             return
 
         handle = path.split("/")[0]
-        if not handle:
+        if not handle:  # pragma: no cover - path starts with "@"
             return
 
         cache_key = f"channel:handlesearch:{handle.lower()}"

@@ -92,7 +92,7 @@ class SearchParser:
         key_word_map = self._get_map()
 
         if ":" in first_word:
-            index_match, query_string = first_word.split(":")
+            index_match, query_string = first_word.split(":", 1)
             if index_match in key_word_map:
                 self.query_map.update(key_word_map.get(index_match))
                 self.query_words[0] = query_string
@@ -137,8 +137,8 @@ class SearchParser:
         """append word by word"""
         for word in self.query_words:
             if ":" in word:
-                keyword, search_string = word.split(":")
-                if keyword in self.query_map:
+                keyword, search_string = word.split(":", 1)
+                if isinstance(self.query_map.get(keyword), list):
                     self.append_to = keyword
                     word = search_string
 
@@ -226,9 +226,7 @@ class QueryBuilder:
             return matched.order_by("-score", "pk"), True
 
         similar = (
-            queryset.annotate(
-                score=TrigramWordSimilarity(term, name_field)
-            )
+            queryset.annotate(score=TrigramWordSimilarity(term, name_field))
             .filter(score__gte=TRIGRAM_THRESHOLD[fuzzy])
             .order_by("-score", "pk")
         )
@@ -263,7 +261,9 @@ class QueryBuilder:
     def _build_simple(self):
         """cross index search, best RESULT_SIZE overall"""
         term = self.query_map.get("term")
-        hits = self._videos(term) + self._channels(term) + self._playlists(term)
+        hits = (
+            self._videos(term) + self._channels(term) + self._playlists(term)
+        )
         hits.sort(key=lambda hit: -hit[2])
         return hits[:RESULT_SIZE]
 
@@ -309,7 +309,9 @@ class QueryBuilder:
             lines = lines.filter(lang=lang[0])
         if (source := self.query_map.get("source")) is not None:
             lines = lines.filter(source=source[0])
-        if (channel_q := self._channel_filter("video__channel_id")) is not None:
+        if (
+            channel_q := self._channel_filter("video__channel_id")
+        ) is not None:
             lines = lines.filter(channel_q)
 
         term = self.query_map.get("term")
