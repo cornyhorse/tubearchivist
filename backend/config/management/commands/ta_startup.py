@@ -136,7 +136,9 @@ class Command(BaseCommand):
             return
 
         if not version_task.first().last_run_at:
-            self.style.SUCCESS("    ✓ send initial version check task")
+            self.stdout.write(
+                self.style.SUCCESS("    ✓ send initial version check task")
+            )
             version_check.delay()
 
     def _create_default_schedules(self) -> None:
@@ -219,7 +221,9 @@ class Command(BaseCommand):
             )
             return
 
-        self.stdout.write(self.style.SUCCESS("    skip completed appsettings init"))
+        self.stdout.write(
+            self.style.SUCCESS("    skip completed appsettings init")
+        )
         updated_defaults = AppConfig().add_new_defaults()
         for new_default in updated_defaults:
             self.stdout.write(

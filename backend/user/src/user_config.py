@@ -99,7 +99,10 @@ class UserConfig:
         from user.models import UserConfig as UserConfigModel
 
         with transaction.atomic():
-            stored, _ = UserConfigModel.objects.select_for_update().get_or_create(
+            (
+                stored,
+                _,
+            ) = UserConfigModel.objects.select_for_update().get_or_create(
                 user_id=self._user_id,
                 defaults={"config": dict(self._DEFAULT_USER_SETTINGS)},
             )

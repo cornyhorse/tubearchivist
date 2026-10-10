@@ -64,7 +64,7 @@ class TaskNameListView(ApiBaseView):
             error = ErrorResponseSerializer({"error": "task name not found"})
             return Response(error.data, status=404)
 
-        all_results = TaskManager().get_tasks_by_name(task_name)
+        all_results = TaskManager().get_tasks_by_name(task_name) or []
         serializer = TaskResultSerializer(all_results, many=True)
 
         return Response(serializer.data)
@@ -154,7 +154,7 @@ class TaskIDView(ApiBaseView):
             error = ErrorResponseSerializer({"error": "task ID not found"})
             return Response(error.data, status=404)
 
-        task_conf = TASK_CONFIG.get(task_result.get("name"))
+        task_conf = TASK_CONFIG.get(task_result.get("name")) or {}
         if command == "stop":
             if not task_conf.get("api_stop"):
                 error = ErrorResponseSerializer(
@@ -224,10 +224,17 @@ class ScheduleView(ApiBaseView):
             400: OpenApiResponse(
                 ErrorResponseSerializer(), description="bad request"
             ),
+            404: OpenApiResponse(
+                ErrorResponseSerializer(), description="task name not found"
+            ),
         },
     )
     def post(self, request, task_name):
         """create/update schedule for task"""
+        if task_name not in TASK_CONFIG:
+            error = ErrorResponseSerializer({"error": "task name not found"})
+            return Response(error.data, status=404)
+
         data_serializer = TaskCreateDataSerializer(data=request.data)
         data_serializer.is_valid(raise_exception=True)
         validated_data = data_serializer.validated_data
@@ -246,6 +253,13 @@ class ScheduleView(ApiBaseView):
             validator.validate_config(task_name, schedule_config)
         except ValueError as err:
             error = ErrorResponseSerializer({"error": str(err)})
+            return Response(error.data, status=400)
+
+        has_task = CustomPeriodicTask.objects.filter(name=task_name).exists()
+        if not cron_schedule and not has_task:
+            error = ErrorResponseSerializer(
+                {"error": "no schedule for this task, set a schedule first"}
+            )
             return Response(error.data, status=400)
 
         task = ScheduleBuilder().update_schedule(
@@ -308,7 +322,7 @@ class ScheduleNotification(ApiBaseView):
         validated_data = data_serializer.validated_data
 
         task_name = validated_data["task_name"]
-        url = validated_data["url"]
+        url = validated_data.get("url")
         if not url:
             error = ErrorResponseSerializer({"error": "missing url"})
             return Response(error.data, status=400)
