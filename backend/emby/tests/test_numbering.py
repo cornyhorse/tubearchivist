@@ -90,3 +90,21 @@ def test_errors():
         assign_numbers("playlist_position", [item("a", "2025-01-01")])
     with pytest.raises(NumberingError):
         assign_numbers("date", [], {"a": (2025, 1), "b": (2025, 1)})
+
+
+def test_absolute_frozen_keeps_existing():
+    numbers, _ = assign_numbers(
+        "absolute_frozen",
+        [item("new", "2020-01-01"), item("a", "2024-01-01")],
+        {"a": (1, 1)},
+    )
+
+    assert numbers == {"a": (1, 1), "new": (1, 2)}
+
+
+def test_playlist_position_duplicates():
+    with pytest.raises(NumberingError):
+        assign_numbers(
+            "playlist_position",
+            [item("a", "2025-01-01", 0), item("b", "2025-01-01", 0)],
+        )

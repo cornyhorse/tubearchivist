@@ -38,7 +38,6 @@ class EpisodeInfo:
     plot: str = ""
     runtime_seconds: int = 0
     studio: str = ""
-    thumb: str = ""
 
 
 def _clean(text: str | None) -> str:
@@ -90,8 +89,7 @@ def render_episode(episode: EpisodeInfo) -> bytes:
     if episode.runtime_seconds:
         _add(root, "runtime", max(1, round(episode.runtime_seconds / 60)))
     _add(root, "studio", episode.studio)
-    if episode.thumb:
-        _add(root, "thumb", episode.thumb)
+    # thumbs are <name>-thumb.jpg sidecars, which Emby picks up by name
     # no lockdata here: a locked episode ignores later NFO changes
     _add(root, "uniqueid", episode.youtube_id, type="youtube", default="true")
     return _render(root)

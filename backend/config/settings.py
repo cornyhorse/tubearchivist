@@ -22,7 +22,7 @@ from corsheaders.defaults import default_headers
 try:
     from dotenv import load_dotenv
 
-    load_dotenv(".env")
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ModuleNotFoundError:
     pass
 

@@ -5,12 +5,13 @@ Functionality:
 """
 
 from os import environ, path
+from pathlib import Path
 
 try:
     from dotenv import load_dotenv
 
     print("loading local dotenv")
-    load_dotenv(".env")
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 except ModuleNotFoundError:
     pass
 

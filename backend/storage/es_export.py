@@ -15,6 +15,7 @@ import base64
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -99,14 +100,19 @@ def export(reader: EsReader, out_dir: Path) -> dict[str, int]:
         expected = reader.call("GET", f"{index}/_count")["count"]
         tmp = out_dir / f"{index}.ndjson.tmp"
         written = 0
-        with open(tmp, "w", encoding="utf-8") as f:
-            for hit in reader.iter_docs(index):
-                line = {"_id": hit["_id"], "_source": hit["_source"]}
-                f.write(json.dumps(line, ensure_ascii=False) + "\n")
-                written += 1
-        if written != expected:
-            raise RuntimeError(f"{index}: exported {written}, count {expected}")
-        tmp.replace(out_dir / f"{index}.ndjson")
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                for hit in reader.iter_docs(index):
+                    line = {"_id": hit["_id"], "_source": hit["_source"]}
+                    f.write(json.dumps(line, ensure_ascii=False) + "\n")
+                    written += 1
+            if written != expected:
+                raise RuntimeError(
+                    f"{index}: exported {written}, count {expected}"
+                )
+            tmp.replace(out_dir / f"{index}.ndjson")
+        finally:
+            tmp.unlink(missing_ok=True)
         counts[index] = written
 
     (out_dir / "manifest.json").write_text(json.dumps(counts, indent=2))

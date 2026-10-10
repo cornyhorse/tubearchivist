@@ -268,6 +268,8 @@ class EsImporter:
         docs = {}
         for _id, doc in self.docs("ta_video"):
             channel_id = (doc.get("channel") or {}).get("channel_id")
+            if not channel_id:
+                continue  # skipped on import
             per_channel[channel_id] = per_channel.get(channel_id, 0) + 1
             total_size += doc.get("media_size") or 0
             docs[_id] = doc
@@ -289,7 +291,14 @@ class EsImporter:
             sorted(docs), min(self.sample_size, len(docs))
         )
         for youtube_id in sample:
-            video = Video.objects.select_related("channel").get(pk=youtube_id)
+            video = (
+                Video.objects.select_related("channel")
+                .filter(pk=youtube_id)
+                .first()
+            )
+            if not video:
+                self.report.mismatches.append(f"video {youtube_id}: missing")
+                continue
             self._compare_doc(
                 f"video {youtube_id}",
                 docs[youtube_id],

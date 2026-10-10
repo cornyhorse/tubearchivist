@@ -43,3 +43,12 @@ def test_tvshow_locked():
     assert root.tag == "tvshow"
     assert root.findtext("title") == "Channel"
     assert root.findtext("lockdata") == "true"
+
+
+def test_episode_without_date_or_runtime():
+    root = ET.fromstring(
+        render_episode(EpisodeInfo("abc", "t", "show", 1, 1, aired=None))
+    )
+
+    assert root.find("aired") is None
+    assert root.find("runtime") is None

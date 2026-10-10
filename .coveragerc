@@ -1,0 +1,26 @@
+# Coverage is enforced at 100% for code the fork owns. Upstream files join
+# this list as they are ported off Elasticsearch.
+[run]
+branch = True
+source = backend
+
+[report]
+include =
+    backend/storage/*
+    backend/emby/*
+    backend/common/src/db.py
+    backend/channel/models.py
+    backend/video/models.py
+    backend/playlist/models.py
+    backend/download/models.py
+    backend/appsettings/models.py
+    backend/config/management/commands/ta_import_es.py
+    backend/config/management/commands/ta_emby_sync.py
+omit =
+    */tests/*
+    */migrations/*
+fail_under = 100
+show_missing = True
+skip_covered = True
+exclude_also =
+    if __name__ == .__main__.:

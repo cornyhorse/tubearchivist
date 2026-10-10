@@ -50,6 +50,11 @@ def _local_date(value: datetime | None, tz: ZoneInfo):
     return value.astimezone(tz).date()
 
 
+def _number_date(video: Video, tz: ZoneInfo):
+    """date used for numbering: upload date, else download date"""
+    return _local_date(video.published or video.date_downloaded, tz)
+
+
 def ensure_numbers(
     kind: str,
     series_id: str,
@@ -121,9 +126,7 @@ def channel_series(
         .filter(channel=channel, active=True)
         .order_by("published", "youtube_id")
     )
-    items = [
-        NumberingItem(v.youtube_id, _local_date(v.published, tz)) for v in videos
-    ]
+    items = [NumberingItem(v.youtube_id, _number_date(v, tz)) for v in videos]
     numbers, warnings = ensure_numbers(
         SeriesKind.CHANNEL, channel.channel_id, channel.emby_numbering, items
     )
@@ -161,9 +164,7 @@ def playlist_series(
     )
     videos.sort(key=lambda v: entries[v.youtube_id])
     items = [
-        NumberingItem(
-            v.youtube_id, _local_date(v.published, tz), entries[v.youtube_id]
-        )
+        NumberingItem(v.youtube_id, _number_date(v, tz), entries[v.youtube_id])
         for v in videos
     ]
     numbers, warnings = ensure_numbers(

@@ -9,6 +9,7 @@ Django==6.0.7
 djangorestframework==3.18.0
 drf-spectacular==0.30.0
 Pillow==12.3.0
+psycopg[binary]==3.2.10
 redis==7.4.0
 requests==2.34.2
 ryd-client==0.0.6

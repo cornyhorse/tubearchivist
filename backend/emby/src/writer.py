@@ -70,31 +70,28 @@ class Manifest:
         self.path = root / MANIFEST_NAME
         self.files: dict[str, dict] = {}
         self.dirs: set[str] = set()
-        self._by_owner: dict[tuple[str, str], str] | None = None
         if self.path.exists():
             raw = json.loads(self.path.read_text(encoding="utf-8"))
             if raw.get("version") != MANIFEST_VERSION:
                 raise ValueError(f"unsupported manifest: {self.path}")
             self.files = raw["files"]
             self.dirs = set(raw["dirs"])
+        self._by_owner = {
+            (e["owner"], e["role"]): relpath for relpath, e in self.files.items()
+        }
 
     def owned_by(self, owner: str, role: str) -> str | None:
         """relpath currently recorded for owner and role"""
-        if self._by_owner is None:
-            self._by_owner = {
-                (e["owner"], e["role"]): relpath
-                for relpath, e in self.files.items()
-            }
         relpath = self._by_owner.get((owner, role))
-        if relpath in self.files:
+        entry = self.files.get(relpath)
+        if entry and (entry["owner"], entry["role"]) == (owner, role):
             return relpath
         return None
 
     def set(self, relpath: str, entry: dict) -> None:
         """record a file"""
         self.files[relpath] = entry
-        if self._by_owner is not None:
-            self._by_owner[(entry["owner"], entry["role"])] = relpath
+        self._by_owner[(entry["owner"], entry["role"])] = relpath
 
     def forget(self, relpath: str) -> dict:
         """stop recording a file"""
@@ -163,6 +160,11 @@ class EmbyWriter:
             self.root.mkdir(parents=True, exist_ok=True)
         self.manifest = Manifest(self.root)
         self.report = SyncReport()
+        # dry run bookkeeping: nothing moves on disk, so remember where a
+        # file really is (_virtual) and which paths a move vacated
+        self._virtual: dict[str, str] = {}
+        self._vacated: set[str] = set()
+        self._moved_from: dict[str, str] = {}
 
     def sync(self, desired: list[DesiredFile], scope: str | None) -> SyncReport:
         """
@@ -177,6 +179,7 @@ class EmbyWriter:
             if scope and not _within(item.relpath, scope):
                 raise ValueError(f"{item.relpath} outside scope {scope}")
 
+        self._vacate_moves(desired)
         for item in desired:
             self._sync_file(item)
 
@@ -192,7 +195,9 @@ class EmbyWriter:
         return self.report
 
     def _abs(self, relpath: str) -> Path:
-        path = (self.root / relpath).resolve()
+        # resolve the parent only: a symlinked dir escaping root is an
+        # error, a symlink in place of a file is handled as a conflict
+        path = (self.root / relpath).parent.resolve()
         if not _within(str(path), str(self.root.resolve())):
             raise ValueError(f"path escapes root: {relpath}")
         return self.root / relpath
@@ -210,8 +215,40 @@ class EmbyWriter:
                 os.chmod(path, self.dir_mode)
             self.manifest.dirs.add(rel)
 
-    def _is_current(self, item: DesiredFile, path: Path) -> bool:
-        if not path.exists() or path.is_symlink():
+    def _real(self, relpath: str) -> Path:
+        """where the file recorded at relpath is on disk"""
+        return self.root / self._virtual.get(relpath, relpath)
+
+    def _exists(self, relpath: str) -> bool:
+        if relpath in self._vacated:
+            return False
+        path = self._real(relpath)
+        return path.exists() or path.is_symlink()
+
+    def _vacate_moves(self, desired: list[DesiredFile]) -> None:
+        """
+        first rename phase: move every file whose name changes to a hidden
+        temp name next to it, so swaps and cycles can't overwrite each other
+        """
+        for n, item in enumerate(desired):
+            old = self.manifest.owned_by(item.owner, item.role)
+            if not old or old == item.relpath or not self._is_ours(old):
+                continue
+            parent = Path(old).parent
+            tmp = str(parent / f".ta-move-{os.getpid()}-{n}{Path(old).suffix}")
+            if self.dry_run:
+                self._virtual[tmp] = old
+                self._vacated.add(old)
+            else:
+                os.rename(self.root / old, self.root / tmp)
+            self.manifest.set(tmp, self.manifest.forget(old))
+            self._moved_from[tmp] = old
+
+    def _is_current(self, item: DesiredFile, relpath: str) -> bool:
+        if not self._exists(relpath):
+            return False
+        path = self._real(relpath)
+        if path.is_symlink():
             return False
         if item.kind == "link":
             have, want = path.stat(), item.source.stat()
@@ -221,8 +258,8 @@ class EmbyWriter:
     def _is_ours(self, relpath: str) -> bool:
         """file at relpath is still the one we recorded"""
         entry = self.manifest.files.get(relpath)
-        path = self.root / relpath
-        if not entry or not path.exists() or path.is_symlink():
+        path = self._real(relpath)
+        if not entry or not self._exists(relpath) or path.is_symlink():
             return False
         if entry["kind"] == "link":
             stat = path.stat()
@@ -246,26 +283,31 @@ class EmbyWriter:
 
         # same owner and role recorded under another name: move it, keeping
         # the inode, so Emby sees a rename instead of delete plus create
+        # (second phase, after _vacate_moves)
         old = self.manifest.owned_by(item.owner, item.role)
-        if old and old != item.relpath and not path.exists():
+        if old and old != item.relpath and not self._exists(item.relpath):
             if self._is_ours(old):
                 self._ensure_dir(item.relpath)
-                if not self.dry_run:
+                if self.dry_run:
+                    self._virtual[item.relpath] = self._virtual.pop(old, old)
+                    self._vacated.discard(item.relpath)
+                else:
                     os.rename(self.root / old, path)
                 self.manifest.set(item.relpath, self.manifest.forget(old))
-                self.report.renamed.append((old, item.relpath))
+                origin = self._moved_from.pop(old, old)
+                self.report.renamed.append((origin, item.relpath))
             else:
                 self.report.warnings.append(f"{old}: changed outside writer")
                 self.manifest.forget(old)
 
         # an identical file is adopted, so a lost manifest rebuilds without
         # rewriting anything
-        if self._is_current(item, path):
+        if self._is_current(item, item.relpath):
             self._record(item)
             self.report.unchanged += 1
             return
 
-        exists = path.exists() or path.is_symlink()
+        exists = self._exists(item.relpath)
         if exists and item.relpath not in self.manifest.files:
             self.report.conflicts.append(f"{item.relpath}: not owned, kept")
             return
@@ -284,12 +326,13 @@ class EmbyWriter:
             self.report.created.append(item.relpath)
 
     def _remove(self, relpath: str) -> None:
+        origin = self._moved_from.pop(relpath, relpath)
         if self._is_ours(relpath):
             if not self.dry_run:
                 (self.root / relpath).unlink()
-            self.report.deleted.append(relpath)
-        elif (self.root / relpath).exists():
-            self.report.warnings.append(f"{relpath}: changed outside writer")
+            self.report.deleted.append(origin)
+        elif self._exists(relpath):
+            self.report.warnings.append(f"{origin}: changed outside writer")
         self.manifest.forget(relpath)
 
     def _prune_dirs(self, scope: str | None, wanted: set[str]) -> None:
@@ -304,15 +347,24 @@ class EmbyWriter:
         candidates = [
             d for d in self.manifest.dirs if _within(d, scope) and d not in needed
         ]
+        # in a dry run nothing is removed, so count what would be gone
+        gone = {p.rstrip("/") for p in self.report.deleted}
         for rel in sorted(candidates, key=lambda d: -len(Path(d).parts)):
             path = self.root / rel
-            if path.is_dir() and not any(path.iterdir()):
+            if not path.is_dir():
+                self.manifest.dirs.discard(rel)
+                continue
+            remaining = [
+                child
+                for child in path.iterdir()
+                if str(child.relative_to(self.root)) not in gone
+            ]
+            if not remaining:
                 if not self.dry_run:
                     path.rmdir()
                 self.manifest.dirs.discard(rel)
                 self.report.deleted.append(rel + "/")
-            elif not path.exists():
-                self.manifest.dirs.discard(rel)
+                gone.add(rel)
 
 
 def _within(relpath: str, scope: str | None) -> bool:
