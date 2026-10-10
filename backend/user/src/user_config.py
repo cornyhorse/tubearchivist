@@ -6,6 +6,7 @@ Functionality:
 
 from typing import TypedDict
 
+from common.src.helper import check_stylesheet
 from django.db import transaction
 
 
@@ -39,7 +40,7 @@ class UserConfig:
     """
 
     _DEFAULT_USER_SETTINGS = UserConfigType(
-        stylesheet="dark.css",
+        stylesheet="device",
         page_size=25,
         sort_by="published",
         sort_order="desc",
@@ -114,12 +115,19 @@ class UserConfig:
             print(f"User {self._user_id} value '{key}' change: to {value}")
 
     def sync_new_defaults(self, config):
-        """add defaults for keys this user has no value for yet"""
+        """
+        add defaults for keys this user has no value for yet, and migrate
+        a theme stored by an older version
+        """
         missing = {
             key: value
             for key, value in self._DEFAULT_USER_SETTINGS.items()
             if key not in config
         }
+        if "stylesheet" in config:
+            theme = check_stylesheet(config["stylesheet"])
+            if theme != config["stylesheet"]:
+                missing["stylesheet"] = theme
         config.update(missing)
         if missing:
             self._config = config

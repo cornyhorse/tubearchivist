@@ -1,6 +1,6 @@
 import { Outlet, useLoaderData, useSearchParams } from 'react-router-dom';
 import Footer from '../components/Footer';
-import Colours from '../configuration/colours/Colours';
+import ThemeSync from '../configuration/theme/ThemeSync';
 import { UserConfigType } from '../api/actions/updateUserConfig';
 import { useCallback, useEffect } from 'react';
 import Navigation from '../components/Navigation';
@@ -72,7 +72,7 @@ const Base = () => {
 
   return (
     <>
-      <Colours />
+      <ThemeSync />
       <div className="main-content">
         <Navigation />
         {/** Outlet: https://reactrouter.com/en/main/components/outlet */}

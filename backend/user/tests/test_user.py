@@ -89,8 +89,54 @@ def test_me_view(user_client):
 
     assert initial["page_size"] == 25
     assert updated.json()["page_size"] == 40
-    assert updated.json()["stylesheet"] == "dark.css"
+    assert updated.json()["stylesheet"] == "device"
     assert invalid.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "theme", ["light", "dark", "paper", "contrast", "colourblind"]
+)
+def test_set_and_clear_theme(user_client, theme):
+    url = "/api/user/me/"
+
+    chosen = user_client.post(url, {"stylesheet": theme}, format="json")
+    cleared = user_client.post(url, {"stylesheet": "device"}, format="json")
+
+    assert chosen.status_code == 200
+    assert chosen.json()["stylesheet"] == theme
+    assert cleared.json()["stylesheet"] == "device"
+
+
+@pytest.mark.parametrize(
+    "value", ["neon", "dark.css", "../custom.css", "", None, 3]
+)
+def test_unknown_theme_is_rejected(user_client, value):
+    url = "/api/user/me/"
+    user_client.post(url, {"stylesheet": "paper"}, format="json")
+
+    response = user_client.post(url, {"stylesheet": value}, format="json")
+
+    assert response.status_code == 400
+    assert user_client.get(url).json()["stylesheet"] == "paper"
+
+
+@pytest.mark.parametrize(
+    "stored, expected",
+    [
+        ("dark.css", "dark"),
+        ("light.css", "light"),
+        ("matrix.css", "dark"),
+        ("custom.css", "device"),
+        ("<script>", "device"),
+    ],
+)
+def test_legacy_or_tampered_theme_is_migrated(stored, expected):
+    user = Account.objects.create_user("legacy", "pw")
+    UserConfigModel.objects.create(user=user, config={"stylesheet": stored})
+
+    assert UserConfig(user.id).get_value("stylesheet") == expected
+    stored_now = UserConfigModel.objects.get(user=user).config
+    assert stored_now["stylesheet"] == expected
 
 
 def test_anonymous_is_rejected():

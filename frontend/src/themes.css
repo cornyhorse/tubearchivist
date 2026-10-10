@@ -1,0 +1,244 @@
+/*
+ * Theme tokens. Every colour in style.css comes from here.
+ *
+ * <html data-theme="light|dark|paper|contrast|colourblind">, or no attribute
+ * to follow the device (light, or dark under prefers-color-scheme: dark).
+ * The setting is per user (user config `stylesheet`); index.html applies a
+ * cached copy before first paint so pages don't flash the wrong theme.
+ *
+ * Roles:
+ *   --bg page background        --surface cards, inputs, menus
+ *   --text body text            --muted secondary text
+ *   --line borders              --accent links, primary buttons, focus ring
+ *   --accent-text text on accent       --accent-soft hover, selected
+ *   --danger error text         --danger-soft --warn-soft --ok-soft backgrounds
+ *   --cat-1..12 per-category colours (series, tags)
+ *   --icon-filter / --icon-filter-danger recolour the black svg icons
+ */
+
+:root {
+  color-scheme: light;
+  --bg: #f6f7f5;
+  --surface: #ffffff;
+  --text: #1c2321;
+  --muted: #5b6763;
+  --line: #d9dfdc;
+  --accent: #0f766e;
+  --accent-text: #ffffff;
+  --accent-soft: #d8efec;
+  --danger: #b42318;
+  --danger-soft: #fde8e6;
+  --warn-soft: #fff1d6;
+  --ok-soft: #dcf3e3;
+  --surface-veil: color-mix(in srgb, var(--surface) 70%, transparent);
+  --cat-1: #0f766e;
+  --cat-2: #2563eb;
+  --cat-3: #7c3aed;
+  --cat-4: #c026d3;
+  --cat-5: #db2777;
+  --cat-6: #dc2626;
+  --cat-7: #ea580c;
+  --cat-8: #ca8a04;
+  --cat-9: #65a30d;
+  --cat-10: #16a34a;
+  --cat-11: #0891b2;
+  --cat-12: #64748b;
+  /* repeated colours are told apart by border style; one per category */
+  --cat-1-border: solid;
+  --cat-2-border: solid;
+  --cat-3-border: solid;
+  --cat-4-border: solid;
+  --cat-5-border: solid;
+  --cat-6-border: solid;
+  --cat-7-border: solid;
+  --cat-8-border: solid;
+  --cat-9-border: solid;
+  --cat-10-border: solid;
+  --cat-11-border: solid;
+  --cat-12-border: solid;
+  --link-underline: 1px;
+  --control-border: 1px solid transparent;
+  --icon-filter: brightness(0) saturate(100%) invert(34%) sepia(61%) saturate(567%)
+    hue-rotate(126deg) brightness(94%) contrast(93%);
+  --icon-filter-danger: brightness(0) saturate(100%) invert(14%) sepia(55%) saturate(5304%)
+    hue-rotate(355deg) brightness(98%) contrast(89%);
+  --logo: url('/img/logo-tube-archivist-light.png');
+  --banner: url('/img/logo-tube-archivist-light.png');
+
+  /* TA's original names, kept as aliases */
+  --main-bg: var(--bg);
+  --highlight-bg: var(--surface);
+  --highlight-bg-transparent: var(--surface-veil);
+  --highlight-error: var(--danger);
+  --main-font: var(--text);
+  --accent-font-dark: var(--accent);
+  --img-filter: var(--icon-filter);
+  --img-filter-error: var(--icon-filter-danger);
+}
+
+/* the dark tokens, shared by "follow the device" and data-theme="dark" */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --bg: #121615;
+    --surface: #1b211f;
+    --text: #e8eeec;
+    --muted: #9aa8a3;
+    --line: #2d3733;
+    --accent: #3fb8aa;
+    --accent-text: #08201d;
+    --accent-soft: #173a36;
+    --danger: #ff8a7d;
+    --danger-soft: #3a1c19;
+    --warn-soft: #3a2e12;
+    --ok-soft: #173a25;
+    --icon-filter: brightness(0) saturate(100%) invert(57%) sepia(47%) saturate(475%)
+      hue-rotate(124deg) brightness(99%) contrast(95%);
+    --icon-filter-danger: brightness(0) saturate(100%) invert(59%) sepia(38%) saturate(561%)
+      hue-rotate(317deg) brightness(98%) contrast(107%);
+    --logo: url('/img/logo-tube-archivist-dark.png');
+    --banner: url('/img/logo-tube-archivist-dark.png');
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #121615;
+  --surface: #1b211f;
+  --text: #e8eeec;
+  --muted: #9aa8a3;
+  --line: #2d3733;
+  --accent: #3fb8aa;
+  --accent-text: #08201d;
+  --accent-soft: #173a36;
+  --danger: #ff8a7d;
+  --danger-soft: #3a1c19;
+  --warn-soft: #3a2e12;
+  --ok-soft: #173a25;
+  --icon-filter: brightness(0) saturate(100%) invert(57%) sepia(47%) saturate(475%)
+    hue-rotate(124deg) brightness(99%) contrast(95%);
+  --icon-filter-danger: brightness(0) saturate(100%) invert(59%) sepia(38%) saturate(561%)
+    hue-rotate(317deg) brightness(98%) contrast(107%);
+  --logo: url('/img/logo-tube-archivist-dark.png');
+  --banner: url('/img/logo-tube-archivist-dark.png');
+}
+
+:root[data-theme='paper'] {
+  color-scheme: light;
+  --bg: #f1ebdf;
+  --surface: #fbf8f1;
+  --text: #2b261f;
+  --muted: #655c4e;
+  --line: #ddd3c1;
+  --accent: #8a5a1f;
+  --accent-text: #fffaf0;
+  --accent-soft: #efe1c8;
+  --danger: #a3301c;
+  --danger-soft: #f5ddd3;
+  --warn-soft: #f4e3bd;
+  --ok-soft: #e1e9cf;
+  --icon-filter: brightness(0) saturate(100%) invert(34%) sepia(61%) saturate(568%)
+    hue-rotate(353deg) brightness(93%) contrast(89%);
+  --icon-filter-danger: brightness(0) saturate(100%) invert(18%) sepia(76%) saturate(2275%)
+    hue-rotate(351deg) brightness(96%) contrast(89%);
+}
+
+:root[data-theme='contrast'] {
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #000000;
+  --text: #ffffff;
+  --muted: #e0e0e0;
+  --line: #ffffff;
+  --accent: #ffff00;
+  --accent-text: #000000;
+  --accent-soft: #333300;
+  --danger: #ff8080;
+  --danger-soft: #3d0000;
+  --warn-soft: #3d2e00;
+  --ok-soft: #003d14;
+  --surface-veil: rgba(0, 0, 0, 0.8);
+  --cat-1: #00ffff;
+  --cat-2: #ffff00;
+  --cat-3: #ff80ff;
+  --cat-4: #80ff80;
+  --cat-5: #ffa040;
+  --cat-6: #80b0ff;
+  --cat-7: #ff8080;
+  --cat-8: #ffffff;
+  --cat-9: #00ffff;
+  --cat-10: #ffff00;
+  --cat-11: #ff80ff;
+  --cat-12: #80ff80;
+  --cat-9-border: double;
+  --cat-10-border: double;
+  --cat-11-border: double;
+  --cat-12-border: double;
+  --link-underline: 2px;
+  --control-border: 1px solid var(--line);
+  --icon-filter: brightness(0) saturate(100%) invert(89%) sepia(69%) saturate(6492%)
+    hue-rotate(1deg) brightness(110%) contrast(107%);
+  --icon-filter-danger: brightness(0) saturate(100%) invert(78%) sepia(36%) saturate(4363%)
+    hue-rotate(308deg) brightness(100%) contrast(105%);
+  --logo: url('/img/logo-tube-archivist-dark.png');
+  --banner: url('/img/logo-tube-archivist-dark.png');
+}
+
+:root[data-theme='colourblind'] {
+  color-scheme: light;
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --text: #1a1f24;
+  --muted: #56606a;
+  --line: #d5dce3;
+  --accent: #005f99;
+  --accent-text: #ffffff;
+  --accent-soft: #d9eaf6;
+  /* failure is orange, success is blue: never green against red */
+  --danger: #b04600;
+  --danger-soft: #fbe4d4;
+  --warn-soft: #faf0c4;
+  --ok-soft: #d6ebf7;
+  --cat-1: #0072b2;
+  --cat-2: #e69f00;
+  --cat-3: #009e73;
+  --cat-4: #cc79a7;
+  --cat-5: #56b4e9;
+  --cat-6: #d55e00;
+  --cat-7: #0072b2;
+  --cat-8: #e69f00;
+  --cat-9: #009e73;
+  --cat-10: #cc79a7;
+  --cat-11: #56b4e9;
+  --cat-12: #d55e00;
+  --cat-7-border: double;
+  --cat-8-border: double;
+  --cat-9-border: double;
+  --cat-10-border: double;
+  --cat-11-border: double;
+  --cat-12-border: double;
+  --icon-filter: brightness(0) saturate(100%) invert(24%) sepia(57%) saturate(2214%)
+    hue-rotate(180deg) brightness(97%) contrast(101%);
+  --icon-filter-danger: brightness(0) saturate(100%) invert(26%) sepia(95%) saturate(1357%)
+    hue-rotate(7deg) brightness(97%) contrast(101%);
+}
+
+/* all themes: a visible focus ring in the accent colour */
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* high contrast: thicker link underlines, bordered controls */
+a {
+  text-decoration-thickness: var(--link-underline);
+}
+
+:root[data-theme='contrast'] a {
+  text-decoration: underline;
+  text-decoration-thickness: var(--link-underline);
+}

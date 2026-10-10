@@ -28,6 +28,11 @@ jobs:
           cd frontend
           npm install
 
+      - name: Frontend tests
+        run: |
+          cd frontend
+          npm test
+
       - name: Cache pre-commit environment
         uses: actions/cache@v3
         with:

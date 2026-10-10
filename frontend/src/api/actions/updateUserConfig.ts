@@ -1,21 +1,7 @@
 import { ViewStylesType } from '../../configuration/constants/ViewStyle';
+import { ThemeSlug } from '../../configuration/theme/theme';
 import APIClient from '../../functions/APIClient';
 import { SortByType, SortOrderType, VideoTypes } from '../loader/loadVideoListByPage';
-
-export type ColourVariants =
-  | 'dark.css'
-  | 'light.css'
-  | 'matrix.css'
-  | 'midnight.css'
-  | 'custom.css';
-
-export const ColourConstant = {
-  Dark: 'dark.css',
-  Light: 'light.css',
-  Matrix: 'matrix.css',
-  Midnight: 'midnight.css',
-  Custom: 'custom.css',
-};
 
 export const FileSizeUnits = {
   Binary: 'binary',
@@ -23,7 +9,7 @@ export const FileSizeUnits = {
 };
 
 export type UserConfigType = {
-  stylesheet: ColourVariants;
+  stylesheet: ThemeSlug;
   page_size: number;
   sort_by: SortByType;
   sort_order: SortOrderType;
