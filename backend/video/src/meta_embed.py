@@ -220,7 +220,7 @@ class IndexFromEmbed:
             )
             self._restore_art_item(
                 video_mutagen,
-                "----:com.tubearchivist:playlist_{plalyist_id}",
+                f"----:com.tubearchivist:playlist_{playlist_id}",
                 playlist_art,
             )
 
@@ -289,9 +289,7 @@ class IndexFromEmbed:
             # is not embedded
             return
 
-        art_folder = os.path.dirname(target_path)
-        if not os.path.exists(art_folder):
-            os.mkdir(art_folder)
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
 
         with open(target_path, "wb") as f:
             f.write(bytes(art_item[0]))
@@ -362,13 +360,9 @@ class IndexFromEmbed:
         self, indexed, embedded_lang, embedded_source
     ) -> bool:
         """check if subtitle should be processed"""
-        for sub_indexed in indexed:
-            if (
-                sub_indexed.get("lang") == embedded_lang
-                and sub_indexed.get("source") == embedded_source
-            ):
-                # already indexed
-                return False
+        if (embedded_lang, embedded_source) in indexed:
+            # already indexed
+            return False
 
         if not self.use_user_conf:
             return True
