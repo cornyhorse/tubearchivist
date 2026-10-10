@@ -391,4 +391,9 @@ class SubtitleParser:
                 chunk_list.append(chunk)
                 chunk = {}
 
+        if chunk:
+            # keep the cues after the last full chunk
+            chunk["subtitle_end"] = self.all_cues[-1].get("end")
+            chunk_list.append(chunk)
+
         return chunk_list
