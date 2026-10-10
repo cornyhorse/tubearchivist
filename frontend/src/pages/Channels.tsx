@@ -1,3 +1,5 @@
+import { DownloadRuleType } from '../api/actions/updateDownloadRule';
+import { EmbyNumberingType } from '../api/actions/updateEmbyNumbering';
 import { useOutletContext } from 'react-router-dom';
 import loadChannelList, { ChannelsListResponse } from '../api/loader/loadChannelList';
 import iconGridView from '/img/icon-gridview.svg';
@@ -41,6 +43,8 @@ export type ChannelType = {
   channel_tags?: string[];
   channel_thumb_url: string;
   channel_tvart_url: string;
+  emby_numbering?: EmbyNumberingType;
+  download_rule?: DownloadRuleType | null;
 };
 
 const Channels = () => {

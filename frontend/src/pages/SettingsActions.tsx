@@ -16,6 +16,7 @@ const SettingsActions = () => {
   const [deletePending, setDeletePending] = useState(false);
   const [processingImports, setProcessingImports] = useState(false);
   const [reSyncMeta, setReSyncMeta] = useState(false);
+  const [embySync, setEmbySync] = useState(false);
   const [backupStarted, setBackupStarted] = useState(false);
   const [isRestoringBackup, setIsRestoringBackup] = useState(false);
   const [reScanningFileSystem, setReScanningFileSystem] = useState(false);
@@ -126,6 +127,25 @@ const SettingsActions = () => {
                 onClick={async () => {
                   await updateTaskByName('resync_metadata');
                   setReSyncMeta(true);
+                }}
+              />
+            )}
+          </div>
+        </div>
+        <div className="settings-group">
+          <h2>Sync Emby library</h2>
+          <p>
+            Write the Emby library tree (episode NFOs, thumbnails and media links). Runs on its own
+            after downloads and refreshes when TA_EMBY_ROOT is set; only changed files are written.
+          </p>
+          <div id="emby-sync">
+            {embySync && <p>Emby sync started</p>}
+            {!embySync && (
+              <Button
+                label="Start sync"
+                onClick={async () => {
+                  await updateTaskByName('emby_sync');
+                  setEmbySync(true);
                 }}
               />
             )}

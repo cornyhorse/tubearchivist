@@ -19,12 +19,16 @@ import deleteCookie from '../api/actions/deleteCookie';
 import validateCookie from '../api/actions/validateCookie';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import MembershipAppsettings from '../components/MembershipAppsettings';
+import DownloadRuleForm from '../components/DownloadRuleForm';
+import loadDefaultDownloadRule from '../api/loader/loadDownloadRule';
+import { DownloadRuleType } from '../api/actions/updateDownloadRule';
 
 type SettingsApplicationReponses = {
   snapshots?: SnapshotListType;
   appSettingsConfig?: AppSettingsConfigType;
   apiToken?: string;
   cookieState?: CookieStateType;
+  defaultRule?: DownloadRuleType | null;
 };
 
 const SettingsApplication = () => {
@@ -87,6 +91,7 @@ const SettingsApplication = () => {
     const appSettingsConfig = await loadAppsettingsConfig();
     const apiTokenResponse = await loadApiToken();
     const cookieStateResponse = await loadCookie();
+    const defaultRuleResponse = await loadDefaultDownloadRule();
 
     const { data: snapshotResponseData } = snapshotResponse ?? {};
     const { data: appSettingsConfigData } = appSettingsConfig ?? {};
@@ -138,6 +143,7 @@ const SettingsApplication = () => {
       appSettingsConfig: appSettingsConfigData,
       apiToken: apiTokenResponseData?.token,
       cookieState: cookieStateResponseData,
+      defaultRule: defaultRuleResponse?.data ?? null,
     });
   };
 
@@ -285,6 +291,25 @@ const SettingsApplication = () => {
                   updateCallback={handleUpdateConfig}
                 />
               </div>
+            </div>
+            <div className="info-box-item">
+              <h2 id="download-rules">Default Download Rules</h2>
+              {userConfig.show_help_text && (
+                <div className="help-text">
+                  <ul>
+                    <li>
+                      Applies to channel scans and subscriptions of every channel without its own
+                      rule (set those on the channel's About page). Empty fields match everything.
+                    </li>
+                    <li>Videos you add by URL are always downloaded.</li>
+                  </ul>
+                </div>
+              )}
+              <DownloadRuleForm
+                key={JSON.stringify(response?.defaultRule ?? null)}
+                rule={response?.defaultRule ?? null}
+                onSaved={() => setRefresh(true)}
+              />
             </div>
             <div className="info-box-item">
               <h2 id="downloads">Downloads</h2>
@@ -534,8 +559,8 @@ const SettingsApplication = () => {
                       generated subtitles from YT.
                     </li>
                     <li>
-                      Indexing subtitles add the fulltext to the ES index. Not recommended on low
-                      end hardware.
+                      Indexing subtitles adds the full text to the search index. Not recommended on
+                      low end hardware.
                     </li>
                   </ul>
                 </div>
@@ -874,15 +899,15 @@ const SettingsApplication = () => {
               {userConfig.show_help_text && (
                 <div className="help-text">
                   <p>
-                    Automatically create daily deduplicated snapshots of the index, stored in
-                    Elasticsearch. Restoring from snapshot replaced your current index with the
-                    index from the snapshot.
+                    Automatically create a daily snapshot of the database (pg_dump), stored in the
+                    cache folder and kept for 30 days. Restoring a snapshot replaces your current
+                    library data with the snapshot; users and settings stay as they are.
                   </p>
                 </div>
               )}
               <div className="settings-box-wrapper">
                 <div>
-                  <p>Enable Index Snapshot</p>
+                  <p>Enable Database Snapshot</p>
                 </div>
                 <ToggleConfig
                   name="application.enable_snapshot"

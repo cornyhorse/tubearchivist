@@ -1,3 +1,4 @@
+import { EmbyNumberingType } from '../actions/updateEmbyNumbering';
 import APIClient from '../../functions/APIClient';
 
 export type PlaylistEntryType = {
@@ -21,6 +22,7 @@ export type PlaylistType = {
   playlist_subscribed: boolean;
   playlist_thumbnail: string;
   playlist_type: string;
+  emby_numbering?: EmbyNumberingType;
   _index: string;
   _score: number;
 };
