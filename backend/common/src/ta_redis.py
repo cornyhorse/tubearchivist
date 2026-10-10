@@ -97,7 +97,7 @@ class RedisArchivist(RedisBase):
         if not reply:
             return []
 
-        return [i.lstrip(self.NAME_SPACE) for i in reply]
+        return [i.removeprefix(self.NAME_SPACE) for i in reply]
 
     def list_items(self, query: str) -> list:
         """list all matches"""
