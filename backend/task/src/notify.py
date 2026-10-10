@@ -6,7 +6,6 @@ from django.db import transaction
 from task.src.task_config import TASK_CONFIG
 from task.src.task_manager import TaskManager
 
-
 NOTIFY_KEY = "notify"
 
 

@@ -10,8 +10,8 @@ from appsettings.src.backup import DatabaseBackup
 from appsettings.src.config import ReleaseVersion
 from appsettings.src.filesystem import Scanner
 from appsettings.src.manual import ImportFolderScanner
-from appsettings.src.snapshot import DbSnapshot
 from appsettings.src.reindex import Reindex, ReindexManual, ReindexPopulate
+from appsettings.src.snapshot import DbSnapshot
 from celery import Task, shared_task
 from celery.exceptions import Retry
 from channel.src.index import YoutubeChannel
