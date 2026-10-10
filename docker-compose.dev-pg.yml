@@ -1,0 +1,20 @@
+# Throwaway local services for developing the Postgres storage layer.
+# Data lives in anonymous volumes; `docker compose -f ... down -v` wipes it.
+name: ta-fork-dev
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ta
+      POSTGRES_PASSWORD: ta-dev-only
+      POSTGRES_DB: ta
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ta"]
+      interval: 2s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:56379:6379"
