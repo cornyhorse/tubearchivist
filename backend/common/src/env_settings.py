@@ -1,16 +1,17 @@
 """
 Functionality:
-- read and write application config backed by ES
+- read application settings from the environment
 - encapsulate persistence of application properties
 """
 
 from os import environ, path
+from pathlib import Path
 
 try:
     from dotenv import load_dotenv
 
     print("loading local dotenv")
-    load_dotenv(".env")
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 except ModuleNotFoundError:
     pass
 
@@ -66,16 +67,16 @@ class EnvironmentSettings:
     REDIS_CON: str = str(environ.get("REDIS_CON"))
     REDIS_NAME_SPACE: str = str(environ.get("REDIS_NAME_SPACE", "ta:"))
 
-    # ElasticSearch
-    ES_URL: str = str(environ.get("ES_URL"))
-    ES_PASS: str = get_password_from_file("ELASTIC_PASSWORD")
-    ES_USER: str = str(environ.get("ELASTIC_USER", "elastic"))
-    ES_SNAPSHOT_DIR: str = str(
-        environ.get(
-            "ES_SNAPSHOT_DIR", "/usr/share/elasticsearch/data/snapshot"
-        )
-    )
-    ES_DISABLE_VERIFY_SSL: bool = bool(environ.get("ES_DISABLE_VERIFY_SSL"))
+    # native Emby library, disabled when empty; must share a filesystem
+    # with MEDIA_DIR because media files are hardlinked
+    EMBY_ROOT: str = str(environ.get("TA_EMBY_ROOT", ""))
+
+    # Postgres
+    TA_DB_HOST: str = str(environ.get("TA_DB_HOST", "localhost"))
+    TA_DB_PORT: int = int(environ.get("TA_DB_PORT", 5432))
+    TA_DB_NAME: str = str(environ.get("TA_DB_NAME", "tubearchivist"))
+    TA_DB_USER: str = str(environ.get("TA_DB_USER", "tubearchivist"))
+    TA_DB_PASSWORD: str = get_password_from_file("TA_DB_PASSWORD")
 
     def get_cache_root(self):
         """get root for web server"""
@@ -116,18 +117,18 @@ class EnvironmentSettings:
             REDIS_CON: {self.REDIS_CON}
             REDIS_NAME_SPACE: {self.REDIS_NAME_SPACE}""")
 
-    def print_es_paths(self):
-        """debug es conf"""
+    def print_db_conf(self):
+        """debug postgres conf"""
         print(f"""
-            ES_URL: {self.ES_URL}
-            ES_PASS: *****
-            ES_USER: {self.ES_USER}
-            ES_SNAPSHOT_DIR: {self.ES_SNAPSHOT_DIR}
-            ES_DISABLE_VERIFY_SSL: {self.ES_DISABLE_VERIFY_SSL}""")
+            TA_DB_HOST: {self.TA_DB_HOST}
+            TA_DB_PORT: {self.TA_DB_PORT}
+            TA_DB_NAME: {self.TA_DB_NAME}
+            TA_DB_USER: {self.TA_DB_USER}
+            TA_DB_PASSWORD: *****""")
 
     def print_all(self):
         """print all"""
         self.print_generic()
         self.print_paths()
         self.print_redis_conf()
-        self.print_es_paths()
+        self.print_db_conf()

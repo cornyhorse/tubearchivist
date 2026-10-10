@@ -1,13 +1,12 @@
 """
 Functionality:
-- processing search results for frontend
-- this is duplicated code from home.src.frontend.searching.SearchHandler
+- format stored documents for the frontend
 """
 
 import urllib.parse
 
 from common.src.env_settings import EnvironmentSettings
-from common.src.helper import date_parser, get_duration_str
+from common.src.helper import date_parser
 from common.src.ta_redis import RedisArchivist
 from download.src.thumbnails import ThumbManager
 
@@ -15,25 +14,25 @@ from download.src.thumbnails import ThumbManager
 class SearchProcess:
     """process search results"""
 
-    def __init__(self, response, match_video_user_progress: None | int = None):
-        self.response = response
-        self.processed = False
+    def __init__(self, match_video_user_progress: None | int = None):
         self.position_index = self.get_user_progress(match_video_user_progress)
 
-    def process(self):
-        """detect type and process"""
-        if "_source" in self.response.keys():
-            # single
-            self.processed = self._process_result(self.response)
+    def process_one(
+        self,
+        index: str,
+        source: dict,
+        score: float | None = None,
+        highlight: dict | None = None,
+    ):
+        """format one document of index (ta_video, ta_channel, ...)"""
+        result = {"_index": index, "_source": source, "_score": score}
+        if highlight:
+            result["highlight"] = highlight
+        return self._process_result(result)
 
-        elif "hits" in self.response.keys():
-            # multiple
-            self.processed = []
-            all_sources = self.response["hits"]["hits"]
-            for result in all_sources:
-                self.processed.append(self._process_result(result))
-
-        return self.processed
+    def process_many(self, index: str, sources: list[dict]) -> list:
+        """format documents of one index"""
+        return [self.process_one(index, source) for source in sources]
 
     def get_user_progress(self, match_video_user_progress) -> dict | None:
         """get user video watch progress"""
@@ -229,15 +228,3 @@ class SearchProcess:
         subtitle_dict.update({"vid_thumb_url": f"/cache/{thumb_path}"})
 
         return subtitle_dict
-
-
-def process_aggs(response):
-    """convert aggs duration to str"""
-
-    if response.get("aggregations"):
-        aggs = response["aggregations"]
-        if "total_duration" in aggs:
-            duration_sec = int(aggs["total_duration"]["value"])
-            aggs["total_duration"].update(
-                {"value_str": get_duration_str(duration_sec)}
-            )

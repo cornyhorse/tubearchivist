@@ -1,8 +1,9 @@
 """base classes to inherit from"""
 
-from common.src.es_connect import ElasticWrap
+from typing import Callable
+
 from common.src.index_generic import Pagination
-from common.src.search_processor import SearchProcess, process_aggs
+from common.src.search_processor import SearchProcess
 from rest_framework import permissions
 from rest_framework.authentication import (
     SessionAuthentication,
@@ -38,65 +39,53 @@ class ApiBaseView(APIView):
 
     authentication_classes = [SessionAuthentication, TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
-    search_base = ""
-    data = ""
 
     def __init__(self):
         super().__init__()
         self.response = {}
-        self.data = {"query": {"match_all": {}}}
         self.status_code = False
         self.context = False
         self.pagination_handler = False
 
-    def get_document(self, document_id, progress_match=None):
-        """get single document from es"""
-        path = f"{self.search_base}{document_id}"
-        response, status_code = ElasticWrap(path).get()
-        try:
-            self.response = SearchProcess(
-                response, match_video_user_progress=progress_match
-            ).process()
-        except KeyError:
-            print(f"item not found: {document_id}")
-
-        self.status_code = status_code
-
-    def initiate_pagination(self, request):
-        """set initial pagination values"""
-        self.pagination_handler = Pagination(request)
-        self.data.update(
-            {
-                "size": self.pagination_handler.pagination["page_size"],
-                "from": self.pagination_handler.pagination["page_from"],
-            }
-        )
-
-    def get_document_list(self, request, pagination=True, progress_match=None):
-        """get a list of results"""
-        if pagination:
-            self.initiate_pagination(request)
-
-        es_handler = ElasticWrap(self.search_base)
-        response, status_code = es_handler.get(data=self.data)
-        self.response["data"] = SearchProcess(
-            response, match_video_user_progress=progress_match
-        ).process()
-        if self.response["data"]:
-            self.status_code = status_code
-        else:
+    def get_document(
+        self, index: str, document: dict | None, progress_match=None
+    ) -> None:
+        """format a single document, 404 if None"""
+        if document is None:
+            print(f"item not found in {index}")
+            self.response = {}
             self.status_code = 404
+            return
 
-        if pagination and response.get("hits"):
-            self.pagination_handler.validate(
-                response["hits"]["total"]["value"]
-            )
+        self.response = SearchProcess(
+            match_video_user_progress=progress_match
+        ).process_one(index, document)
+        self.status_code = 200
+
+    def get_document_list(
+        self,
+        request,
+        index: str,
+        queryset,
+        to_doc: Callable = lambda obj: obj.to_doc(),
+        pagination: bool = True,
+        progress_match=None,
+    ) -> None:
+        """format a page of queryset, or all of it without pagination"""
+        if pagination:
+            self.pagination_handler = Pagination(request)
+            page = self.pagination_handler.pagination
+            start = page["page_from"]
+            total = queryset.count()
+            objects = queryset[start : start + page["page_size"]]
+        else:
+            objects = queryset
+
+        processor = SearchProcess(match_video_user_progress=progress_match)
+        documents = [to_doc(obj) for obj in objects]
+        self.response["data"] = processor.process_many(index, documents)
+        self.status_code = 200 if self.response["data"] else 404
+
+        if pagination:
+            self.pagination_handler.validate(total)
             self.response["paginate"] = self.pagination_handler.pagination
-
-    def get_aggs(self):
-        """get aggs alone"""
-        self.data["size"] = 0
-        response, _ = ElasticWrap(self.search_base).get(data=self.data)
-        process_aggs(response)
-
-        self.response = response.get("aggregations")

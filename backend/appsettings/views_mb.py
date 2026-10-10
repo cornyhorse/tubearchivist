@@ -34,8 +34,7 @@ class MembershipProfileView(ApiBaseView):
         try:
             profile_response = Membership().get_profile()
         except ValueError as error:
-            error = ErrorResponseSerializer({"message": str(error)})
-            return Response(error.data, status=400)
+            return Response({"message": str(error)}, status=400)
 
         try:
             response_json = profile_response.json()

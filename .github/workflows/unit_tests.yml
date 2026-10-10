@@ -12,6 +12,34 @@ jobs:
   unit-tests:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ta
+          POSTGRES_PASSWORD: ta-ci-only
+          POSTGRES_DB: ta
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ta"
+          --health-interval 2s
+          --health-retries 30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    env:
+      TA_DB_HOST: 127.0.0.1
+      TA_DB_PORT: 5432
+      TA_DB_NAME: ta
+      TA_DB_USER: ta
+      TA_DB_PASSWORD: ta-ci-only
+      REDIS_CON: redis://127.0.0.1:6379
+      TA_PASSWORD: ci-only
+      TZ: UTC
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -40,4 +68,5 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Run unit tests
-        run: pytest backend
+        # 100% coverage of fork-owned code, see .coveragerc
+        run: pytest backend --cov --cov-config=.coveragerc

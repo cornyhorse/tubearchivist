@@ -137,14 +137,9 @@ class WatchedView(ApiBaseView):
         data_serializer = WatchedDataSerializer(data=request.data)
         data_serializer.is_valid(raise_exception=True)
         validated_data = data_serializer.validated_data
-        youtube_id = validated_data.get("id")
-        is_watched = validated_data.get("is_watched")
-
-        if not youtube_id or is_watched is None:
-            error = ErrorResponseSerializer(
-                {"error": "missing id or is_watched"}
-            )
-            return Response(error.data, status=400)
+        # both fields are required by the serializer
+        youtube_id = validated_data["id"]
+        is_watched = validated_data["is_watched"]
 
         WatchState(youtube_id, is_watched, request.user.id).change()
         return Response(data_serializer.data)
@@ -160,7 +155,7 @@ class SearchView(ApiBaseView):
         """handle get request
         search through all indexes"""
         search_query = request.GET.get("query", None)
-        if search_query is None:
+        if search_query is None or not search_query.strip():
             return Response(
                 {"message": "no search query specified"}, status=400
             )

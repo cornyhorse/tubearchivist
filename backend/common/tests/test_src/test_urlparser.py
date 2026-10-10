@@ -1,7 +1,45 @@
 """tests for url parser"""
 
 import pytest
+from common.src import urlparser
+from common.src.ta_redis import RedisArchivist
 from common.src.urlparser import Parser
+
+# channel handles as youtube resolves them, for the fake yt-dlp below
+HANDLES = {
+    "@tomscottgo": {"channel_id": "UCBa659QWEk1AI4Tg--mrJ2A"},
+    "@ibracorp": {"channel_id": "UC7aW7chIafJG6ECYAd3N5uQ"},
+    "@oldname": {"url": "https://www.youtube.com/channel/UColdname"},
+    "@empty": {"title": "no ids here"},
+}
+
+
+class FakeYtWrap:
+    """resolve handles from HANDLES instead of asking youtube"""
+
+    calls: list[str] = []
+
+    def __init__(self, obs_request, config=False):
+        self.obs_request = obs_request
+        self.config = config
+
+    def extract(self, url):
+        """canned response by handle, error when unknown"""
+        self.calls.append(url)
+        handle = urlparser.urlparse(url).path.strip("/").split("/")[0]
+        response = HANDLES.get(handle.lower())
+        if response is None:
+            return None, "not found"
+        return response, None
+
+
+@pytest.fixture(autouse=True, name="fake_yt")
+def fixture_fake_yt(monkeypatch):
+    """never ask youtube"""
+    monkeypatch.setattr(urlparser, "YtWrap", FakeYtWrap)
+    FakeYtWrap.calls = []
+    return FakeYtWrap
+
 
 # video id parsing
 VIDEO_URL_IN = [
@@ -156,3 +194,83 @@ def test_invalid_domains(invalid_value):
     parser = Parser(invalid_value, use_cache=False)
     with pytest.raises(ValueError, match="invalid domain"):
         parser.parse()
+
+
+@pytest.mark.parametrize(
+    "url, expected_type",
+    [
+        ("https://youtu.be/UCBa659QWEk1AI4Tg--mrJ2A", "video"),
+        (
+            "https://www.youtube.com/watch?v=PL96C35uN7xGJu6skU4TBYrIWx",
+            "video",
+        ),
+        ("https://www.youtube.com/channel/7DKv5H5Frt0", "channel"),
+    ],
+)
+def test_unexpected_type(url, expected_type):
+    """an id of another type where one type is expected"""
+    with pytest.raises(
+        ValueError, match=f"not of expected type {expected_type}"
+    ):
+        Parser(url, use_cache=False).parse()
+
+
+def test_multiple_and_tab_detection():
+    """several items, vid_type from the last path part"""
+    parsed = Parser(
+        "7DKv5H5Frt0\nhttps://www.youtube.com/@OldName/streams",
+        use_cache=False,
+    ).parse()
+    assert parsed == [
+        {"type": "video", "url": "7DKv5H5Frt0", "vid_type": "unknown"},
+        {"type": "channel", "url": "UColdname", "vid_type": "streams"},
+    ]
+
+
+def test_extract_channel_name_failures():
+    """unknown handle and response without any id"""
+    with pytest.raises(ValueError, match="failed to retrieve URL"):
+        Parser("@NoSuchHandle", use_cache=False).parse()
+    with pytest.raises(ValueError):
+        Parser("@Empty", use_cache=False).parse()
+
+
+@pytest.mark.usefixtures("redis_clean")
+def test_handle_lookup_is_cached(fake_yt, redis_clean):
+    """resolved handles are cached in redis for a week"""
+    expected = [
+        {
+            "type": "channel",
+            "url": "UCBa659QWEk1AI4Tg--mrJ2A",
+            "vid_type": "unknown",
+        }
+    ]
+    assert Parser("@TomScottGo").parse() == expected
+    assert Parser("https://www.youtube.com/@tomscottgo/").parse() == expected
+    assert fake_yt.calls == ["https://www.youtube.com/@TomScottGo"]
+
+    key = "channel:handlesearch:@tomscottgo"
+    assert RedisArchivist().get_message_dict(key) == {
+        "channel_id": "UCBa659QWEk1AI4Tg--mrJ2A",
+        "handle": "@TomScottGo",
+    }
+    ttl = redis_clean.ttl(f"{RedisArchivist.NAME_SPACE}{key}")
+    assert 3600 * 24 * 6 < ttl <= 3600 * 24 * 7
+
+
+@pytest.mark.usefixtures("redis_clean")
+def test_redirect_is_not_cached(fake_yt):
+    """old channel name redirects resolve, but are not cached"""
+    assert Parser("@OldName").parse()[0]["url"] == "UColdname"
+    assert Parser("@OldName").parse()[0]["url"] == "UColdname"
+    assert len(fake_yt.calls) == 2
+    assert RedisArchivist().list_keys("channel:handlesearch") == []
+
+
+@pytest.mark.usefixtures("redis_clean")
+def test_cache_only_for_handles():
+    """no cache lookups or writes for urls without a handle"""
+    url = "https://www.youtube.com/c/legacy"
+    assert Parser._get_cached(url) is None
+    Parser._set_cache(url, "UCx")
+    assert RedisArchivist().list_keys("channel:handlesearch") == []

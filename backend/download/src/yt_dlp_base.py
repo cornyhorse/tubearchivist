@@ -102,7 +102,8 @@ class YtWrap:
                     raise ConnectionError("lost the internet, abort!") from err
                 if any(m in str(err) for m in self.BOT_MESSAGES):
                     print(self.BOT_ERROR_LOG)
-                    rand_sleep(self.config)
+                    if self.config:
+                        rand_sleep(self.config)
                     raise ConnectionError(self.BOT_ERROR_LOG) from err
 
                 return False, str(err)
@@ -134,7 +135,8 @@ class YtWrap:
                     raise ConnectionError("lost the internet, abort!") from err
                 if any(m in str(err) for m in self.BOT_MESSAGES):
                     print(self.BOT_ERROR_LOG)
-                    rand_sleep(self.config)
+                    if self.config:
+                        rand_sleep(self.config)
                     raise ConnectionError(self.BOT_ERROR_LOG) from err
 
                 return None, str(err)

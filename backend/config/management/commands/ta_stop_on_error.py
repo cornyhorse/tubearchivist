@@ -29,12 +29,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("    ✓ local DB is up-to-date."))
 
-    def list_tables(self):
-        """raw list all tables"""
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table';"
-            )
-            tables = cursor.fetchall()
-
-        return [table[0] for table in tables]
+    @staticmethod
+    def list_tables():
+        """all tables in the database"""
+        return connection.introspection.table_names()

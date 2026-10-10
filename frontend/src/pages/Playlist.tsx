@@ -33,6 +33,7 @@ import { useUserConfigStore } from '../stores/UserConfigStore';
 import { ApiResponseType } from '../functions/APIClient';
 import NotFound from './NotFound';
 import updatePlaylistSortOrder from '../api/actions/updatePlaylistSortOrder';
+import EmbyNumberingSelect from '../components/EmbyNumberingSelect';
 import { useFilterBarTempConf } from '../stores/FilterbarTempConf';
 import { HideWatchedType, HideWatchedName } from '../configuration/constants/HideWatched';
 
@@ -325,6 +326,15 @@ const Playlist = () => {
                     )}
                   </div>
                 </div>
+              )}
+              {isAdmin && playlist.playlist_type !== 'custom' && (
+                <EmbyNumberingSelect
+                  kind="playlist"
+                  id={playlist.playlist_id}
+                  value={playlist.emby_numbering ?? 'playlist_position'}
+                  options={['playlist_position', 'date', 'year_frozen', 'absolute_frozen']}
+                  onSaved={() => setRefresh(true)}
+                />
               )}
             </div>
           </div>

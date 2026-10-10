@@ -3,13 +3,14 @@ Functionality:
 - check that all connections are working
 """
 
+import re
+import shutil
+import subprocess
 from time import sleep
 
-import requests
-from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import ElasticWrap
 from common.src.ta_redis import RedisArchivist
 from django.core.management.base import BaseCommand, CommandError
+from django.db import OperationalError, connection
 
 TOPIC = """
 
@@ -24,8 +25,8 @@ class Command(BaseCommand):
     """command framework"""
 
     TIMEOUT = 120
-    MIN_MAJOR, MAX_MAJOR = 8, 9
-    MIN_MINOR = 0
+    # Django 6 supports PostgreSQL 15 and later
+    MIN_MAJOR = 15
 
     # pylint: disable=no-member
     help = "Check connections"
@@ -35,9 +36,9 @@ class Command(BaseCommand):
         self.stdout.write(TOPIC)
         self._redis_connection_check()
         self._redis_config_set()
-        self._es_connection_check()
-        self._es_version_check()
-        self._es_path_check()
+        self._db_connection_check()
+        self._db_version_check()
+        self._pg_dump_check()
 
     def _redis_connection_check(self):
         """check ir redis connection is established"""
@@ -77,101 +78,77 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("    ✓ Redis config set"))
 
-    def _es_connection_check(self):
-        """wait for elasticsearch connection"""
-        self.stdout.write("[3] connect to Elastic Search")
+    def _db_connection_check(self):
+        """wait for postgres"""
+        self.stdout.write("[3] connect to Postgres")
         total = self.TIMEOUT // 5
+        error = None
         for i in range(total):
-            self.stdout.write(f"    ... waiting for ES [{i}/{total}]")
             try:
-                _, status_code = ElasticWrap("/").get(
-                    timeout=1, print_error=False
-                )
-            except (
-                requests.exceptions.ConnectionError,
-                requests.exceptions.Timeout,
-            ):
-                sleep(5)
-                continue
-
-            if status_code and status_code == 401:
-                sleep(5)
-                continue
-
-            if status_code and status_code == 200:
-                path = (
-                    "_cluster/health?"
-                    "wait_for_status=yellow&"
-                    "timeout=60s&"
-                    "wait_for_active_shards=1"
-                )
-                _, _ = ElasticWrap(path).get(timeout=60)
+                connection.ensure_connection()
                 self.stdout.write(
-                    self.style.SUCCESS("    ✓ ES connection established")
+                    self.style.SUCCESS("    ✓ Postgres connection established")
                 )
                 return
+            except OperationalError as err:
+                error = err
+                self.stdout.write(
+                    f"    ... waiting for Postgres [{i}/{total}]"
+                )
+                connection.close()
+                sleep(5)
 
-        response, status_code = ElasticWrap("/").get(
-            timeout=1, print_error=False
-        )
-
-        message = "    🗙 ES connection failed"
-        self.stdout.write(self.style.ERROR(f"{message}"))
-        self.stdout.write(f"    error message: {response}")
-        self.stdout.write(f"    status code: {status_code}")
+        message = "    🗙 Postgres connection failed"
+        self.stdout.write(self.style.ERROR(message))
+        self.stdout.write(f"    error message: {error}")
         sleep(60)
         raise CommandError(message)
 
-    def _es_version_check(self):
-        """check for minimal elasticsearch version"""
-        self.stdout.write("[4] Elastic Search version check")
-        response, _ = ElasticWrap("/").get()
-        version = response["version"]["number"]
-        major = int(version.split(".")[0])
-
-        if self.MIN_MAJOR <= major <= self.MAX_MAJOR:
+    def _db_version_check(self):
+        """check for minimal postgres version"""
+        self.stdout.write("[4] Postgres version check")
+        major = connection.pg_version // 10000
+        if major >= self.MIN_MAJOR:
             self.stdout.write(
-                self.style.SUCCESS("    ✓ ES version check passed")
+                self.style.SUCCESS(f"    ✓ Postgres {major} check passed")
             )
             return
 
         message = (
-            "    🗙 ES version check failed. "
-            + f"Expected {self.MIN_MAJOR}.{self.MIN_MINOR} but got {version}"
+            "    🗙 Postgres version check failed. "
+            + f"Expected {self.MIN_MAJOR} or later but got {major}"
         )
-        self.stdout.write(self.style.ERROR(f"{message}"))
+        self.stdout.write(self.style.ERROR(message))
         sleep(60)
         raise CommandError(message)
 
-    def _es_path_check(self):
-        """check that path.repo var is set"""
-        self.stdout.write("[5] check ES path.repo env var")
-        response, _ = ElasticWrap("_nodes/_all/settings").get()
-        snaphost_roles = [
-            "data",
-            "data_cold",
-            "data_content",
-            "data_frozen",
-            "data_hot",
-            "data_warm",
-            "master",
-        ]
-        for node in response["nodes"].values():
-            if not (set(node["roles"]) & set(snaphost_roles)):
-                continue
+    def _pg_dump_check(self):
+        """snapshots need a pg_dump at least as new as the server"""
+        self.stdout.write("[5] pg_dump check")
+        server = connection.pg_version // 10000
+        binary = shutil.which("pg_dump")
+        client = 0
+        if binary:
+            output = subprocess.run(
+                [binary, "--version"],
+                capture_output=True,
+                text=True,
+                check=False,
+            ).stdout
+            if found := re.search(r"(\d+)\.", output):
+                client = int(found.group(1))
 
-            if node["settings"]["path"].get("repo"):
-                self.stdout.write(
-                    self.style.SUCCESS("    ✓ path.repo env var is set")
+        if client >= server:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"    ✓ pg_dump {client} can dump Postgres {server}"
                 )
-                return
-
-            message = (
-                "    🗙 path.repo env var not found. "
-                + "set the following env var to the ES container:\n"
-                + "    path.repo="
-                + EnvironmentSettings.ES_SNAPSHOT_DIR
             )
-            self.stdout.write(self.style.ERROR(message))
-            sleep(60)
-            raise CommandError(message)
+            return
+
+        self.stdout.write(
+            self.style.WARNING(
+                f"    pg_dump {client or 'missing'} can't dump Postgres "
+                + f"{server}, database snapshots will fail"
+            )
+        )

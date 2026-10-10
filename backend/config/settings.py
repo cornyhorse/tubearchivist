@@ -11,7 +11,7 @@ https://docs.djangoproject.com/en/3.2/ref/settings/
 """
 
 import hashlib
-from os import environ, path
+from os import environ
 from pathlib import Path
 
 from common.src.env_settings import EnvironmentSettings
@@ -22,7 +22,7 @@ from corsheaders.defaults import default_headers
 try:
     from dotenv import load_dotenv
 
-    load_dotenv(".env")
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ModuleNotFoundError:
     pass
 
@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "django.contrib.staticfiles",
     "django.contrib.humanize",
+    "django.contrib.postgres",
     "rest_framework",
     "rest_framework.authtoken",
     "drf_spectacular",
@@ -70,6 +71,7 @@ INSTALLED_APPS = [
     "stats",
     "user",
     "config",
+    "emby",
 ]
 
 MIDDLEWARE = [
@@ -108,11 +110,16 @@ WSGI_APPLICATION = "config.wsgi.application"
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
 
 CACHE_DIR = EnvironmentSettings.CACHE_DIR
-DB_PATH = path.join(CACHE_DIR, "db.sqlite3")
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": DB_PATH,
+        "ENGINE": "django.db.backends.postgresql",
+        "HOST": EnvironmentSettings.TA_DB_HOST,
+        "PORT": EnvironmentSettings.TA_DB_PORT,
+        "NAME": EnvironmentSettings.TA_DB_NAME,
+        "USER": EnvironmentSettings.TA_DB_USER,
+        "PASSWORD": EnvironmentSettings.TA_DB_PASSWORD,
+        "CONN_MAX_AGE": 60,
+        "CONN_HEALTH_CHECKS": True,
     }
 }
 
@@ -222,6 +229,7 @@ CORS_EXPOSE_HEADERS = ["X-Start-Timestamp"]
 # TA application settings
 TA_UPSTREAM = "https://github.com/tubearchivist/tubearchivist"
 TA_VERSION = "v0.5.12"
+TA_START = None
 try:
     TA_START = RedisArchivist().get_message_str("STARTTIMESTAMP")
 except ValueError:

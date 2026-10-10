@@ -14,3 +14,7 @@ backend/.env
 node_modules
 
 .editorconfig
+
+# fork dev
+.venv/
+.coverage

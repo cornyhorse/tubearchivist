@@ -1,10 +1,10 @@
 """
 Functionality:
 - handle download queue
-- linked with ta_dowload index
+- backed by the Download model
+- apply download rules to channel extractions
 """
 
-import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -12,7 +12,6 @@ from appsettings.src.config import AppConfig
 from channel.src.index import YoutubeChannel
 from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.helper import (
     get_channels,
     get_duration_str,
@@ -20,10 +19,14 @@ from common.src.helper import (
     rand_sleep,
 )
 from common.src.urlparser import ParsedURLType
+from django.db import transaction
+from download.models import Download
 from download.serializers import DownloadItemSerializer
 from download.src.queue_interact import PendingInteract
+from download.src.rules import RuleSet
 from download.src.thumbnails import ThumbManager
 from playlist.src.index import YoutubePlaylist
+from video.models import Video
 from video.src.constants import VideoTypeEnum
 from video.src.index import YoutubeVideo
 
@@ -34,19 +37,19 @@ class PendingIndex:
     def __init__(self):
         self.all_pending = False
         self.all_ignored = False
-        self.all_videos = False
         self.all_channels = False
         self.channel_overwrites = False
         self.video_overwrites = False
         self.to_skip = False
 
     def get_download(self):
-        """get a list of all pending videos in ta_download"""
-        data = {
-            "query": {"match_all": {}},
-            "sort": [{"timestamp": {"order": "asc"}}],
-        }
-        all_results = IndexPaginate("ta_download", data).get_results()
+        """get a list of all items in the download queue"""
+        all_results = [
+            item.to_doc()
+            for item in Download.objects.with_channel_indexed().order_by(
+                "timestamp", "youtube_id"
+            )
+        ]
 
         self.all_pending = []
         self.all_ignored = []
@@ -60,14 +63,8 @@ class PendingIndex:
                 self.all_ignored.append(result)
 
     def get_indexed(self):
-        """get a list of all videos indexed"""
-        data = {
-            "query": {"match_all": {}},
-            "sort": [{"published": {"order": "desc"}}],
-        }
-        self.all_videos = IndexPaginate("ta_video", data).get_results()
-        for video in self.all_videos:
-            self.to_skip.append(video["youtube_id"])
+        """add all indexed video ids to to_skip"""
+        self.to_skip.extend(Video.objects.values_list("youtube_id", flat=True))
 
     def get_channels(self):
         """get a list of all channels indexed"""
@@ -124,6 +121,7 @@ class PendingList(PendingIndex):
         self.to_skip = False
         self.missing_videos: list[dict] = []
         self.added = 0
+        self.rules = RuleSet()
 
     def parse_url_list(self, status="pending") -> int:
         """extract youtube ids from list"""
@@ -178,13 +176,15 @@ class PendingList(PendingIndex):
             PendingInteract(youtube_id=url, status="priority").update_status()
             return None
 
-        if not self.force and (
-            url in self.missing_videos or url in self.to_skip
-        ):
+        missing_ids = {i["youtube_id"] for i in self.missing_videos}
+        if not self.force and (url in missing_ids or url in self.to_skip):
             print(f"{url}: skipped adding already indexed video to download.")
             return None
 
-        if self.force and url in self.all_ignored or url in self.all_pending:
+        queued_ids = {
+            i["youtube_id"] for i in self.all_ignored + self.all_pending
+        }
+        if self.force and url in queued_ids:
             print(f"{url}: skipped adding force video already in queue.")
             return None
 
@@ -227,7 +227,7 @@ class PendingList(PendingIndex):
             if self.task and self.task.is_stopped():
                 break
 
-            if not to_add:
+            if not to_add or not self._apply_rules(to_add):
                 continue
 
             self.missing_videos.append(to_add)
@@ -265,6 +265,25 @@ class PendingList(PendingIndex):
             to_add = self._parse_video(video_id, vid_type)
 
         return to_add
+
+    def _apply_rules(self, to_add: dict) -> bool:
+        """
+        check the channel's download rule; False if the video is skipped,
+        True if it goes into the queue (possibly as ignored)
+        """
+        failed = self.rules.check(to_add)
+        if not failed:
+            return True
+
+        action, reason = failed
+        print(f"{to_add['youtube_id']}: download rule: {reason}")
+        if action == "skip":
+            self.to_skip.append(to_add["youtube_id"])
+            return False
+
+        to_add["status"] = "ignore"
+        to_add["ignore_reason"] = reason
+        return True
 
     def _parse_playlist(self, url: str, limit: int | None):
         """fast parse playlist"""
@@ -373,6 +392,7 @@ class PendingList(PendingIndex):
             "channel_indexed": video_data["channel_id"] in self.all_channels,
             "channel_name": video_data["channel"],
             "duration": get_duration_str(video_data.get("duration", 0)),
+            "duration_seconds": self._extract_seconds(video_data),
             "published": self._extract_published(video_data),
             "timestamp": int(datetime.now().timestamp()),
             "title": video_data["title"],
@@ -384,10 +404,18 @@ class PendingList(PendingIndex):
         is_valid = serializer.is_valid()
         if not is_valid:
             print(f"{youtube_id}: serializer failed: {serializer.errors}")
-            self._notify_fail(403, youtube_id)
+            self._notify_fail("invalid metadata", youtube_id)
             return None
 
         return to_add
+
+    @staticmethod
+    def _extract_seconds(video_data) -> int | None:
+        """duration in seconds, None if unknown"""
+        duration = video_data.get("duration")
+        if isinstance(duration, (int, float)):
+            return int(duration)
+        return None
 
     def _extract_thumb(self, video_data) -> str | None:
         """extract thumb"""
@@ -466,40 +494,32 @@ class PendingList(PendingIndex):
             return 0
 
         self._notify_start(total)
-        bulk_list = []
+        items = []
         for video_entry in self.missing_videos:
-            video_entry.update(
-                {
-                    "status": status,
-                    "auto_start": self.auto_start,
-                }
-            )
-            video_id = video_entry["youtube_id"]
-            action = {"index": {"_index": "ta_download", "_id": video_id}}
-            bulk_list.append(json.dumps(action))
-            bulk_list.append(json.dumps(video_entry))
+            video_entry["auto_start"] = self.auto_start
+            # a download rule may already have set ignore
+            video_entry.setdefault("status", status)
+            items.append(Download.from_doc(video_entry))
 
-        # add last newline
-        bulk_list.append("\n")
-        query_str = "\n".join(bulk_list)
-        response, status_code = ElasticWrap("_bulk").post(
-            query_str, ndjson=True
-        )
-        if status_code not in [200, 201]:
-            print(response)
-            self._notify_fail(status_code)
-        elif response.get("errors", False):
-            failed_video_ids = []
-            for item in response.get("items", []):
-                action, result = next(iter(item.items()))
-                if "error" in result:
-                    failed_video_ids.append(result.get("_id"))
+        try:
+            with transaction.atomic():
+                Download.objects.bulk_create(
+                    items,
+                    update_conflicts=True,
+                    unique_fields=["youtube_id"],
+                    update_fields=[
+                        f.name
+                        for f in Download._meta.concrete_fields
+                        if not f.primary_key
+                    ],
+                )
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"adding to queue failed: {err}")
+            failed = ",".join(i.youtube_id for i in items)
+            self._notify_fail(str(err), failed)
+            return 0
 
-            failed_video_ids_str = ",".join(failed_video_ids)
-            self._notify_fail(status_code, failed_video_ids_str)
-        else:
-            self._notify_done(total)
-
+        self._notify_done(total)
         return len(self.missing_videos)
 
     def _notify_add(
@@ -561,14 +581,14 @@ class PendingList(PendingIndex):
             ]
         )
 
-    def _notify_fail(self, status_code, failed_video_ids=None):
+    def _notify_fail(self, error, failed_video_ids=None):
         """failed to add"""
         if not self.task:
             return
 
         message_lines = [
             "Adding extracted videos failed.",
-            f"Status code: {status_code}",
+            f"Error: {error}",
         ]
 
         if failed_video_ids:

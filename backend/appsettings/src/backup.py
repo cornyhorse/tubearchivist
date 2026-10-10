@@ -3,33 +3,145 @@ Functionality:
 - Handle json zip file based backup
 - create backup
 - restore backup
+
+The zip keeps the format ES backups always had (es_<index>-<date>-<n>.json
+files of bulk action/source line pairs), so backups taken before the move
+to Postgres still restore. Restoring converts the zip into the
+storage.es_export layout and runs the verified importer.
 """
 
 import json
 import os
 import re
+import shutil
+import tempfile
 import zipfile
 from datetime import datetime
+from pathlib import Path
 
 from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import ElasticWrap, IndexPaginate
-from common.src.helper import get_mapping, ignore_filelist
+from common.src.helper import ignore_filelist
+from django.db import transaction
 from task.models import CustomPeriodicTask
 
+INDEXES = [
+    "config",
+    "channel",
+    "video",
+    "playlist",
+    "download",
+    "comment",
+    "subtitle",
+    # fork only, ignored by stock TA
+    "download_rule",
+    "emby_episode",
+]
+CHUNK_SIZE = 500
 
-class ElasticBackup:
-    """dump index to nd-json files for later bulk import"""
 
-    INDEX_SIZE_CONF = {
-        "comment": 100,
-        "subtitle": 10000,
+def _document_sources() -> dict:
+    """index name -> function yielding (_id, legacy document)"""
+    # pylint: disable=import-outside-toplevel
+    from appsettings.models import ConfigDocument
+    from channel.models import Channel
+    from download.models import Download, DownloadRule
+    from emby.models import EpisodeNumber
+    from playlist.models import Playlist
+    from storage.importer import episode_to_doc, rule_to_doc
+    from user.models import UserConfig
+    from video.models import CommentRefresh, SubtitleLine, Video
+    from video.src.comments import Comments
+
+    def config():
+        for document in ConfigDocument.objects.order_by("key"):
+            yield document.key, document.value
+        for user_config in UserConfig.objects.order_by("user_id"):
+            yield f"user_{user_config.user_id}", {"config": user_config.config}
+
+    def videos():
+        queryset = Video.objects.select_related("channel").order_by("pk")
+        for video in queryset.iterator(chunk_size=CHUNK_SIZE):
+            yield video.pk, video.to_doc()
+
+    def downloads():
+        queue = Download.objects.with_channel_indexed().order_by("pk")
+        for item in queue.iterator(chunk_size=CHUNK_SIZE):
+            yield item.pk, item.to_doc()
+
+    def subtitles():
+        lines = SubtitleLine.objects.select_related("video__channel")
+        for line in lines.order_by("fragment_id").iterator(chunk_size=5000):
+            yield line.fragment_id, line.to_doc()
+
+    return {
+        "config": config,
+        "channel": lambda: (
+            (c.pk, c.to_doc()) for c in Channel.objects.order_by("pk")
+        ),
+        "video": videos,
+        "playlist": lambda: (
+            (p.pk, p.to_doc()) for p in Playlist.objects.order_by("pk")
+        ),
+        "download": downloads,
+        "comment": lambda: (
+            (r.video_id, Comments(r.video_id).get_comments())
+            for r in CommentRefresh.objects.order_by("video_id")
+        ),
+        "subtitle": subtitles,
+        "download_rule": lambda: (
+            (str(r.pk), rule_to_doc(r))
+            for r in DownloadRule.objects.order_by("pk")
+        ),
+        "emby_episode": lambda: (
+            (str(n.pk), episode_to_doc(n))
+            for n in EpisodeNumber.objects.order_by("pk")
+        ),
     }
+
+
+def iter_documents(index: str):
+    """yield (_id, legacy document) of every row behind index"""
+    sources = _document_sources()
+    if index not in sources:
+        raise ValueError(f"unknown index: {index}")
+    yield from sources[index]()
+
+
+def wipe_data() -> None:
+    """delete all TA data rows, children first"""
+    # pylint: disable=import-outside-toplevel
+    from appsettings.models import ConfigDocument
+    from channel.models import Channel
+    from download.models import Download, DownloadRule
+    from emby.models import EpisodeNumber
+    from playlist.models import Playlist
+    from user.models import UserConfig
+    from video.models import Comment, CommentRefresh, SubtitleLine, Video
+
+    for model in (
+        DownloadRule,
+        EpisodeNumber,
+        Comment,
+        CommentRefresh,
+        SubtitleLine,
+        Playlist,
+        Download,
+        Video,
+        Channel,
+        ConfigDocument,
+        UserConfig,
+    ):
+        model.objects.all().delete()
+
+
+class DatabaseBackup:
+    """dump the database to nd-json files for later import"""
+
     CACHE_DIR = EnvironmentSettings.CACHE_DIR
     BACKUP_DIR = os.path.join(CACHE_DIR, "backup")
 
     def __init__(self, reason=False, task=False) -> None:
         self.timestamp = datetime.now().strftime("%Y%m%d")
-        self.index_config = get_mapping()
         self.reason = reason
         self.task = task
 
@@ -37,18 +149,14 @@ class ElasticBackup:
         """backup all indexes, add reason to init"""
         print("backup all indexes")
         if not self.reason:
-            raise ValueError("missing backup reason in ElasticBackup")
+            raise ValueError("missing backup reason in DatabaseBackup")
 
+        os.makedirs(self.BACKUP_DIR, exist_ok=True)
         if self.task:
             self.task.send_progress(["Scanning your index."])
-        for index in self.index_config:
-            index_name = index["index_name"]
-            print(f"backup: export in progress for {index_name}")
-            if not self.index_exists(index_name):
-                print(f"skip backup for not yet existing index {index_name}")
-                continue
-
-            self.backup_index(index_name)
+        for index in INDEXES:
+            print(f"backup: export in progress for {index}")
+            self.backup_index(index)
 
         if self.task:
             self.task.send_progress(["Compress files to zip archive."])
@@ -56,30 +164,29 @@ class ElasticBackup:
         if self.reason == "auto":
             self.rotate_backup()
 
-    def backup_index(self, index_name):
-        """export all documents of a single index"""
-        paginate_kwargs = {
-            "data": {"query": {"match_all": {}}},
-            "keep_source": True,
-            "callback": BackupCallback,
-            "task": self.task,
-            "total": self._get_total(index_name),
-            "timeout": 30,
-        }
+    def backup_index(self, index_name: str) -> None:
+        """write all documents of index_name as bulk ndjson chunks"""
+        chunk: list[str] = []
+        counter = 0
+        for doc_id, document in iter_documents(index_name):
+            action = {"index": {"_index": f"ta_{index_name}", "_id": doc_id}}
+            chunk.append(json.dumps(action))
+            chunk.append(json.dumps(document))
+            if len(chunk) >= 2 * CHUNK_SIZE:
+                self._write_chunk(index_name, counter, chunk)
+                counter += 1
+                chunk = []
 
-        if size_overwrite := self.INDEX_SIZE_CONF.get(index_name):
-            paginate_kwargs.update({"size": size_overwrite})
+        if chunk:
+            self._write_chunk(index_name, counter, chunk)
 
-        paginate = IndexPaginate(f"ta_{index_name}", **paginate_kwargs)
-        _ = paginate.get_results()
-
-    @staticmethod
-    def _get_total(index_name):
-        """get total documents in index"""
-        path = f"ta_{index_name}/_count"
-        response, _ = ElasticWrap(path).get()
-
-        return response.get("count")
+    def _write_chunk(self, index_name: str, counter: int, lines: list[str]):
+        file_name = f"es_{index_name}-{self.timestamp}-{counter}.json"
+        file_path = os.path.join(self.BACKUP_DIR, file_name)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        if self.task:
+            self.task.send_progress([f"Processing {index_name.title()}s"])
 
     def zip_it(self):
         """pack it up into single zip file"""
@@ -101,18 +208,11 @@ class ElasticBackup:
         for backup_file in to_backup:
             os.remove(backup_file)
 
-    def post_bulk_restore(self, file_name):
-        """send bulk to es"""
-        with open(file_name, "r", encoding="utf-8") as f:
-            data = f.read()
-
-        if not data.strip():
-            return
-
-        _, _ = ElasticWrap("_bulk").post(data=data, ndjson=True)
-
     def get_all_backup_files(self):
         """build all available backup files for view"""
+        if not os.path.isdir(self.BACKUP_DIR):
+            return []
+
         all_backup_files = ignore_filelist(os.listdir(self.BACKUP_DIR))
         all_available_backups = [
             i
@@ -136,11 +236,11 @@ class ElasticBackup:
 
         file_split = filename.split("-")
         if len(file_split) == 2:
-            timestamp = file_split[1].strip(".zip")
+            timestamp = file_split[1].removesuffix(".zip")
             reason = False
         elif len(file_split) == 3:
             timestamp = file_split[1]
-            reason = file_split[2].strip(".zip")
+            reason = file_split[2].removesuffix(".zip")
         else:
             raise ValueError
 
@@ -155,51 +255,73 @@ class ElasticBackup:
         return data
 
     def restore(self, filename):
-        """
-        restore from backup zip file
-        call reset from ElasticIndexWrap first to start blank
-        """
-        zip_content = self._unpack_zip_backup(filename)
-        zip_content.sort()
-        self._restore_json_files(zip_content)
+        """replace all data with the backup, verified, in one transaction"""
+        # pylint: disable=import-outside-toplevel
+        from storage.importer import EsImporter
 
-    def _unpack_zip_backup(self, filename):
-        """extract backup zip and return filelist"""
         file_path = os.path.join(self.BACKUP_DIR, filename)
+        export_dir = Path(tempfile.mkdtemp(prefix="ta-restore-"))
+        try:
+            self._notify("Unpack backup file.", 0.1)
+            self.zip_to_export(file_path, export_dir)
+            self._notify("Restore database from backup.", 0.5)
+            with transaction.atomic():
+                wipe_data()
+                report = EsImporter(export_dir).run()
+                if not report.ok:
+                    raise ValueError(
+                        "restore verification failed: "
+                        + "; ".join(report.mismatches[:5])
+                    )
+        finally:
+            shutil.rmtree(export_dir, ignore_errors=True)
 
-        with zipfile.ZipFile(file_path, "r") as z:
-            zip_content = z.namelist()
-            z.extractall(self.BACKUP_DIR)
-
-        return zip_content
-
-    def _restore_json_files(self, zip_content):
-        """go through the unpacked files and restore"""
-        for idx, json_f in enumerate(zip_content):
-            self._notify_restore(idx, json_f, len(zip_content))
-            file_name = os.path.join(self.BACKUP_DIR, json_f)
-
-            if not json_f.startswith("es_") or not json_f.endswith(".json"):
-                os.remove(file_name)
-                continue
-
-            print("restoring: " + json_f)
-            self.post_bulk_restore(file_name)
-            os.remove(file_name)
-
-    def _notify_restore(self, idx, json_f, total_files):
-        """notify restore progress"""
-        message = [f"Restore index from json backup file {json_f}."]
-        progress = (idx + 1) / total_files
-        self.task.send_progress(message_lines=message, progress=progress)
+        self._notify("Restore completed.", 1)
+        return report
 
     @staticmethod
-    def index_exists(index_name):
-        """check if index already exists to skip"""
-        _, status_code = ElasticWrap(f"ta_{index_name}").get()
-        exists = status_code == 200
+    def zip_to_export(zip_path: str, export_dir: Path) -> dict[str, int]:
+        """convert a backup zip into the storage.es_export layout"""
+        counts: dict[str, int] = {}
+        handles = {}
+        try:
+            with zipfile.ZipFile(zip_path, "r") as zip_f:
+                for name in sorted(zip_f.namelist()):
+                    if not name.startswith("es_") or not name.endswith(
+                        ".json"
+                    ):
+                        continue
+                    lines = zip_f.read(name).decode("utf-8").splitlines()
+                    lines = [line for line in lines if line.strip()]
+                    for action_line, source_line in zip(
+                        lines[::2], lines[1::2]
+                    ):
+                        action = json.loads(action_line)["index"]
+                        index = re.sub(r"_v\d+$", "", action["_index"])
+                        if index not in handles:
+                            handles[index] = open(
+                                export_dir / f"{index}.ndjson",
+                                "w",
+                                encoding="utf-8",
+                            )
+                            counts[index] = 0
+                        hit = {
+                            "_id": action["_id"],
+                            "_source": json.loads(source_line),
+                        }
+                        handles[index].write(json.dumps(hit) + "\n")
+                        counts[index] += 1
+        finally:
+            for handle in handles.values():
+                handle.close()
 
-        return exists
+        (export_dir / "manifest.json").write_text(json.dumps(counts))
+        return counts
+
+    def _notify(self, message: str, progress: float):
+        """notify restore progress"""
+        if self.task:
+            self.task.send_progress(message_lines=[message], progress=progress)
 
     def rotate_backup(self):
         """delete old backups if needed"""
@@ -234,45 +356,3 @@ class ElasticBackup:
         os.remove(file_path)
 
         return file_path
-
-
-class BackupCallback:
-    """handle backup ndjson writer as callback for IndexPaginate"""
-
-    def __init__(self, source, index_name, counter=0):
-        self.source = source
-        self.index_name = index_name
-        self.counter = counter
-        self.timestamp = datetime.now().strftime("%Y%m%d")
-        self.cache_dir = EnvironmentSettings.CACHE_DIR
-
-    def run(self):
-        """run the junk task"""
-        file_content = self._build_bulk()
-        self._write_es_json(file_content)
-
-    def _build_bulk(self):
-        """build bulk query data from all_results"""
-        bulk_list = []
-
-        for document in self.source:
-            document_id = document["_id"]
-            es_index = re.sub(r"_v\d+$", "", document["_index"])  # remove _v
-            action = {"index": {"_index": es_index, "_id": document_id}}
-            source = document["_source"]
-            bulk_list.append(json.dumps(action))
-            bulk_list.append(json.dumps(source))
-
-        # add last newline
-        bulk_list.append("\n")
-        file_content = "\n".join(bulk_list)
-
-        return file_content
-
-    def _write_es_json(self, file_content):
-        """write nd-json file for es _bulk API to disk"""
-        index = self.index_name.lstrip("ta_")
-        file_name = f"es_{index}-{self.timestamp}-{self.counter}.json"
-        file_path = os.path.join(self.cache_dir, "backup", file_name)
-        with open(file_path, "a+", encoding="utf-8") as f:
-            f.write(file_content)

@@ -8,6 +8,7 @@ from common.views_base import AdminWriteOnly, ApiBaseView
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from playlist.src.index import YoutubePlaylist
 from rest_framework.response import Response
+from video.models import Video
 from video.serializers import (
     CommentItemSerializer,
     PlayerSerializer,
@@ -17,6 +18,7 @@ from video.serializers import (
     VideoProgressUpdateSerializer,
     VideoSerializer,
 )
+from video.src.comments import Comments
 from video.src.index import YoutubeVideo
 from video.src.query_building import QueryBuilder
 
@@ -34,8 +36,6 @@ class VideoApiListView(ApiBaseView):
     - height:int=px
     """
 
-    search_base = "ta_video/_search/"
-
     @extend_schema(
         parameters=[VideoListQuerySerializer()],
         responses={
@@ -51,13 +51,16 @@ class VideoApiListView(ApiBaseView):
         query_serializer.is_valid(raise_exception=True)
         validated_query = query_serializer.validated_data
 
-        data = QueryBuilder(request.user.id, **validated_query).build_data()
-        if data == {"query": {"bool": {"must": [None]}}}:
-            # skip empty lookup
+        queryset = QueryBuilder(
+            request.user.id, **validated_query
+        ).build_queryset()
+        if queryset is None:
+            # nothing to continue watching
             return Response([])
 
-        self.data = data
-        self.get_document_list(request, progress_match=request.user.id)
+        self.get_document_list(
+            request, "ta_video", queryset, progress_match=request.user.id
+        )
 
         response_serializer = VideoListSerializer(self.response)
 
@@ -69,7 +72,6 @@ class VideoApiView(ApiBaseView):
     GET: returns metadata dict of video
     """
 
-    search_base = "ta_video/_doc/"
     permission_classes = [AdminWriteOnly]
 
     @extend_schema(
@@ -82,7 +84,11 @@ class VideoApiView(ApiBaseView):
     )
     def get(self, request, video_id):
         """get video"""
-        self.get_document(video_id, progress_match=request.user.id)
+        self.get_document(
+            "ta_video",
+            Video.load_doc(video_id),
+            progress_match=request.user.id,
+        )
         if not self.response:
             error = ErrorResponseSerializer({"error": "video not found"})
             return Response(error.data, status=404)
@@ -116,8 +122,6 @@ class VideoCommentView(ApiBaseView):
     GET: return all comments from video with reply threads
     """
 
-    search_base = "ta_comment/_doc/"
-
     @extend_schema(
         responses={
             200: CommentItemSerializer(),
@@ -129,7 +133,9 @@ class VideoCommentView(ApiBaseView):
     def get(self, request, video_id):
         """get video comments"""
         # pylint: disable=unused-argument
-        self.get_document(video_id)
+        self.get_document(
+            "ta_comment", Comments(video_id).get_comments() or None
+        )
         if self.status_code == 404:
             error = ErrorResponseSerializer({"error": "video not found"})
             return Response(error.data, status=404)
@@ -144,8 +150,6 @@ class VideoApiNavView(ApiBaseView):
     GET: returns playlist nav
     """
 
-    search_base = "ta_video/_doc/"
-
     @extend_schema(
         responses={
             200: PlaylistNavItemSerializer(),
@@ -157,7 +161,7 @@ class VideoApiNavView(ApiBaseView):
     def get(self, request, video_id):
         # pylint: disable=unused-argument
         """get video playlist nav"""
-        self.get_document(video_id)
+        self.get_document("ta_video", Video.load_doc(video_id))
         if self.status_code == 404:
             error = ErrorResponseSerializer({"error": "video not found"})
             return Response(error.data, status=404)
@@ -169,7 +173,7 @@ class VideoApiNavView(ApiBaseView):
 
         for playlist_id in self.response["playlist"]:
             playlist = YoutubePlaylist(playlist_id)
-            playlist.get_from_es()
+            playlist.get_from_db()
             playlist.build_nav(video_id)
             if playlist.nav:
                 playlist_nav.append(playlist.nav)
@@ -185,8 +189,6 @@ class VideoProgressView(ApiBaseView):
     """resolves to /api/video/<video_id>/progress/
     handle progress status for video
     """
-
-    search_base = "ta_video/_doc/"
 
     @staticmethod
     def _get_key(user_id: int, video_id: str) -> str:
@@ -208,7 +210,7 @@ class VideoProgressView(ApiBaseView):
         data_serializer.is_valid(raise_exception=True)
         validated_data = data_serializer.validated_data
 
-        self.get_document(video_id)
+        self.get_document("ta_video", Video.load_doc(video_id))
         if self.status_code == 404:
             error = ErrorResponseSerializer({"error": "video not found"})
             return Response(error.data, status=404)
@@ -266,24 +268,16 @@ class VideoSimilarView(ApiBaseView):
     GET: return max 6 videos similar to this
     """
 
-    search_base = "ta_video/_search/"
-
     @extend_schema(
         responses=VideoSerializer(many=True),
     )
     def get(self, request, video_id):
         """get similar videos"""
-        self.data = {
-            "size": 6,
-            "query": {
-                "more_like_this": {
-                    "fields": ["tags", "title"],
-                    "like": {"_id": video_id},
-                    "min_term_freq": 1,
-                    "max_query_terms": 25,
-                }
-            },
-        }
-        self.get_document_list(request, pagination=False)
+        self.get_document_list(
+            request,
+            "ta_video",
+            Video.objects.similar_to(video_id),
+            pagination=False,
+        )
         serializer = VideoSerializer(self.response["data"], many=True)
         return Response(serializer.data)

@@ -2,7 +2,9 @@
 
 # pylint: disable=abstract-method
 
+from channel.models import EmbyNumbering
 from common.serializers import PaginationSerializer, ValidateUnknownFieldsMixin
+from download.serializers import DownloadRuleSerializer
 from rest_framework import serializers
 from video.src.constants import VideoTypeEnum
 
@@ -51,6 +53,10 @@ class ChannelSerializer(serializers.Serializer):
     channel_tabs = serializers.ListField(
         child=serializers.ChoiceField(VideoTypeEnum.values_known())
     )
+    emby_numbering = serializers.ChoiceField(
+        choices=EmbyNumbering.values, required=False
+    )
+    download_rule = DownloadRuleSerializer(required=False, allow_null=True)
     _index = serializers.CharField(required=False)
     _score = serializers.IntegerField(required=False)
 
@@ -76,6 +82,15 @@ class ChannelUpdateSerializer(serializers.Serializer):
 
     channel_subscribed = serializers.BooleanField(required=False)
     channel_overwrites = ChannelOverwriteSerializer(required=False)
+    emby_numbering = serializers.ChoiceField(
+        choices=[
+            EmbyNumbering.DATE,
+            EmbyNumbering.YEAR_FROZEN,
+            EmbyNumbering.ABSOLUTE_FROZEN,
+        ],
+        required=False,
+    )
+    download_rule = DownloadRuleSerializer(required=False, allow_null=True)
 
 
 class ChannelAggBucketSerializer(serializers.Serializer):

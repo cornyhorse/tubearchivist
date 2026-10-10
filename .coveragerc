@@ -1,0 +1,16 @@
+# 100% line and branch coverage of the whole backend is enforced in CI.
+# Preference for an uncovered line: a real test, then a mock, and
+# `# pragma: no cover` (with a reason) only when neither is possible.
+[run]
+branch = True
+source = backend
+omit =
+    */tests/*
+    */migrations/*
+
+[report]
+fail_under = 100
+show_missing = True
+skip_covered = True
+exclude_also =
+    if __name__ == .__main__.:

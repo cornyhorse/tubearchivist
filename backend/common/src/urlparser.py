@@ -164,9 +164,8 @@ class Parser:
         if not path.startswith("@"):
             return None
 
+        # the path starts with "@", so the handle is never empty
         handle = path.split("/")[0]
-        if not handle:
-            return None
 
         cache_key = f"channel:handlesearch:{handle.lower()}"
         cached = RedisArchivist().get_message_dict(cache_key)
@@ -182,9 +181,8 @@ class Parser:
         if not path.startswith("@"):
             return
 
+        # the path starts with "@", so the handle is never empty
         handle = path.split("/")[0]
-        if not handle:
-            return
 
         cache_key = f"channel:handlesearch:{handle.lower()}"
         message = {

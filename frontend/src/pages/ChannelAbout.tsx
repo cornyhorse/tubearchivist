@@ -15,6 +15,8 @@ import InputConfig from '../components/InputConfig';
 import ToggleConfig from '../components/ToggleConfig';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import { ApiResponseType } from '../functions/APIClient';
+import DownloadRuleForm from '../components/DownloadRuleForm';
+import EmbyNumberingSelect from '../components/EmbyNumberingSelect';
 
 export type ChannelBaseOutletContextType = {
   currentPage: number;
@@ -383,6 +385,53 @@ const ChannelAbout = () => {
                   updateCallback={handleUpdateConfig}
                 />
               </div>
+            </div>
+          </div>
+        )}
+
+        {isAdmin && (
+          <div className="info-box">
+            <div className="info-box-item">
+              <h2>Download Rules</h2>
+              {userConfig.show_help_text && (
+                <div className="help-text">
+                  <ul>
+                    <li>
+                      Decide which videos of this channel get downloaded when the channel is
+                      scanned. Empty fields match everything.
+                    </li>
+                    <li>
+                      Without a rule here, the default rule from the application settings applies.
+                      Save a disabled rule to download everything from this channel anyway.
+                    </li>
+                    <li>Videos you add by URL are always downloaded.</li>
+                  </ul>
+                </div>
+              )}
+              <DownloadRuleForm
+                key={JSON.stringify(channel.download_rule ?? null)}
+                channelId={channel.channel_id}
+                rule={channel.download_rule ?? null}
+                onSaved={() => setRefresh(true)}
+              />
+            </div>
+            <div className="info-box-item">
+              <h2>Emby</h2>
+              {userConfig.show_help_text && (
+                <div className="help-text">
+                  <p>
+                    How this channel's videos are numbered as episodes in the Emby library. Numbers
+                    that are already assigned are kept when you add older videos.
+                  </p>
+                </div>
+              )}
+              <EmbyNumberingSelect
+                kind="channel"
+                id={channel.channel_id}
+                value={channel.emby_numbering ?? 'date'}
+                options={['date', 'year_frozen', 'absolute_frozen']}
+                onSaved={() => setRefresh(true)}
+              />
             </div>
           </div>
         )}

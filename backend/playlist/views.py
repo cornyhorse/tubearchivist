@@ -8,6 +8,7 @@ from common.serializers import (
 )
 from common.views_base import AdminWriteOnly, ApiBaseView
 from drf_spectacular.utils import OpenApiResponse, extend_schema
+from playlist.models import Playlist
 from playlist.serializers import (
     PlaylistBulkAddSerializer,
     PlaylistCustomPostSerializer,
@@ -35,7 +36,6 @@ class PlaylistApiListView(ApiBaseView):
     POST: change subscribe state
     """
 
-    search_base = "ta_playlist/_search/"
     permission_classes = [AdminWriteOnly]
 
     @extend_schema(
@@ -55,13 +55,12 @@ class PlaylistApiListView(ApiBaseView):
         query_serializer.is_valid(raise_exception=True)
         validated_query = query_serializer.validated_data
         try:
-            data = QueryBuilder(**validated_query).build_data()
+            playlists = QueryBuilder(**validated_query).build_queryset()
         except ValueError as err:
             error = ErrorResponseSerializer({"error": str(err)})
             return Response(error.data, status=400)
 
-        self.data = data
-        self.get_document_list(request)
+        self.get_document_list(request, "ta_playlist", playlists)
 
         response_serializer = PlaylistListSerializer(self.response)
 
@@ -104,7 +103,6 @@ class PlaylistCustomApiListView(ApiBaseView):
     POST: Create new custom playlist
     """
 
-    search_base = "ta_playlist/_search/"
     permission_classes = [AdminWriteOnly]
 
     @extend_schema(
@@ -127,7 +125,9 @@ class PlaylistCustomApiListView(ApiBaseView):
         custom_playlist = YoutubePlaylist(playlist_id)
         custom_playlist.create(custom_name)
 
-        response_serializer = PlaylistSerializer(custom_playlist.json_data)
+        # stored doc, like GET: json_data has False placeholders
+        self.get_document("ta_playlist", Playlist.load_doc(playlist_id))
+        response_serializer = PlaylistSerializer(self.response)
 
         return Response(response_serializer.data)
 
@@ -137,7 +137,6 @@ class PlaylistCustomApiView(ApiBaseView):
     POST: modify custom playlist
     """
 
-    search_base = "ta_playlist/_doc/"
     permission_classes = [AdminWriteOnly]
 
     @extend_schema(
@@ -158,7 +157,7 @@ class PlaylistCustomApiView(ApiBaseView):
         data_serializer.is_valid(raise_exception=True)
         validated_data = data_serializer.validated_data
 
-        self.get_document(playlist_id)
+        self.get_document("ta_playlist", Playlist.load_doc(playlist_id))
         if not self.response:
             error = ErrorResponseSerializer({"error": "playlist not found"})
             return Response(error.data, status=404)
@@ -183,9 +182,15 @@ class PlaylistCustomApiView(ApiBaseView):
                 return Response(error.data, status=400)
         else:
             hide = UserConfig(request.user.id).get_value("hide_watched")
-            playlist.move_video(video_id, action, hide_watched=hide)
+            moved = playlist.move_video(video_id, action, hide_watched=hide)
+            if not moved:
+                error = ErrorResponseSerializer(
+                    {"error": f"video {video_id} not in playlist"}
+                )
+                return Response(error.data, status=400)
 
-        response_serializer = PlaylistSerializer(playlist.json_data)
+        self.get_document("ta_playlist", Playlist.load_doc(playlist_id))
+        response_serializer = PlaylistSerializer(self.response)
 
         return Response(response_serializer.data)
 
@@ -195,7 +200,6 @@ class PlaylistApiView(ApiBaseView):
     GET: returns metadata dict of playlist
     """
 
-    search_base = "ta_playlist/_doc/"
     permission_classes = [AdminWriteOnly]
     valid_custom_actions = ["create", "remove", "up", "down", "top", "bottom"]
 
@@ -210,11 +214,16 @@ class PlaylistApiView(ApiBaseView):
     def get(self, request, playlist_id):
         # pylint: disable=unused-argument
         """get playlist"""
-        self.get_document(playlist_id)
+        self.get_document("ta_playlist", Playlist.load_doc(playlist_id))
         if not self.response:
             error = ErrorResponseSerializer({"error": "playlist not found"})
             return Response(error.data, status=404)
 
+        self.response["emby_numbering"] = (
+            Playlist.objects.filter(playlist_id=playlist_id)
+            .values_list("emby_numbering", flat=True)
+            .first()
+        )
         response_serializer = PlaylistSerializer(self.response)
 
         return Response(response_serializer.data)
@@ -234,7 +243,7 @@ class PlaylistApiView(ApiBaseView):
         data_serializer.is_valid(raise_exception=True)
         validated_data = data_serializer.validated_data
 
-        self.get_document(playlist_id)
+        self.get_document("ta_playlist", Playlist.load_doc(playlist_id))
         if not self.response:
             error = ErrorResponseSerializer({"error": "playlist not found"})
             return Response(error.data, status=404)
@@ -259,9 +268,19 @@ class PlaylistApiView(ApiBaseView):
                 new_sort_order=sort_order
             )
 
+        if numbering := validated_data.get("emby_numbering"):
+            Playlist.objects.filter(playlist_id=playlist_id).update(
+                emby_numbering=numbering
+            )
+            json_data = Playlist.load_doc(playlist_id)
+            json_data["emby_numbering"] = numbering
+
         if not json_data:
             error = ErrorResponseSerializer(
-                {"error": "expect playlist_subscribed or playlist_sort_order"}
+                {
+                    "error": "expect playlist_subscribed, playlist_sort_order"
+                    + " or emby_numbering"
+                }
             )
             return Response(error.data, status=400)
 

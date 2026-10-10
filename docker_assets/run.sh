@@ -18,6 +18,9 @@ if [[ "${TA_AUTO_UPDATE_YTDLP,,}" =~ ^(release|nightly)$ ]]; then
     }
 fi
 
+# wait for postgres and redis before touching the database
+python manage.py ta_connection
+
 # stop on pending manual migration
 python manage.py ta_stop_on_error
 
@@ -25,9 +28,8 @@ python manage.py ta_stop_on_error
 python manage.py migrate
 python manage.py collectstatic --noinput -c
 
-# ta setup
+# ta setup, envcheck creates the superuser so it runs after migrate
 python manage.py ta_envcheck
-python manage.py ta_connection
 python manage.py ta_startup
 
 # start all tasks

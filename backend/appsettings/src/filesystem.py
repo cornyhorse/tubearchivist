@@ -7,9 +7,9 @@ import os
 
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import IndexPaginate
 from common.src.helper import ignore_filelist, rand_sleep
 from download.src.queue_interact import PendingInteract
+from video.models import Video
 from video.src.comments import Comments
 from video.src.index import YoutubeVideo, index_new_video
 from video.src.meta_embed import IndexFromEmbed
@@ -65,12 +65,7 @@ class Scanner:
         if self.task:
             self.task.send_progress(["Get all videos indexed."])
 
-        data = {
-            "query": {"match_all": {}},
-            "_source": ["youtube_id", "media_url"],
-        }
-        response = IndexPaginate("ta_video", data).get_results()
-        return {(i["youtube_id"], i["media_url"]) for i in response}
+        return set(Video.objects.values_list("youtube_id", "media_url"))
 
     def apply(self) -> None:
         """apply all changes"""
@@ -144,7 +139,7 @@ class Scanner:
     @staticmethod
     def _cleanup(youtube_id: str) -> None:
         """clean up from queue"""
-        PendingInteract(youtube_id=youtube_id).delete_item(print_error=False)
+        PendingInteract(youtube_id=youtube_id).delete_item()
 
     def _notify(self, total, youtube_id, idx):
         """send notification"""

@@ -8,12 +8,11 @@ functionality:
 
 import os
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from appsettings.src.config import AppConfig
 from channel.src.index import YoutubeChannel
 from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.helper import (
     get_channel_overwrites,
     get_playlists,
@@ -22,9 +21,13 @@ from common.src.helper import (
 )
 from common.src.ta_redis import RedisQueue
 from common.src.urlparser import ParsedURLType
+from django.db import transaction
+from download.models import Download
 from download.src.queue import PendingList
 from download.src.yt_dlp_base import YtWrap
+from playlist.models import Playlist
 from playlist.src.index import YoutubePlaylist
+from video.models import Video
 from video.src.comments import CommentList
 from video.src.constants import VideoTypeEnum
 from video.src.index import YoutubeVideo, index_new_video
@@ -44,7 +47,7 @@ class DownloaderBase:
         self.task = task
         self.config = AppConfig().config
         self.channel_overwrites = get_channel_overwrites()
-        self.now = int(datetime.now().timestamp())
+        self.now = datetime.now(timezone.utc)
 
 
 class VideoDownloader(DownloaderBase):
@@ -105,27 +108,14 @@ class VideoDownloader(DownloaderBase):
             [f"Processing {typ}: {title}", message], progress=progress
         )
 
-    def _get_next(self, auto_only):
-        """get next item in queue"""
-        must_list = [{"term": {"status": {"value": "pending"}}}]
-        must_not_list = [{"exists": {"field": "message"}}]
-        if auto_only:
-            must_list.append({"term": {"auto_start": {"value": True}}})
-
-        data = {
-            "size": 1,
-            "query": {"bool": {"must": must_list, "must_not": must_not_list}},
-            "sort": [
-                {"auto_start": {"order": "desc"}},
-                {"timestamp": {"order": "asc"}},
-            ],
-        }
-        path = "ta_download/_search"
-        response, _ = ElasticWrap(path).get(data=data)
-        if not response["hits"]["hits"]:
-            return False
-
-        return response["hits"]["hits"][0]["_source"]
+    @staticmethod
+    def _get_next(auto_only) -> dict | bool:
+        """next item in queue as document, False if empty"""
+        with transaction.atomic():
+            item = Download.objects.next_pending(auto_only=auto_only)
+            if not item:
+                return False
+            return item.to_doc()
 
     def _progress_hook(self, response):
         """process the progress_hooks from yt_dlp"""
@@ -227,8 +217,7 @@ class VideoDownloader(DownloaderBase):
     @staticmethod
     def _handle_error(youtube_id, message):
         """store error message"""
-        data = {"doc": {"message": message}}
-        _, _ = ElasticWrap(f"ta_download/_update/{youtube_id}").post(data=data)
+        Download.objects.filter(youtube_id=youtube_id).update(message=message)
 
     def move_to_archive(self, vid_dict):
         """move downloaded video from cache to archive"""
@@ -253,22 +242,13 @@ class VideoDownloader(DownloaderBase):
 
     @staticmethod
     def _delete_from_pending(youtube_id):
-        """delete downloaded video from pending index if its there"""
-        path = f"ta_download/_doc/{youtube_id}?refresh=true"
-        _, _ = ElasticWrap(path).delete()
+        """delete downloaded video from the queue if its there"""
+        Download.objects.filter(youtube_id=youtube_id).delete()
 
-    def _reset_auto(self):
+    @staticmethod
+    def _reset_auto():
         """reset autostart to defaults after queue stop"""
-        path = "ta_download/_update_by_query"
-        data = {
-            "query": {"term": {"auto_start": {"value": True}}},
-            "script": {
-                "source": "ctx._source.auto_start = false",
-                "lang": "painless",
-            },
-        }
-        response, _ = ElasticWrap(path).post(data=data)
-        updated = response.get("updated")
+        updated = Download.objects.reset_auto_start()
         if updated:
             print(f"[download] reset auto start on {updated} videos.")
 
@@ -294,49 +274,32 @@ class DownloadPostProcess(DownloaderBase):
             return
 
         print(f"auto delete older than {autodelete_days} days")
-        now_lte = str(self.now - autodelete_days * 24 * 60 * 60)
-        channel_overwrite = "channel.channel_overwrites.autodelete_days"
-        data = {
-            "query": {
-                "bool": {
-                    "must": [
-                        {"range": {"player.watched_date": {"lte": now_lte}}},
-                        {"term": {"player.watched": True}},
-                    ],
-                    "must_not": [
-                        {"exists": {"field": channel_overwrite}},
-                    ],
-                }
-            },
-            "sort": [{"player.watched_date": {"order": "asc"}}],
-        }
-        self._auto_delete_watched(data)
+        cutoff = self.now - timedelta(days=autodelete_days)
+        videos = Video.objects.filter(
+            watched=True,
+            watched_date__lte=cutoff,
+            channel__autodelete_days__isnull=True,
+        ).order_by("watched_date")
+        self._auto_delete_watched(videos)
 
     def auto_delete_overwrites(self):
         """handle per channel auto delete from overwrites"""
         for channel_id, value in self.channel_overwrites.items():
-            if "autodelete_days" in value:
-                autodelete_days = value.get("autodelete_days")
-                if autodelete_days is None:
-                    continue
+            autodelete_days = value.get("autodelete_days")
+            if autodelete_days is None:
+                continue
 
-                print(f"{channel_id}: delete older than {autodelete_days}d")
-                now_lte = str(self.now - autodelete_days * 24 * 60 * 60)
-                must_list = [
-                    {"range": {"player.watched_date": {"lte": now_lte}}},
-                    {"term": {"channel.channel_id": {"value": channel_id}}},
-                    {"term": {"player.watched": True}},
-                ]
-                data = {
-                    "query": {"bool": {"must": must_list}},
-                    "sort": [{"player.watched_date": {"order": "desc"}}],
-                }
-                self._auto_delete_watched(data)
+            print(f"{channel_id}: delete older than {autodelete_days}d")
+            cutoff = self.now - timedelta(days=autodelete_days)
+            videos = Video.objects.filter(
+                channel_id=channel_id, watched=True, watched_date__lte=cutoff
+            ).order_by("-watched_date")
+            self._auto_delete_watched(videos)
 
     @staticmethod
-    def _auto_delete_watched(data) -> None:
+    def _auto_delete_watched(videos) -> None:
         """delete watched videos after x days"""
-        to_delete = IndexPaginate("ta_video", data).get_results()
+        to_delete = list(videos.values("youtube_id", "vid_type"))
         if not to_delete:
             return
 
@@ -427,7 +390,7 @@ class DownloadPostProcess(DownloaderBase):
                 break
 
             channel = YoutubeChannel(channel_id)
-            channel.get_from_es()
+            channel.get_from_db()
             if not channel.json_data:
                 print(f"{channel_id}: skip failed channel import")
                 continue
@@ -441,15 +404,14 @@ class DownloadPostProcess(DownloaderBase):
     def _add_video_playlists(self):
         """add other playlists for quick sync"""
         all_playlists = RedisQueue(self.PLAYLIST_QUEUE).get_all()
-        must_not = [{"terms": {"playlist_id": all_playlists}}]
         video_ids = RedisQueue(self.VIDEO_QUEUE).get_all()
-        must = [{"terms": {"playlist_entries.youtube_id": video_ids}}]
-        data = {
-            "query": {"bool": {"must_not": must_not, "must": must}},
-            "_source": ["playlist_id"],
-        }
-        playlists = IndexPaginate("ta_playlist", data).get_results()
-        to_add = [i["playlist_id"] for i in playlists]
+        to_add = list(
+            Playlist.objects.filter(entries__youtube_id__in=video_ids)
+            .exclude(playlist_id__in=all_playlists)
+            .order_by("playlist_id")
+            .values_list("playlist_id", flat=True)
+            .distinct()
+        )
         RedisQueue(self.PLAYLIST_QUICK).add_list(to_add)
 
     def match_videos(self) -> None:
@@ -462,13 +424,11 @@ class DownloadPostProcess(DownloaderBase):
                 break
 
             playlist = YoutubePlaylist(playlist_id)
-            playlist.get_from_es()
+            playlist.get_from_db()
             if not playlist.json_data:
                 print(f"{playlist_id}: skip failed playlist import")
                 continue
 
-            playlist.add_vids_to_playlist()
-            playlist.remove_vids_from_playlist()
             playlist.match_local()
 
             if not self.task:

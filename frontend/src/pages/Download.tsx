@@ -33,6 +33,8 @@ type Download = {
   channel_name: string;
   duration: string;
   message?: string;
+  ignore_reason?: string | null;
+  duration_seconds?: number | null;
   published: string | null;
   status: string;
   timestamp: number | null;

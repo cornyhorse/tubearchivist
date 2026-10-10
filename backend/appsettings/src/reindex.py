@@ -1,21 +1,20 @@
 """
 functionality:
 - periodically refresh documents
-- index and update in es
+- refresh indexed items from youtube
 """
 
-import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, TypedDict
 
 from appsettings.src.config import AppConfig
 from channel.src.index import YoutubeChannel
 from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.helper import rand_sleep
 from common.src.ta_redis import RedisArchivist, RedisQueue
+from django.db import transaction
 from download.src.thumbnails import ThumbManager
 from download.src.yt_dlp_base import CookieHandler
 from playlist.src.index import YoutubePlaylist
@@ -92,24 +91,30 @@ class ReindexPopulate(ReindexBase):
         if task_config.get("days"):
             self.interval = task_config.get("days")
 
-    def add_recent(self) -> None:
-        """add recent videos to refresh"""
-        gte = datetime.fromtimestamp(self.now - self.DAYS3).date().isoformat()
-        must_list = [
-            {"term": {"active": {"value": True}}},
-            {"range": {"published": {"gte": gte}}},
-        ]
-        data = {
-            "size": 10000,
-            "query": {"bool": {"must": must_list}},
-            "sort": [{"published": {"order": "desc"}}],
-        }
-        response, _ = ElasticWrap("ta_video/_search").get(data=data)
-        hits = response["hits"]["hits"]
-        if not hits:
-            return
+    @staticmethod
+    def _model(reindex_config: ReindexConfigType):
+        # pylint: disable=import-outside-toplevel
+        from channel.models import Channel
+        from playlist.models import Playlist
+        from video.models import Video
 
-        all_ids = [i["_source"]["youtube_id"] for i in hits]
+        return {
+            "ta_video": Video,
+            "ta_channel": Channel,
+            "ta_playlist": Playlist,
+        }[reindex_config["index_name"]]
+
+    def add_recent(self) -> None:
+        """add videos published in the last 3 days to refresh"""
+        # pylint: disable=import-outside-toplevel
+        from video.models import Video
+
+        since = datetime.fromtimestamp(self.now - self.DAYS3, tz=timezone.utc)
+        all_ids = list(
+            Video.objects.filter(active=True, published__gte=since)
+            .order_by("-published")
+            .values_list("youtube_id", flat=True)
+        )
         reindex_config: ReindexConfigType = self.REINDEX_CONFIG["video"]
         self.populate(all_ids, reindex_config)
 
@@ -121,48 +126,27 @@ class ReindexPopulate(ReindexBase):
             all_ids = self._get_outdated_ids(reindex_config, daily_should)
             self.populate(all_ids, reindex_config)
 
-    @staticmethod
-    def _get_total_hits(reindex_config: ReindexConfigType) -> int:
-        """get total hits from index"""
-        index_name = reindex_config["index_name"]
-        active_key = reindex_config["active_key"]
-        data = {
-            "query": {"term": {active_key: {"value": True}}},
-            "_source": False,
-        }
-        total = IndexPaginate(index_name, data, keep_source=True).get_results()
-
-        return len(total)
+    def _get_total_hits(self, reindex_config: ReindexConfigType) -> int:
+        """count active items"""
+        return self._model(reindex_config).objects.filter(active=True).count()
 
     def _get_daily_should(self, total_hits: int) -> int:
         """calc how many should reindex daily"""
-        daily_should = int((total_hits // self.interval + 1) * self.MULTIPLY)
-        if daily_should >= 10000:
-            daily_should = 9999
-
-        return daily_should
+        return int((total_hits // self.interval + 1) * self.MULTIPLY)
 
     def _get_outdated_ids(
         self, reindex_config: ReindexConfigType, daily_should: int
     ) -> list[str]:
-        """get outdated from index_name"""
-        index_name = reindex_config["index_name"]
-        refresh_key = reindex_config["refresh_key"]
-        now_lte = str(self.now - self.interval * 24 * 60 * 60)
-        must_list = [
-            {"match": {reindex_config["active_key"]: True}},
-            {"range": {refresh_key: {"lte": now_lte}}},
-        ]
-        data = {
-            "size": daily_should,
-            "query": {"bool": {"must": must_list}},
-            "sort": [{refresh_key: {"order": "asc"}}],
-            "_source": False,
-        }
-        response, _ = ElasticWrap(f"{index_name}/_search").get(data=data)
-
-        all_ids = [i["_id"] for i in response["hits"]["hits"]]
-        return all_ids
+        """the daily_should active items refreshed longest ago"""
+        cutoff = datetime.fromtimestamp(
+            self.now - self.interval * 24 * 60 * 60, tz=timezone.utc
+        )
+        model = self._model(reindex_config)
+        return list(
+            model.objects.filter(active=True, last_refresh__lte=cutoff)
+            .order_by("last_refresh", "pk")
+            .values_list("pk", flat=True)[:daily_should]
+        )
 
 
 class ReindexManual(ReindexBase):
@@ -232,23 +216,31 @@ class ReindexManual(ReindexBase):
                 all_videos = self._get_playlist_videos(playlist_id)
                 self._add_videos(all_videos)
 
-    def _get_channel_videos(self, channel_id: str) -> list[str]:
+    @staticmethod
+    def _get_channel_videos(channel_id: str) -> list[str]:
         """get all videos from channel"""
-        data = {
-            "query": {"term": {"channel.channel_id": {"value": channel_id}}},
-            "_source": ["youtube_id"],
-        }
-        all_results = IndexPaginate("ta_video", data).get_results()
-        return [i["youtube_id"] for i in all_results]
+        # pylint: disable=import-outside-toplevel
+        from video.models import Video
 
-    def _get_playlist_videos(self, playlist_id: str) -> list[str]:
-        """get all videos from playlist"""
-        data = {
-            "query": {"term": {"playlist.keyword": {"value": playlist_id}}},
-            "_source": ["youtube_id"],
-        }
-        all_results = IndexPaginate("ta_video", data).get_results()
-        return [i["youtube_id"] for i in all_results]
+        return list(
+            Video.objects.filter(channel_id=channel_id).values_list(
+                "youtube_id", flat=True
+            )
+        )
+
+    @staticmethod
+    def _get_playlist_videos(playlist_id: str) -> list[str]:
+        """get all downloaded videos of playlist"""
+        # pylint: disable=import-outside-toplevel
+        from playlist.models import PlaylistEntry
+        from video.models import Video
+
+        entries = PlaylistEntry.objects.filter(playlist_id=playlist_id)
+        return list(
+            Video.objects.filter(
+                youtube_id__in=entries.values("youtube_id")
+            ).values_list("youtube_id", flat=True)
+        )
 
 
 class Reindex(ReindexBase):
@@ -326,11 +318,11 @@ class Reindex(ReindexBase):
         video = YoutubeVideo(youtube_id)
 
         # read current state
-        video.get_from_es()
+        video.get_from_db()
         if not video.json_data:
             return None
 
-        es_meta = video.json_data.copy()
+        stored = video.json_data.copy()
 
         media_url: str | bool
         if from_download:
@@ -339,7 +331,7 @@ class Reindex(ReindexBase):
         else:
             # use archive path for reindex media file
             media_url = os.path.join(
-                EnvironmentSettings.MEDIA_DIR, es_meta["media_url"]
+                EnvironmentSettings.MEDIA_DIR, stored["media_url"]
             )
 
         video.build_json(media_path=media_url)
@@ -347,18 +339,18 @@ class Reindex(ReindexBase):
             video.deactivate()
             return None
 
-        video.delete_subtitles(subtitles=es_meta.get("subtitles"))
+        video.delete_subtitles(subtitles=stored.get("subtitles"))
         video.check_subtitles()
 
         # add back
-        video.json_data["player"] = es_meta.get("player")
-        video.json_data["date_downloaded"] = es_meta.get("date_downloaded")
-        video.json_data["vid_type"] = es_meta.get("vid_type")
-        video.json_data["channel"] = es_meta.get("channel")
-        if es_meta.get("playlist"):
-            video.json_data["playlist"] = es_meta.get("playlist")
+        video.json_data["player"] = stored.get("player")
+        video.json_data["date_downloaded"] = stored.get("date_downloaded")
+        video.json_data["vid_type"] = stored.get("vid_type")
+        video.json_data["channel"] = stored.get("channel")
+        if stored.get("playlist"):
+            video.json_data["playlist"] = stored.get("playlist")
 
-        video.upload_to_es()
+        video.save_to_db()
         self.processed["videos"] += 1
 
         return video
@@ -370,45 +362,42 @@ class Reindex(ReindexBase):
         thumb_handler.download_video_thumb(video.json_data["vid_thumb_url"])
 
         Comments(video.youtube_id, config=self.config).reindex_comments()
-        video.get_from_es()
+        video.get_from_db()
         video.embed_metadata()
 
     def _reindex_single_channel(self, channel_id: str) -> None:
         """refresh channel data and sync to videos"""
         # read current state
         channel = YoutubeChannel(channel_id)
-        channel.get_from_es()
+        channel.get_from_db()
         if not channel.json_data:
             return
 
-        es_meta = channel.json_data.copy()
+        stored = channel.json_data.copy()
 
         # get new
         channel.get_from_youtube()
         if not channel.youtube_meta:
             channel.deactivate()
-            channel.get_from_es()
-            channel.sync_to_videos()
             return
 
         channel.process_youtube_meta()
         channel.get_channel_art()
 
         # add back
-        channel.json_data["channel_subscribed"] = es_meta["channel_subscribed"]
-        overwrites = es_meta.get("channel_overwrites")
+        channel.json_data["channel_subscribed"] = stored["channel_subscribed"]
+        overwrites = stored.get("channel_overwrites")
         if overwrites:
             channel.json_data["channel_overwrites"] = overwrites
 
-        channel.upload_to_es()
-        channel.sync_to_videos()
+        channel.save_to_db()
         ChannelFullScan(channel_id, self.config).scan()
         self.processed["channels"] += 1
 
     def _reindex_single_playlist(self, playlist_id: str) -> None:
         """refresh playlist data"""
         playlist = YoutubePlaylist(playlist_id)
-        playlist.get_from_es()
+        playlist.get_from_db()
         if (
             not playlist.json_data
             or playlist.json_data["playlist_type"] == "custom"
@@ -586,15 +575,11 @@ class ChannelFullScan:
             return
 
         print(f"{self.channel_id}: fixing {len(self.to_update)} videos")
-        bulk_list = []
-        for video in self.to_update:
-            action = {
-                "update": {"_id": video.get("video_id"), "_index": "ta_video"}
-            }
-            source = {"doc": {"vid_type": video.get("vid_type")}}
-            bulk_list.append(json.dumps(action))
-            bulk_list.append(json.dumps(source))
-        # add last newline
-        bulk_list.append("\n")
-        data = "\n".join(bulk_list)
-        _, _ = ElasticWrap("_bulk").post(data=data, ndjson=True)
+        # pylint: disable=import-outside-toplevel
+        from video.models import Video
+
+        with transaction.atomic():
+            for video in self.to_update:
+                Video.objects.filter(youtube_id=video["video_id"]).update(
+                    vid_type=video["vid_type"]
+                )

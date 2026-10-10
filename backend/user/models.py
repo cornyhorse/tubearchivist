@@ -15,8 +15,10 @@ class AccountManager(BaseUserManager):
 
     def _create_user(self, name, password, **extra_fields):
         """create regular user private"""
-        values = [name, password]
-        field_value_map = dict(zip(self.model.REQUIRED_FIELDS, values))
+        field_value_map = {
+            self.model.USERNAME_FIELD: name,
+            "password": password,
+        }
         for field_name, value in field_value_map.items():
             if not value:
                 raise ValueError(f"The {field_name} value must be set")
@@ -52,3 +54,16 @@ class Account(AbstractBaseUser, PermissionsMixin):
 
     USERNAME_FIELD = "name"
     REQUIRED_FIELDS = ["password"]
+
+
+class UserConfig(models.Model):
+    """per user UI preferences, validated by UserConfig serializers"""
+
+    user = models.OneToOneField(
+        Account,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name="ta_config",
+    )
+    config = models.JSONField(default=dict)
+    updated = models.DateTimeField(auto_now=True)

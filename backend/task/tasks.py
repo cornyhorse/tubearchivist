@@ -6,12 +6,12 @@ Functionality:
 - handle task locking
 """
 
-from appsettings.src.backup import ElasticBackup
+from appsettings.src.backup import DatabaseBackup
 from appsettings.src.config import ReleaseVersion
 from appsettings.src.filesystem import Scanner
-from appsettings.src.index_setup import ElasticIndexWrap
 from appsettings.src.manual import ImportFolderScanner
 from appsettings.src.reindex import Reindex, ReindexManual, ReindexPopulate
+from appsettings.src.snapshot import DbSnapshot
 from celery import Task, shared_task
 from celery.exceptions import Retry
 from channel.src.index import YoutubeChannel
@@ -21,6 +21,7 @@ from download.src.queue import PendingList
 from download.src.subscriptions import SubscriptionHandler, SubscriptionScanner
 from download.src.thumbnails import ThumbValidator
 from download.src.yt_dlp_handler import VideoDownloader
+from emby.src.sync import paths_from_env, sync_all
 from task.src.notify import Notifications
 from task.src.task_config import TASK_CONFIG
 from task.src.task_manager import TaskManager
@@ -144,6 +145,7 @@ def download_pending(self, auto_only=False):
         raise exc
 
     if downloaded:
+        queue_emby_sync()
         return f"downloaded {downloaded} video(s)."
 
     return None
@@ -211,6 +213,7 @@ def check_reindex(self, data=False, extract_videos=False):
 
     handler = Reindex(task=self)
     handler.reindex_all()
+    queue_emby_sync()
 
     return handler.build_message()
 
@@ -240,7 +243,7 @@ def run_backup(self, reason="auto"):
         return
 
     manager.init(self)
-    ElasticBackup(reason=reason, task=self).backup_all_indexes()
+    DatabaseBackup(reason=reason, task=self).backup_all_indexes()
 
 
 @shared_task(bind=True, name="restore_backup", base=BaseTask)
@@ -253,9 +256,7 @@ def run_restore_backup(self, filename):
         return None
 
     manager.init(self)
-    self.send_progress(["Reset your Index"])
-    ElasticIndexWrap().reset()
-    ElasticBackup(task=self).restore(filename)
+    DatabaseBackup(task=self).restore(filename)
     print("index restore finished")
 
     return f"backup restore completed: {filename}"
@@ -321,6 +322,42 @@ def index_channel_playlists(self, channel_id):
     """add all playlists of channel to index"""
     channel = YoutubeChannel(channel_id, task=self)
     channel.index_channel_playlists()
+
+
+@shared_task(bind=True, name="emby_sync", base=BaseTask)
+def emby_sync(self):
+    """write the Emby library tree, if TA_EMBY_ROOT is set"""
+    paths = paths_from_env()
+    if not paths:
+        return "Emby sync is disabled, set TA_EMBY_ROOT"
+
+    manager = TaskManager()
+    if manager.is_pending(self):
+        print(f"[task][{self.name}] emby sync is already running")
+        return None
+
+    manager.init(self)
+    self.send_progress(["Writing the Emby library."])
+    report = sync_all(paths)
+    for warning in report.warnings[:20]:
+        print(f"[emby] {warning}")
+
+    return (
+        f"Emby: {len(report.created)} created, {len(report.updated)} updated, "
+        f"{len(report.renamed)} renamed, {len(report.deleted)} removed"
+    )
+
+
+def queue_emby_sync() -> None:
+    """start an Emby sync after library changes, if enabled"""
+    if paths_from_env():
+        emby_sync.delay()
+
+
+@shared_task(name="db_snapshot")
+def db_snapshot():
+    """daily database snapshot, scheduled by DbSnapshot.setup"""
+    DbSnapshot().take_snapshot_now()
 
 
 @shared_task(name="version_check")

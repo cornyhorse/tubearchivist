@@ -1,12 +1,12 @@
 """
 Functionality:
-- read and write user config backed by ES
+- read and write user config backed by the UserConfig model
 - encapsulate persistence of user properties
 """
 
 from typing import TypedDict
 
-from common.src.es_connect import ElasticWrap
+from django.db import transaction
 
 
 class UserConfigType(TypedDict, total=False):
@@ -63,16 +63,6 @@ class UserConfig:
         self._user_id: str = user_id
         self._config: UserConfigType = self.get_config()
 
-    @property
-    def es_url(self) -> str:
-        """es URL"""
-        return f"ta_config/_doc/user_{self._user_id}"
-
-    @property
-    def es_update_url(self) -> str:
-        """es update URL"""
-        return f"ta_config/_update/user_{self._user_id}"
-
     def get_value(self, key: str):
         """Get the given key from the users configuration
         Throws a KeyError if the requested Key is not a permitted value"""
@@ -83,49 +73,56 @@ class UserConfig:
 
     def set_value(self, key: str, value: str | bool | int):
         """Set or replace a configuration value for the user"""
-        data = {"doc": {"config": {key: value}}}
-        response, status = ElasticWrap(self.es_update_url).post(data)
-        if status < 200 or status > 299:
-            raise ValueError(f"Failed storing user value {status}: {response}")
-
-        print(f"User {self._user_id} value '{key}' change: to {value}")
+        self.update_config({key: value})
 
     def get_config(self) -> UserConfigType:
-        """get config from ES or load from the application defaults"""
+        """get config from the database or load the application defaults"""
         if not self._user_id:
             raise ValueError("no user_id passed")
 
-        response, status = ElasticWrap(self.es_url).get(print_error=False)
-        if status == 404:
-            self.sync_defaults()
-            config = self._DEFAULT_USER_SETTINGS
-        else:
-            config = self.sync_new_defaults(response["_source"]["config"])
+        # pylint: disable=import-outside-toplevel
+        from user.models import UserConfig as UserConfigModel
 
-        return config
+        stored, created = UserConfigModel.objects.get_or_create(
+            user_id=self._user_id,
+            defaults={"config": dict(self._DEFAULT_USER_SETTINGS)},
+        )
+        if created:
+            print(f"set default config for user {self._user_id}")
+            return UserConfigType(**stored.config)
+
+        return self.sync_new_defaults(stored.config)
 
     def update_config(self, to_update: dict) -> None:
         """update config object"""
-        data = {"doc": {"config": to_update}}
-        response, status = ElasticWrap(self.es_update_url).post(data)
-        if status < 200 or status > 299:
-            raise ValueError(f"Failed storing user value {status}: {response}")
+        # pylint: disable=import-outside-toplevel
+        from user.models import UserConfig as UserConfigModel
 
+        with transaction.atomic():
+            (
+                stored,
+                _,
+            ) = UserConfigModel.objects.select_for_update().get_or_create(
+                user_id=self._user_id,
+                defaults={"config": dict(self._DEFAULT_USER_SETTINGS)},
+            )
+            stored.config.update(to_update)
+            stored.save(update_fields=["config", "updated"])
+
+        self._config.update(to_update)  # type: ignore
         for key, value in to_update.items():
             print(f"User {self._user_id} value '{key}' change: to {value}")
 
-    def sync_defaults(self):
-        """set initial defaults on 404"""
-        response, _ = ElasticWrap(self.es_url).post(
-            {"config": self._DEFAULT_USER_SETTINGS}
-        )
-        print(f"set default config for user {self._user_id}: {response}")
-
     def sync_new_defaults(self, config):
-        """sync new defaults"""
-        for key, value in self._DEFAULT_USER_SETTINGS.items():
-            if key not in config:
-                self.set_value(key, value)
-                config.update({key: value})
+        """add defaults for keys this user has no value for yet"""
+        missing = {
+            key: value
+            for key, value in self._DEFAULT_USER_SETTINGS.items()
+            if key not in config
+        }
+        config.update(missing)
+        if missing:
+            self._config = config
+            self.update_config(missing)
 
         return config

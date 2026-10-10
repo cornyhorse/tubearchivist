@@ -68,6 +68,12 @@ const DownloadListItem = ({ download, setRefresh }: DownloadListItemProps) => {
           </div>
         )}
 
+        {download.ignore_reason && (
+          <div>
+            <p>Ignored by download rule: {download.ignore_reason}</p>
+          </div>
+        )}
+
         <div>
           {showIgnored && (
             <>
