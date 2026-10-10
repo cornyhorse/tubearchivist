@@ -254,10 +254,24 @@ def test_ta_host_parser():
 
 
 def test_stylesheets():
-    """known stylesheets pass, unknown fall back to dark"""
-    assert "custom.css" in helper.get_stylesheets()
-    assert helper.check_stylesheet("matrix.css") == "matrix.css"
-    assert helper.check_stylesheet("../evil.css") == "dark.css"
+    """the six themes pass, legacy values migrate, anything else is device"""
+    assert helper.get_stylesheets() == [
+        "device",
+        "light",
+        "dark",
+        "paper",
+        "contrast",
+        "colourblind",
+    ]
+    for theme in helper.get_stylesheets():
+        assert helper.check_stylesheet(theme) == theme
+    assert helper.check_stylesheet("dark.css") == "dark"
+    assert helper.check_stylesheet("light.css") == "light"
+    assert helper.check_stylesheet("matrix.css") == "dark"
+    assert helper.check_stylesheet("midnight.css") == "dark"
+    assert helper.check_stylesheet("custom.css") == "device"
+    assert helper.check_stylesheet("../evil.css") == "device"
+    assert helper.check_stylesheet(None) == "device"
 
 
 @pytest.mark.parametrize(

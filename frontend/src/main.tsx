@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as ReactDOM from 'react-dom/client';
 import { createBrowserRouter, redirect, RouterProvider } from 'react-router-dom';
 import Routes from './configuration/routes/RouteList';
+import './themes.css';
 import './style.css';
 import Base from './pages/Base';
 import About from './pages/About';
