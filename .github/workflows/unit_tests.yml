@@ -25,6 +25,10 @@ jobs:
           --health-cmd "pg_isready -U ta"
           --health-interval 2s
           --health-retries 30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
 
     env:
       TA_DB_HOST: 127.0.0.1
@@ -32,6 +36,7 @@ jobs:
       TA_DB_NAME: ta
       TA_DB_USER: ta
       TA_DB_PASSWORD: ta-ci-only
+      REDIS_CON: redis://127.0.0.1:6379
       TA_PASSWORD: ci-only
       TZ: UTC
 
