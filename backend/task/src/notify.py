@@ -12,7 +12,6 @@ NOTIFY_KEY = "notify"
 class Notifications:
     """store notifications in the database"""
 
-
     def __init__(self, task_name: str):
         self.task_name = task_name
 
