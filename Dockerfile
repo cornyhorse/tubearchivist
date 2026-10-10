@@ -57,6 +57,7 @@ RUN apt-get clean && apt-get -y update && apt-get -y install --no-install-recomm
     nginx \
     atomicparsley \
     tini \
+    postgresql-client \
     curl && rm -rf /var/lib/apt/lists/*
 
 # install debug tools for testing environment
