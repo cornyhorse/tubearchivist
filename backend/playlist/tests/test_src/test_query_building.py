@@ -12,7 +12,9 @@ def test_build_queryset():
     """filters and name order"""
     Playlist.save_doc(playlist_doc("PL1", [], playlist_name="b list"))
     Playlist.save_doc(
-        playlist_doc("PL2", [], playlist_name="a list", playlist_subscribed=True)
+        playlist_doc(
+            "PL2", [], playlist_name="a list", playlist_subscribed=True
+        )
     )
     Playlist.save_doc(
         playlist_doc(
