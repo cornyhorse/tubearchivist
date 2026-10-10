@@ -9,8 +9,8 @@ from time import sleep
 from typing import Literal, TypedDict
 
 import requests
-from appsettings.src.snapshot import ElasticSnapshot
-from common.src.es_connect import ElasticWrap
+from appsettings.models import ConfigDocument
+from appsettings.src.snapshot import DbSnapshot
 from common.src.ta_redis import RedisArchivist
 from django.conf import settings
 
@@ -66,8 +66,7 @@ class AppConfigType(TypedDict):
 class AppConfig:
     """handle application variables"""
 
-    ES_PATH = "ta_config/_doc/appsettings"
-    ES_UPDATE_PATH = "ta_config/_update/appsettings"
+    KEY = "appsettings"
     CONFIG_DEFAULTS: AppConfigType = {
         "subscriptions": {
             "channel_size": 50,
@@ -106,12 +105,17 @@ class AppConfig:
         self.config = self.get_config()
 
     def get_config(self) -> AppConfigType:
-        """get config from ES"""
-        response, status_code = ElasticWrap(self.ES_PATH).get()
-        if not status_code == 200:
-            raise ValueError(f"no config found at {self.ES_PATH}")
+        """get config from the database"""
+        document = ConfigDocument.objects.filter(key=self.KEY).first()
+        if not document:
+            raise ValueError(f"no config found at {self.KEY}")
 
-        return response["_source"]
+        return document.value
+
+    def _save(self, config: dict) -> None:
+        ConfigDocument.objects.update_or_create(
+            key=self.KEY, defaults={"value": config}
+        )
 
     def update_config(self, data: dict) -> AppConfigType:
         """update single config value"""
@@ -126,10 +130,7 @@ class AppConfig:
             else:
                 new_config[key] = value
 
-        response, status_code = ElasticWrap(self.ES_PATH).post(new_config)
-        if not status_code == 200:
-            print(response)
-
+        self._save(new_config)
         self.config = new_config
 
         return new_config
@@ -138,7 +139,7 @@ class AppConfig:
         """apply hooks for some config keys"""
         for config_value, updated_value in data:
             if config_value == "application.enable_snapshot" and updated_value:
-                ElasticSnapshot().setup()
+                DbSnapshot().setup()
 
     @staticmethod
     def _fail_message(message_line):
@@ -156,10 +157,10 @@ class AppConfig:
 
     def sync_defaults(self):
         """sync defaults at startup, needs to be called with __new__"""
-        return ElasticWrap(self.ES_PATH).post(self.CONFIG_DEFAULTS)
+        self._save(self.CONFIG_DEFAULTS)
 
     def add_new_defaults(self) -> list[str]:
-        """add new default config values to ES, called at startup"""
+        """add new default config values, called at startup"""
         updated = []
         for key, value in self.CONFIG_DEFAULTS.items():
             if key not in self.config:
@@ -199,10 +200,7 @@ class AppConfig:
         if not cleared:
             return []
 
-        response, status_code = ElasticWrap(self.ES_PATH).post(self.config)
-        if not status_code == 200:
-            print(response)
-
+        self._save(self.config)
         return cleared
 
 

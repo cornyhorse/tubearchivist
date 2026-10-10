@@ -118,6 +118,22 @@ class Channel(models.Model):
         return fields
 
     @classmethod
+    def save_doc(cls, doc: dict) -> "Channel":
+        """create or replace from legacy document"""
+        fields = cls.fields_from_doc(doc)
+        channel_id = fields.pop("channel_id")
+        channel, _ = cls.objects.update_or_create(
+            channel_id=channel_id, defaults=fields
+        )
+        return channel
+
+    @classmethod
+    def load_doc(cls, channel_id: str) -> dict | None:
+        """legacy document of a channel, None if not indexed"""
+        channel = cls.objects.filter(channel_id=channel_id).first()
+        return channel.to_doc() if channel else None
+
+    @classmethod
     def from_doc(cls, doc: dict) -> "Channel":
         """build unsaved instance from legacy document"""
         return cls(**cls.fields_from_doc(doc))

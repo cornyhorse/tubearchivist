@@ -9,7 +9,6 @@ from time import sleep
 
 import requests
 from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.helper import is_missing
 from mutagen.mp4 import MP4, MP4Cover
 from PIL import Image, ImageFile, UnidentifiedImageError
@@ -299,105 +298,57 @@ class ThumbManager(ThumbManagerBase):
             os.remove(thumb_path)
 
 
-class ValidatorCallback:
-    """handle callback validate thumbnails page by page"""
-
-    def __init__(self, source, index_name, counter=0):
-        self.source = source
-        self.index_name = index_name
-        self.counter = counter
-
-    def run(self):
-        """run the task for page"""
-        print(f"{self.index_name}: validate artwork")
-        if self.index_name in ["ta_video", "ta_download"]:
-            self._validate_videos()
-        elif self.index_name == "ta_channel":
-            self._validate_channels()
-        elif self.index_name == "ta_playlist":
-            self._validate_playlists()
-
-    def _validate_videos(self):
-        """check if video thumbnails are correct"""
-        for video in self.source:
-            url = video["_source"]["vid_thumb_url"]
-            handler = ThumbManager(video["_source"]["youtube_id"])
-            handler.download_video_thumb(url, skip_existing=True)
-
-    def _validate_channels(self):
-        """check if all channel artwork is there"""
-        for channel in self.source:
-            urls = (
-                channel["_source"].get("channel_thumb_url"),
-                channel["_source"].get("channel_banner_url"),
-                channel["_source"].get("channel_tvart_url"),
-            )
-            handler = ThumbManager(channel["_source"]["channel_id"])
-            handler.download_channel_art(urls, skip_existing=True)
-
-    def _validate_playlists(self):
-        """check if all playlist artwork is there"""
-        for playlist in self.source:
-            url = playlist["_source"]["playlist_thumbnail"]
-            handler = ThumbManager(playlist["_source"]["playlist_id"])
-            handler.download_playlist_thumb(url, skip_existing=True)
+def _progress(task, label: str, idx: int, total: int) -> None:
+    """send progress for a long running loop every 100 items"""
+    if task and (idx % 100 == 0 or idx == total):
+        message = [f"Processing {label} {idx}/{total}"]
+        task.send_progress(message, progress=idx / total)
 
 
 class ThumbValidator:
     """validate thumbnails"""
 
-    INDEX = [
-        {
-            "data": {
-                "query": {"term": {"active": {"value": True}}},
-                "_source": ["vid_thumb_url", "youtube_id"],
-            },
-            "name": "ta_video",
-        },
-        {
-            "data": {
-                "query": {"term": {"channel_active": {"value": True}}},
-                "_source": {
-                    "excludes": ["channel_description", "channel_overwrites"]
-                },
-            },
-            "name": "ta_channel",
-        },
-        {
-            "data": {
-                "query": {"term": {"playlist_active": {"value": True}}},
-                "_source": ["playlist_id", "playlist_thumbnail"],
-            },
-            "name": "ta_playlist",
-        },
-        {
-            "data": {
-                "query": {"term": {"status": {"value": "pending"}}},
-                "_source": ["youtube_id", "vid_thumb_url"],
-            },
-            "name": "ta_download",
-        },
-    ]
-
     def __init__(self, task=False):
         self.task = task
 
     def validate(self):
-        """validate all indexes"""
-        for index in self.INDEX:
-            total = self._get_total(index["name"])
-            if not total:
-                continue
+        """download missing artwork of active items and pending downloads"""
+        # pylint: disable=import-outside-toplevel
+        from channel.models import Channel
+        from download.models import Download
+        from playlist.models import Playlist
+        from video.models import Video
 
-            paginate = IndexPaginate(
-                index_name=index["name"],
-                data=index["data"],
-                size=1000,
-                callback=ValidatorCallback,
-                task=self.task,
-                total=total,
+        videos = list(
+            Video.objects.filter(active=True).values_list(
+                "youtube_id", "vid_thumb_url"
             )
-            _ = paginate.get_results()
+        ) + list(
+            Download.objects.filter(status="pending").values_list(
+                "youtube_id", "vid_thumb_url"
+            )
+        )
+        print("ta_video: validate artwork")
+        for idx, (youtube_id, url) in enumerate(videos, start=1):
+            ThumbManager(youtube_id).download_video_thumb(url, skip_existing=True)
+            _progress(self.task, "Videos", idx, len(videos))
+
+        channels = list(Channel.objects.filter(active=True))
+        print("ta_channel: validate artwork")
+        for idx, channel in enumerate(channels, start=1):
+            urls = (channel.thumb_url, channel.banner_url, channel.tvart_url)
+            handler = ThumbManager(channel.channel_id)
+            handler.download_channel_art(urls, skip_existing=True)
+            _progress(self.task, "Channels", idx, len(channels))
+
+        playlists = list(Playlist.objects.filter(active=True))
+        print("ta_playlist: validate artwork")
+        for idx, playlist in enumerate(playlists, start=1):
+            handler = ThumbManager(playlist.playlist_id)
+            handler.download_playlist_thumb(
+                playlist.thumbnail, skip_existing=True
+            )
+            _progress(self.task, "Playlists", idx, len(playlists))
 
     def clean_up(self):
         """clean up all thumbs"""
@@ -429,17 +380,18 @@ class ThumbValidator:
 
     @staticmethod
     def _get_vid_thumbs_should(video_folder: str) -> set[str]:
-        """get indexed"""
-        should_list = [
-            {"prefix": {"youtube_id": {"value": video_folder.lower()}}},
-            {"prefix": {"youtube_id": {"value": video_folder.upper()}}},
-        ]
-        data = {
-            "query": {"bool": {"should": should_list}},
-            "_source": ["youtube_id"],
-        }
-        result = IndexPaginate("ta_video,ta_download", data).get_results()
-        thumbs_should = {i["youtube_id"] for i in result}
+        """ids of videos and queue items whose thumb lives in video_folder"""
+        # pylint: disable=import-outside-toplevel
+        from download.models import Download
+        from video.models import Video
+
+        thumbs_should = set()
+        for model in (Video, Download):
+            thumbs_should.update(
+                model.objects.filter(
+                    youtube_id__istartswith=video_folder
+                ).values_list("youtube_id", flat=True)
+            )
 
         return thumbs_should
 
@@ -482,59 +434,28 @@ class ThumbValidator:
             if self.task:
                 self.task.send_progress([message])
 
-    @staticmethod
-    def _get_total(index_name):
-        """get total documents in index"""
-        path = f"{index_name}/_count"
-        response, _ = ElasticWrap(path).get()
-
-        return response.get("count")
-
 
 class ThumbFilesystem:
     """sync thumbnail files to media files"""
-
-    INDEX_NAME = "ta_video"
 
     def __init__(self, task=False):
         self.task = task
 
     def embed(self):
-        """entry point"""
-        data = {
-            "query": {"match_all": {}},
-            "_source": ["media_url", "youtube_id", "channel.channel_id"],
-        }
-        paginate = IndexPaginate(
-            index_name=self.INDEX_NAME,
-            data=data,
-            size=100,
-            callback=EmbedCallback,
-            task=self.task,
-            total=self._get_total(),
+        """embed the cached thumbnail into every media file"""
+        # pylint: disable=import-outside-toplevel
+        from video.models import Video
+
+        videos = list(
+            Video.objects.order_by("youtube_id").values(
+                "youtube_id", "media_url", "channel_id"
+            )
         )
-        _ = paginate.get_results()
-
-    def _get_total(self):
-        """get total documents in index"""
-        path = f"{self.INDEX_NAME}/_count"
-        response, _ = ElasticWrap(path).get()
-
-        return response.get("count")
-
-
-class EmbedCallback:
-    """callback class to embed thumbnails"""
-
-    MEDIA_DIR = EnvironmentSettings.MEDIA_DIR
-
-    def __init__(self, source, index_name, counter=0):
-        self.source = source
-        self.index_name = index_name
-        self.counter = counter
-
-    def run(self):
-        """run embed"""
-        for video in self.source:
-            video_id = video["_source"]["youtube_id"]
-            ThumbManager(video_id).embed_video_art(video["_source"])
+        for idx, video in enumerate(videos, start=1):
+            source = {
+                "youtube_id": video["youtube_id"],
+                "media_url": video["media_url"],
+                "channel": {"channel_id": video["channel_id"]},
+            }
+            ThumbManager(video["youtube_id"]).embed_video_art(source)
+            _progress(self.task, "Videos", idx, len(videos))

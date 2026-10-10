@@ -14,8 +14,8 @@ from typing import TypedDict
 
 import requests
 from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.helper import rand_sleep, requests_headers
+from django.db import transaction
 from download.src.yt_dlp_base import CookieHandler
 from yt_dlp.utils import orderedSet_from_options
 
@@ -111,13 +111,17 @@ class YoutubeSubtitle:
         media_url = video_media_url.replace(".mp4", f".{lang}.vtt")
         return media_url
 
-    def get_es_subtitles(self) -> list[dict]:
-        """get subtitles from elastic"""
-        data = {
-            "query": {"term": {"youtube_id": {"value": self.video.youtube_id}}}
-        }
-        response = IndexPaginate("ta_subtitle", data).get_results()
-        return response
+    def get_indexed_subtitles(self) -> list[dict]:
+        """indexed subtitle lines of the video as legacy documents"""
+        # pylint: disable=import-outside-toplevel
+        from video.models import SubtitleLine
+
+        lines = (
+            SubtitleLine.objects.select_related("video__channel")
+            .filter(video_id=self.video.youtube_id)
+            .order_by("lang", "index")
+        )
+        return [line.to_doc() for line in lines]
 
     def download_subtitles(self, relevant_subtitles):
         """download subtitle files to archive"""
@@ -146,8 +150,7 @@ class YoutubeSubtitle:
             self.write_subtitle_file(dest_path, subtitle_str)
             if self.video.config["downloads"]["subtitle_index"]:
                 documents = parser.create_documents(self.video, source)
-                query_str = parser.create_bulk_import(documents)
-                self.index_subtitle(query_str)
+                self.index_subtitle(documents)
 
             indexed.append(
                 {
@@ -211,10 +214,15 @@ class YoutubeSubtitle:
         if host_uid and host_gid:
             os.chown(dest_path, host_uid, host_gid)
 
-    @staticmethod
-    def index_subtitle(query_str):
-        """send subtitle to es for indexing"""
-        _, _ = ElasticWrap("_bulk").post(data=query_str, ndjson=True)
+    def index_subtitle(self, documents: list[dict]) -> None:
+        """
+        queue subtitle lines for indexing; written by save_subtitle_lines
+        once the video row exists
+        """
+        pending = getattr(self.video, "pending_subtitle_lines", None)
+        if pending is None:
+            pending = self.video.pending_subtitle_lines = []
+        pending.extend(documents)
 
     def delete(self, subtitles=False):
         """delete subtitles from index and filesystem"""
@@ -236,9 +244,25 @@ class YoutubeSubtitle:
             except FileNotFoundError:
                 print(f"{youtube_id}: {file_path} failed to delete")
         # delete from index
-        path = "ta_subtitle/_delete_by_query?refresh=true"
-        data = {"query": {"term": {"youtube_id": {"value": youtube_id}}}}
-        _, _ = ElasticWrap(path).post(data=data)
+        # pylint: disable=import-outside-toplevel
+        from video.models import SubtitleLine
+
+        SubtitleLine.objects.filter(video_id=youtube_id).delete()
+
+
+def save_subtitle_lines(youtube_id: str, documents: list[dict]) -> None:
+    """replace indexed lines of the languages in documents"""
+    # pylint: disable=import-outside-toplevel
+    from video.models import SubtitleLine
+
+    if not documents:
+        return
+    langs = {doc["subtitle_lang"] for doc in documents}
+    with transaction.atomic():
+        SubtitleLine.objects.filter(video_id=youtube_id, lang__in=langs).delete()
+        SubtitleLine.objects.bulk_create(
+            SubtitleLine(**SubtitleLine.fields_from_doc(doc)) for doc in documents
+        )
 
 
 class SubtitleParser:
@@ -324,21 +348,6 @@ class SubtitleParser:
             subtitle_str = subtitle_str + cue_text
 
         return subtitle_str
-
-    def create_bulk_import(self, documents):
-        """subtitle lines for es import"""
-        bulk_list = []
-
-        for document in documents:
-            document_id = document.get("subtitle_fragment_id")
-            action = {"index": {"_index": "ta_subtitle", "_id": document_id}}
-            bulk_list.append(json.dumps(action))
-            bulk_list.append(json.dumps(document))
-
-        bulk_list.append("\n")
-        query_str = "\n".join(bulk_list)
-
-        return query_str
 
     def create_documents(self, video, source):
         """process documents"""

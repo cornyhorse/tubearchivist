@@ -6,8 +6,43 @@ from common.src.helper import get_duration_str
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVectorField
-from django.db import models
+from django.db import connection, models
 from video.src.constants import VideoTypeEnum
+
+
+class VideoQuerySet(models.QuerySet):
+    """video queries"""
+
+    def similar_to(self, youtube_id: str, limit: int = 6) -> list["Video"]:
+        """
+        videos sharing title or tag terms with youtube_id, best match first;
+        replaces ES more_like_this on tags and title
+        """
+        sql = """
+            WITH terms AS (
+                SELECT to_tsquery(
+                    'simple',
+                    string_agg(quote_literal(lexeme), ' | ')
+                ) AS query
+                FROM video_video,
+                    unnest(tsvector_to_array(ts_filter(search, '{a,b}')))
+                        AS lexeme
+                WHERE youtube_id = %s
+            )
+            SELECT v.youtube_id
+            FROM video_video v, terms
+            WHERE terms.query IS NOT NULL
+              AND v.youtube_id <> %s
+              AND v.search @@ terms.query
+            ORDER BY ts_rank(v.search, terms.query) DESC, v.youtube_id
+            LIMIT %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [youtube_id, youtube_id, limit])
+            ids = [row[0] for row in cursor.fetchall()]
+
+        found = self.select_related("channel").in_bulk(ids)
+        return [found[i] for i in ids]
 
 
 class Video(models.Model):
@@ -54,6 +89,8 @@ class Video(models.Model):
     streams = models.JSONField(default=list, blank=True)
     subtitles = models.JSONField(default=list, blank=True)
     sponsorblock = models.JSONField(null=True, blank=True)
+
+    objects = VideoQuerySet.as_manager()
 
     search = models.GeneratedField(
         expression=WeightedSearchVector(
@@ -125,6 +162,27 @@ class Video(models.Model):
             "subtitles": doc.get("subtitles") or [],
             "sponsorblock": doc.get("sponsorblock"),
         }
+
+    @classmethod
+    def save_doc(cls, doc: dict) -> "Video":
+        """create or replace from legacy document, channel must exist"""
+        fields = cls.fields_from_doc(doc)
+        youtube_id = fields.pop("youtube_id")
+        fields["channel_id"] = doc["channel"]["channel_id"]
+        video, _ = cls.objects.update_or_create(
+            youtube_id=youtube_id, defaults=fields
+        )
+        return video
+
+    @classmethod
+    def load_doc(cls, youtube_id: str) -> dict | None:
+        """legacy document of a video, None if not indexed"""
+        video = (
+            cls.objects.select_related("channel")
+            .filter(youtube_id=youtube_id)
+            .first()
+        )
+        return video.to_doc() if video else None
 
     @classmethod
     def from_doc(cls, doc: dict) -> "Video":

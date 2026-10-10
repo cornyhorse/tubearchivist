@@ -15,7 +15,9 @@ class DownloadItemSerializer(serializers.Serializer):
     channel_indexed = serializers.BooleanField()
     channel_name = serializers.CharField()
     duration = serializers.CharField()
-    message = serializers.CharField(required=False)
+    duration_seconds = serializers.IntegerField(required=False, allow_null=True)
+    ignore_reason = serializers.CharField(required=False, allow_null=True)
+    message = serializers.CharField(required=False, allow_null=True)
     published = serializers.CharField(allow_null=True)
     status = serializers.ChoiceField(
         choices=["pending", "ignore"], required=False

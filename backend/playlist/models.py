@@ -4,7 +4,7 @@ from channel.models import Channel, EmbyNumbering
 from common.src.db import WeightedSearchVector, from_epoch, to_epoch
 from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVectorField
-from django.db import models
+from django.db import models, transaction
 
 
 class Playlist(models.Model):
@@ -63,7 +63,7 @@ class Playlist(models.Model):
         return {
             "playlist_id": doc["playlist_id"],
             "name": doc.get("playlist_name") or "",
-            "description": doc.get("playlist_description"),
+            "description": doc.get("playlist_description") or None,
             "channel_id": doc.get("playlist_channel_id") or "",
             "channel_name": doc.get("playlist_channel") or "",
             "active": bool(doc.get("playlist_active", True)),
@@ -73,6 +73,25 @@ class Playlist(models.Model):
             "thumbnail": doc.get("playlist_thumbnail") or "",
             "playlist_type": doc.get("playlist_type") or "regular",
         }
+
+    @classmethod
+    def save_doc(cls, doc: dict) -> "Playlist":
+        """create or replace playlist and its entries from legacy document"""
+        fields = cls.fields_from_doc(doc)
+        playlist_id = fields.pop("playlist_id")
+        with transaction.atomic():
+            playlist, _ = cls.objects.update_or_create(
+                playlist_id=playlist_id, defaults=fields
+            )
+            playlist.entries.all().delete()
+            PlaylistEntry.objects.bulk_create(cls.entries_from_doc(doc))
+        return playlist
+
+    @classmethod
+    def load_doc(cls, playlist_id: str) -> dict | None:
+        """legacy document of a playlist, None if not indexed"""
+        playlist = cls.objects.filter(playlist_id=playlist_id).first()
+        return playlist.to_doc() if playlist else None
 
     @staticmethod
     def entries_from_doc(doc: dict) -> list["PlaylistEntry"]:

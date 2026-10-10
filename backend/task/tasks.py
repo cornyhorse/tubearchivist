@@ -6,11 +6,11 @@ Functionality:
 - handle task locking
 """
 
-from appsettings.src.backup import ElasticBackup
+from appsettings.src.backup import DatabaseBackup
 from appsettings.src.config import ReleaseVersion
 from appsettings.src.filesystem import Scanner
-from appsettings.src.index_setup import ElasticIndexWrap
 from appsettings.src.manual import ImportFolderScanner
+from appsettings.src.snapshot import DbSnapshot
 from appsettings.src.reindex import Reindex, ReindexManual, ReindexPopulate
 from celery import Task, shared_task
 from celery.exceptions import Retry
@@ -240,7 +240,7 @@ def run_backup(self, reason="auto"):
         return
 
     manager.init(self)
-    ElasticBackup(reason=reason, task=self).backup_all_indexes()
+    DatabaseBackup(reason=reason, task=self).backup_all_indexes()
 
 
 @shared_task(bind=True, name="restore_backup", base=BaseTask)
@@ -253,9 +253,7 @@ def run_restore_backup(self, filename):
         return None
 
     manager.init(self)
-    self.send_progress(["Reset your Index"])
-    ElasticIndexWrap().reset()
-    ElasticBackup(task=self).restore(filename)
+    DatabaseBackup(task=self).restore(filename)
     print("index restore finished")
 
     return f"backup restore completed: {filename}"
@@ -321,6 +319,12 @@ def index_channel_playlists(self, channel_id):
     """add all playlists of channel to index"""
     channel = YoutubeChannel(channel_id, task=self)
     channel.index_channel_playlists()
+
+
+@shared_task(name="db_snapshot")
+def db_snapshot():
+    """daily database snapshot, scheduled by DbSnapshot.setup"""
+    DbSnapshot().take_snapshot_now()
 
 
 @shared_task(name="version_check")

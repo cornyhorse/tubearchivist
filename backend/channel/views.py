@@ -1,5 +1,6 @@
 """all channel API views"""
 
+from channel.models import Channel
 from channel.serializers import (
     ChannelAggSerializer,
     ChannelListQuerySerializer,
@@ -12,7 +13,9 @@ from channel.serializers import (
 from channel.src.index import YoutubeChannel, channel_overwrites
 from channel.src.nav import ChannelNav
 from common.serializers import ErrorResponseSerializer
+from common.src.helper import get_duration_str
 from common.src.urlparser import Parser
+from django.db.models import Count, Sum
 from common.views_base import AdminWriteOnly, ApiBaseView
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -21,6 +24,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework.response import Response
 from task.tasks import index_channel_playlists, subscribe_to
+from video.models import Video
 
 
 class ChannelApiListView(ApiBaseView):
@@ -29,7 +33,6 @@ class ChannelApiListView(ApiBaseView):
     POST: edit a list of channels
     """
 
-    search_base = "ta_channel/_search/"
     valid_filter = ["subscribed"]
     permission_classes = [AdminWriteOnly]
 
@@ -41,24 +44,16 @@ class ChannelApiListView(ApiBaseView):
     )
     def get(self, request):
         """get request"""
-        self.data.update(
-            {"sort": [{"channel_name.keyword": {"order": "asc"}}]}
-        )
-
         serializer = ChannelListQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
 
-        must_list = []
+        channels = Channel.objects.order_by("name", "channel_id")
         query_filter = validated_data.get("filter")
         if query_filter is not None:
-            channel_subscribed = query_filter == "subscribed"
-            must_list.append(
-                {"term": {"channel_subscribed": {"value": channel_subscribed}}}
-            )
+            channels = channels.filter(subscribed=query_filter == "subscribed")
 
-        self.data["query"] = {"bool": {"must": must_list}}
-        self.get_document_list(request)
+        self.get_document_list(request, "ta_channel", channels)
         serializer = ChannelListSerializer(self.response)
 
         return Response(serializer.data)
@@ -99,7 +94,6 @@ class ChannelApiView(ApiBaseView):
     GET: returns metadata dict of channel
     """
 
-    search_base = "ta_channel/_doc/"
     permission_classes = [AdminWriteOnly]
 
     @extend_schema(
@@ -113,7 +107,7 @@ class ChannelApiView(ApiBaseView):
     def get(self, request, channel_id):
         # pylint: disable=unused-argument
         """get channel detail"""
-        self.get_document(channel_id)
+        self.get_document("ta_channel", Channel.load_doc(channel_id))
         if not self.response:
             error = ErrorResponseSerializer({"error": "channel not found"})
             return Response(error.data, status=404)
@@ -135,7 +129,7 @@ class ChannelApiView(ApiBaseView):
     )
     def post(self, request, channel_id):
         """modify channel"""
-        self.get_document(channel_id)
+        self.get_document("ta_channel", Channel.load_doc(channel_id))
         if not self.response:
             error = ErrorResponseSerializer({"error": "channel not found"})
             return Response(error.data, status=404)
@@ -184,8 +178,6 @@ class ChannelAggsApiView(ApiBaseView):
     GET: get channel aggregations
     """
 
-    search_base = "ta_video/_search"
-
     @extend_schema(
         responses={
             200: OpenApiResponse(ChannelAggSerializer()),
@@ -193,20 +185,21 @@ class ChannelAggsApiView(ApiBaseView):
     )
     def get(self, request, channel_id):
         """get channel aggregations"""
-        self.data.update(
-            {
-                "query": {
-                    "term": {"channel.channel_id": {"value": channel_id}}
-                },
-                "aggs": {
-                    "total_items": {"value_count": {"field": "youtube_id"}},
-                    "total_size": {"sum": {"field": "media_size"}},
-                    "total_duration": {"sum": {"field": "player.duration"}},
-                },
-            }
+        # pylint: disable=unused-argument
+        totals = Video.objects.filter(channel_id=channel_id).aggregate(
+            items=Count("youtube_id"),
+            size=Sum("media_size", default=0),
+            duration=Sum("duration", default=0),
         )
-        self.get_aggs()
-        serializer = ChannelAggSerializer(self.response)
+        response = {
+            "total_items": {"value": totals["items"]},
+            "total_size": {"value": totals["size"]},
+            "total_duration": {
+                "value": totals["duration"],
+                "value_str": get_duration_str(totals["duration"]),
+            },
+        }
+        serializer = ChannelAggSerializer(response)
 
         return Response(serializer.data)
 
@@ -233,8 +226,6 @@ class ChannelApiSearchView(ApiBaseView):
     """resolves to /api/channel/search/
     search for channel
     """
-
-    search_base = "ta_channel/_doc/"
 
     @extend_schema(
         responses={
@@ -277,7 +268,7 @@ class ChannelApiSearchView(ApiBaseView):
             error = ErrorResponseSerializer({"error": "expected channel data"})
             return Response(error.data, status=400)
 
-        self.get_document(parsed["url"])
+        self.get_document("ta_channel", Channel.load_doc(parsed["url"]))
         if not self.response:
             error = ErrorResponseSerializer(
                 {"error": f"channel not found: {query}"}

@@ -13,9 +13,9 @@ from appsettings.serializers import (
     SnapshotRestoreResponseSerializer,
     TokenResponseSerializer,
 )
-from appsettings.src.backup import ElasticBackup
+from appsettings.src.backup import DatabaseBackup
 from appsettings.src.config import AppConfig
-from appsettings.src.snapshot import ElasticSnapshot
+from appsettings.src.snapshot import DbSnapshot
 from common.serializers import (
     AsyncTaskResponseSerializer,
     ErrorResponseSerializer,
@@ -49,7 +49,7 @@ class BackupApiListView(ApiBaseView):
     def get(request):
         """get list of available backup files"""
         # pylint: disable=unused-argument
-        backup_files = ElasticBackup().get_all_backup_files()
+        backup_files = DatabaseBackup().get_all_backup_files()
         serializer = BackupFileSerializer(backup_files, many=True)
         return Response(serializer.data)
 
@@ -93,7 +93,7 @@ class BackupApiView(ApiBaseView):
     def get(request, filename):
         """get single backup"""
         # pylint: disable=unused-argument
-        backup_file = ElasticBackup().build_backup_file_data(filename)
+        backup_file = DatabaseBackup().build_backup_file_data(filename)
         if not backup_file:
             error = ErrorResponseSerializer({"error": "file not found"})
             return Response(error.data, status=404)
@@ -113,7 +113,7 @@ class BackupApiView(ApiBaseView):
     def post(self, request, filename):
         """start new task to restore backup file"""
         # pylint: disable=unused-argument
-        backup_file = ElasticBackup().build_backup_file_data(filename)
+        backup_file = DatabaseBackup().build_backup_file_data(filename)
         if not backup_file:
             error = ErrorResponseSerializer({"error": "file not found"})
             return Response(error.data, status=404)
@@ -139,7 +139,7 @@ class BackupApiView(ApiBaseView):
         """delete backup file"""
         # pylint: disable=unused-argument
 
-        backup_file = ElasticBackup().delete_file(filename)
+        backup_file = DatabaseBackup().delete_file(filename)
         if not backup_file:
             error = ErrorResponseSerializer({"error": "file not found"})
             return Response(error.data, status=404)
@@ -308,7 +308,7 @@ class SnapshotApiListView(ApiBaseView):
     def get(request):
         """get available snapshots with metadata"""
         # pylint: disable=unused-argument
-        snapshots = ElasticSnapshot().get_snapshot_stats()
+        snapshots = DbSnapshot().get_snapshot_stats()
         serializer = SnapshotListSerializer(snapshots)
         return Response(serializer.data)
 
@@ -321,7 +321,7 @@ class SnapshotApiListView(ApiBaseView):
     def post(request):
         """take snapshot now"""
         # pylint: disable=unused-argument
-        response = ElasticSnapshot().take_snapshot_now()
+        response = DbSnapshot().take_snapshot_now()
         serializer = SnapshotCreateResponseSerializer(response)
         return Response(serializer.data)
 
@@ -399,7 +399,7 @@ class SnapshotApiView(ApiBaseView):
     def get(request, snapshot_id):
         """handle get request"""
         # pylint: disable=unused-argument
-        snapshot = ElasticSnapshot().get_single_snapshot(snapshot_id)
+        snapshot = DbSnapshot().get_single_snapshot(snapshot_id)
 
         if not snapshot:
             error = ErrorResponseSerializer({"error": "snapshot not found"})
@@ -420,7 +420,7 @@ class SnapshotApiView(ApiBaseView):
     def post(request, snapshot_id):
         """restore snapshot"""
         # pylint: disable=unused-argument
-        response = ElasticSnapshot().restore_all(snapshot_id)
+        response = DbSnapshot().restore_all(snapshot_id)
         if not response:
             error = ErrorResponseSerializer(
                 {"error": "failed to restore snapshot"}
@@ -440,7 +440,7 @@ class SnapshotApiView(ApiBaseView):
     def delete(request, snapshot_id):
         """delete snapshot from index"""
         # pylint: disable=unused-argument
-        response = ElasticSnapshot().delete_single_snapshot(snapshot_id)
+        response = DbSnapshot().delete_single_snapshot(snapshot_id)
         if not response:
             error = ErrorResponseSerializer(
                 {"error": "failed to delete snapshot"}

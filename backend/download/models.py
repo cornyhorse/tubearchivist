@@ -1,7 +1,9 @@
 """download queue model"""
 
 from common.src.db import from_epoch, to_epoch
+from django.contrib.postgres.fields import ArrayField
 from django.db import models, transaction
+from django.db.models.functions import Coalesce
 from video.src.constants import VideoTypeEnum
 
 
@@ -73,6 +75,17 @@ class DownloadQuerySet(models.QuerySet):
         """clear auto_start on all items, after a download run"""
         return self.filter(auto_start=True).update(auto_start=False)
 
+    def with_channel_indexed(self):
+        """annotate is_channel_indexed, used by to_doc"""
+        # pylint: disable=import-outside-toplevel
+        from channel.models import Channel
+
+        return self.annotate(
+            is_channel_indexed=models.Exists(
+                Channel.objects.filter(channel_id=models.OuterRef("channel_id"))
+            )
+        )
+
 
 class Download(models.Model):
     """an item in the download queue, or an ignored video"""
@@ -88,6 +101,7 @@ class Download(models.Model):
         default=VideoTypeEnum.VIDEOS.value,
     )
     duration = models.CharField(max_length=32, blank=True, default="")
+    duration_seconds = models.IntegerField(null=True, blank=True)
     published = models.DateTimeField(null=True, blank=True)
     timestamp = models.DateTimeField()
     status = models.CharField(
@@ -97,6 +111,8 @@ class Download(models.Model):
     )
     auto_start = models.BooleanField(default=False)
     message = models.TextField(null=True, blank=True)
+    # why a download rule ignored this item, None if added by hand
+    ignore_reason = models.TextField(null=True, blank=True)
     vid_thumb_url = models.TextField(blank=True, default="")
 
     objects = DownloadQuerySet.as_manager()
@@ -123,11 +139,13 @@ class Download(models.Model):
             "channel_name": doc.get("channel_name") or "",
             "vid_type": doc.get("vid_type") or VideoTypeEnum.VIDEOS.value,
             "duration": doc.get("duration") or "",
+            "duration_seconds": doc.get("duration_seconds"),
             "published": from_epoch(doc.get("published")),
             "timestamp": from_epoch(doc.get("timestamp")),
             "status": doc.get("status") or DownloadStatus.PENDING,
             "auto_start": bool(doc.get("auto_start", False)),
             "message": doc.get("message"),
+            "ignore_reason": doc.get("ignore_reason"),
             "vid_thumb_url": doc.get("vid_thumb_url") or "",
         }
 
@@ -159,9 +177,11 @@ class Download(models.Model):
     def to_doc(self, channel_indexed: bool | None = None) -> dict:
         """legacy ta_download document shape, as the API returns it"""
         if channel_indexed is None:
+            channel_indexed = getattr(self, "is_channel_indexed", None)
+        if channel_indexed is None:
             channel_indexed = self.channel_indexed
 
-        return {
+        doc = {
             "youtube_id": self.youtube_id,
             "title": self.title,
             "channel_id": self.channel_id,
@@ -176,3 +196,55 @@ class Download(models.Model):
             "message": self.message,
             "vid_thumb_url": self.vid_thumb_url,
         }
+        if self.duration_seconds is not None:
+            doc["duration_seconds"] = self.duration_seconds
+        if self.ignore_reason:
+            doc["ignore_reason"] = self.ignore_reason
+        return doc
+
+
+class RuleAction(models.TextChoices):
+    """what happens to a video that fails a download rule"""
+
+    IGNORE = "ignore", "Add to queue as ignored, with the reason"
+    SKIP = "skip", "Don't add to queue"
+
+
+class DownloadRule(models.Model):
+    """
+    which videos of a channel to download; a rule with no channel is the
+    default for channels without their own rule
+    every condition left empty matches everything
+    """
+
+    channel = models.OneToOneField(
+        "channel.Channel",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="download_rule",
+    )
+    enabled = models.BooleanField(default=True)
+    min_duration = models.IntegerField(null=True, blank=True)
+    max_duration = models.IntegerField(null=True, blank=True)
+    vid_types = ArrayField(
+        models.CharField(max_length=16), default=list, blank=True
+    )
+    title_include = models.TextField(blank=True, default="")
+    title_exclude = models.TextField(blank=True, default="")
+    published_after = models.DateField(null=True, blank=True)
+    action = models.CharField(
+        max_length=16, choices=RuleAction.choices, default=RuleAction.IGNORE
+    )
+
+    class Meta:
+        constraints = [
+            # one rule per channel, and only one default (channel null)
+            models.UniqueConstraint(
+                Coalesce("channel", models.Value("")),
+                name="download_rule_one_per_channel",
+            ),
+        ]
+
+    def __str__(self):
+        return f"rule for {self.channel_id or 'all channels'}"

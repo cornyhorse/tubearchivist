@@ -1,30 +1,40 @@
 """test playlist query building"""
 
 import pytest
+from common.tests.docs import playlist_doc
+from playlist.models import Playlist
 from playlist.src.query_building import QueryBuilder
 
+pytestmark = pytest.mark.django_db
 
-def test_build_data():
-    """test for correct key building"""
-    qb = QueryBuilder(
-        channel="test_channel",
-        subscribed=True,
-        type="regular",
+
+def test_build_queryset():
+    """filters and name order"""
+    Playlist.save_doc(playlist_doc("PL1", [], playlist_name="b list"))
+    Playlist.save_doc(
+        playlist_doc("PL2", [], playlist_name="a list", playlist_subscribed=True)
     )
-    result = qb.build_data()
-    must_list = result["query"]["bool"]["must"]
-    assert "query" in result
-    assert "sort" in result
-    assert result["sort"] == [{"playlist_name.keyword": {"order": "asc"}}]
-    assert {"match": {"playlist_channel_id": "test_channel"}} in must_list
-    assert {"match": {"playlist_subscribed": True}} in must_list
+    Playlist.save_doc(
+        playlist_doc(
+            "PL3", [], playlist_channel_id="UCx", playlist_type="custom"
+        )
+    )
+
+    def ids(**kwargs):
+        queryset = QueryBuilder(**kwargs).build_queryset()
+        return list(queryset.values_list("playlist_id", flat=True))
+
+    # byte order like the ES keyword sort: "Playlist PL3" before "a list"
+    assert ids() == ["PL3", "PL2", "PL1"]
+    assert ids(subscribed=True) == ["PL2"]
+    assert ids(channel="UCx") == ["PL3"]
+    assert ids(type="custom") == ["PL3"]
 
 
 def test_parse_type():
-    """validate type"""
+    """test type is parsed"""
     qb = QueryBuilder(type="regular")
     with pytest.raises(ValueError):
         qb.parse_type("invalid")
 
-    result = qb.parse_type("custom")
-    assert result == {"match": {"playlist_type": "custom"}}
+    assert qb.parse_type("regular") == "regular"

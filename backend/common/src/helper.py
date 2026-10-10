@@ -3,7 +3,6 @@ Loose collection of helper functions
 - don't import AppConfig class here to avoid circular imports
 """
 
-import json
 import os
 import random
 import string
@@ -14,7 +13,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 import requests
-from common.src.es_connect import IndexPaginate
 
 
 def ignore_filelist(filelist: list[str]) -> list[str]:
@@ -160,14 +158,6 @@ def clear_dl_cache(cache_dir: str) -> int:
     return len(leftover_files)
 
 
-def get_mapping() -> dict:
-    """read index_mapping.json and get expected mapping and settings"""
-    with open("appsettings/index_mapping.json", "r", encoding="utf-8") as f:
-        index_config: dict = json.load(f).get("index_config")
-
-    return index_config
-
-
 def is_shorts(youtube_id: str) -> bool:
     """check if youtube_id is a shorts video, bot not it it's not a shorts"""
     shorts_url = f"https://www.youtube.com/shorts/{youtube_id}"
@@ -275,36 +265,54 @@ def check_stylesheet(stylesheet: str):
     return "dark.css"
 
 
+def _project(doc: dict, source: list[str] | None) -> dict:
+    """keep only source keys, like ES _source filtering"""
+    if not source:
+        return doc
+    return {key: doc[key] for key in source if key in doc}
+
+
 def is_missing(
     to_check: str | list[str],
     index_name: str = "ta_video,ta_download",
     on_key: str = "youtube_id",
 ) -> list[str]:
     """id or list of ids that are missing from index_name"""
+    # pylint: disable=import-outside-toplevel
+    from channel.models import Channel
+    from download.models import Download
+    from playlist.models import Playlist
+    from video.models import Video
+
     if isinstance(to_check, str):
         to_check = [to_check]
 
-    data = {
-        "query": {"terms": {on_key: to_check}},
-        "_source": [on_key],
+    models = {
+        "ta_video": Video,
+        "ta_download": Download,
+        "ta_channel": Channel,
+        "ta_playlist": Playlist,
     }
-    result = IndexPaginate(index_name, data=data).get_results()
-    existing_ids = [i[on_key] for i in result]
-    dl = [i for i in to_check if i not in existing_ids]
+    existing: set[str] = set()
+    for index in index_name.split(","):
+        model = models[index]
+        existing.update(
+            model.objects.filter(pk__in=to_check).values_list("pk", flat=True)
+        )
+    del on_key  # always the primary key of index_name
 
-    return dl
+    return [i for i in to_check if i not in existing]
 
 
 def get_channel_overwrites() -> dict[str, dict[str, Any]]:
     """get overwrites indexed my channel_id"""
-    data = {
-        "query": {
-            "bool": {"must": [{"exists": {"field": "channel_overwrites"}}]}
-        },
-        "_source": ["channel_id", "channel_overwrites"],
-    }
-    result = IndexPaginate("ta_channel", data).get_results()
-    overwrites = {i["channel_id"]: i["channel_overwrites"] for i in result}
+    # pylint: disable=import-outside-toplevel
+    from channel.models import Channel
+
+    overwrites = {}
+    for channel in Channel.objects.all():
+        if channel_overwrites := channel.overwrites:
+            overwrites[channel.channel_id] = channel_overwrites
 
     return overwrites
 
@@ -312,45 +320,31 @@ def get_channel_overwrites() -> dict[str, dict[str, Any]]:
 def get_channels(
     subscribed_only: bool, source: list[str] | None = None
 ) -> list[dict]:
-    """get a list of all channels"""
-    data = {
-        "sort": [{"channel_name.keyword": {"order": "asc"}}],
-    }
+    """get a list of all channels as documents, sorted by name"""
+    # pylint: disable=import-outside-toplevel
+    from channel.models import Channel
+
+    channels = Channel.objects.order_by("name", "channel_id")
     if subscribed_only:
-        query = {"term": {"channel_subscribed": {"value": True}}}
-    else:
-        query = {"match_all": {}}
+        channels = channels.filter(subscribed=True)
 
-    data["query"] = query  # type: ignore
-
-    if source:
-        data["_source"] = source  # type: ignore
-
-    all_channels = IndexPaginate("ta_channel", data).get_results()
-
-    return all_channels
+    return [_project(channel.to_doc(), source) for channel in channels]
 
 
 def get_playlists(
     subscribed_only: bool, source: list[str] | None = None
 ) -> list[dict]:
-    """get list of playlists"""
+    """get list of active playlists as documents"""
+    # pylint: disable=import-outside-toplevel
+    from playlist.models import Playlist
 
-    data = {
-        "sort": [{"playlist_channel.keyword": {"order": "desc"}}],
-    }
-
-    must_list = [{"term": {"playlist_active": {"value": True}}}]
+    playlists = Playlist.objects.filter(active=True).order_by(
+        "-channel_name", "playlist_id"
+    )
     if subscribed_only:
-        must_list.append({"term": {"playlist_subscribed": {"value": True}}})
+        playlists = playlists.filter(subscribed=True)
 
-    data = {"query": {"bool": {"must": must_list}}}  # type: ignore
-    if source:
-        data["_source"] = source  # type: ignore
-
-    all_playlists = IndexPaginate("ta_playlist", data).get_results()
-
-    return all_playlists
+    return [_project(playlist.to_doc(), source) for playlist in playlists]
 
 
 def calc_is_watched(duration: float, position: float) -> bool:

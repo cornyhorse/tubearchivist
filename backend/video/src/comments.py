@@ -1,15 +1,16 @@
 """
 Functionality:
 - Download comments
-- Index comments in ES
-- Retrieve comments from ES
+- Index comments in the database
+- Retrieve comments as the legacy comment document
 """
 
 from datetime import datetime
 
 from appsettings.src.config import AppConfig
-from common.src.es_connect import ElasticWrap
+from common.src.db import from_epoch, to_epoch
 from common.src.helper import rand_sleep
+from django.db import transaction
 from common.src.ta_redis import RedisQueue
 from download.src.yt_dlp_base import YtWrap
 
@@ -19,14 +20,13 @@ class Comments:
 
     def __init__(self, youtube_id, config=False):
         self.youtube_id = youtube_id
-        self.es_path = f"ta_comment/_doc/{youtube_id}"
         self.json_data = False
         self.config = config
         self.is_activated = False
         self.comments_format = False
 
     def build_json(self, upload: bool = False):
-        """build json document for es"""
+        """build comment document"""
         print(f"{self.youtube_id}: get comments")
         self.check_config()
         if not self.is_activated:
@@ -143,29 +143,60 @@ class Comments:
         return cleaned_comment
 
     def upload_comments(self):
-        """upload comments to es"""
-        print(f"{self.youtube_id}: upload comments")
-        _, _ = ElasticWrap(self.es_path).put(self.json_data)
+        """replace the stored comments of the video with json_data"""
+        # pylint: disable=import-outside-toplevel
+        from video.models import Comment, CommentRefresh, Video
 
-        vid_path = f"ta_video/_update/{self.youtube_id}"
-        data = {
-            "doc": {"comment_count": len(self.json_data["comment_comments"])}
-        }
-        _, _ = ElasticWrap(vid_path).post(data=data)
+        print(f"{self.youtube_id}: upload comments")
+        comments = self.json_data["comment_comments"]
+        with transaction.atomic():
+            Comment.objects.filter(video_id=self.youtube_id).delete()
+            Comment.objects.bulk_create(
+                Comment(video_id=self.youtube_id, **Comment.fields_from_doc(c, i))
+                for i, c in enumerate(comments)
+            )
+            CommentRefresh.objects.update_or_create(
+                video_id=self.youtube_id,
+                defaults={
+                    "last_refresh": from_epoch(
+                        self.json_data["comment_last_refresh"]
+                    )
+                },
+            )
+            Video.objects.filter(youtube_id=self.youtube_id).update(
+                comment_count=len(comments)
+            )
 
     def delete_comments(self):
-        """delete comments from es"""
-        print(f"{self.youtube_id}: delete comments")
-        _, _ = ElasticWrap(self.es_path).delete(refresh=True)
+        """delete stored comments of the video"""
+        # pylint: disable=import-outside-toplevel
+        from video.models import Comment, CommentRefresh
 
-    def get_es_comments(self):
-        """get comments from ES"""
-        response, statuscode = ElasticWrap(self.es_path).get()
-        if statuscode == 404:
+        print(f"{self.youtube_id}: delete comments")
+        Comment.objects.filter(video_id=self.youtube_id).delete()
+        CommentRefresh.objects.filter(video_id=self.youtube_id).delete()
+
+    def get_comments(self) -> dict | bool:
+        """legacy comment document of the video, False if never fetched"""
+        # pylint: disable=import-outside-toplevel
+        from video.models import Comment, CommentRefresh
+
+        refresh = (
+            CommentRefresh.objects.select_related("video")
+            .filter(video_id=self.youtube_id)
+            .first()
+        )
+        if not refresh:
             print(f"comments: not found {self.youtube_id}")
             return False
 
-        return response.get("_source")
+        comments = Comment.objects.filter(video_id=self.youtube_id)
+        return {
+            "youtube_id": self.youtube_id,
+            "comment_channel_id": refresh.video.channel_id,
+            "comment_last_refresh": to_epoch(refresh.last_refresh),
+            "comment_comments": [c.to_doc() for c in comments],
+        }
 
     def reindex_comments(self):
         """update comments from youtube"""
@@ -177,16 +208,10 @@ class Comments:
         if not self.json_data:
             return
 
-        es_comments = self.get_es_comments()
-
         if not self.comments_format:
+            # don't overwrite stored comments with an empty result
             return
 
-        if not self.comments_format and es_comments["comment_comments"]:
-            # don't overwrite comments in es
-            return
-
-        self.delete_comments()
         self.upload_comments()
 
 

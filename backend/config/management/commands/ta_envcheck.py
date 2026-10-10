@@ -57,13 +57,22 @@ TOPIC = """
 EXPECTED_ENV_VARS = [
     "TA_USERNAME",
     "TA_PASSWORD",
-    "ELASTIC_PASSWORD",
-    "ES_URL",
+    "TA_DB_HOST",
+    "TA_DB_PASSWORD",
     "TA_HOST",
 ]
 FILE_FALLBACK = [
-    "ELASTIC_PASSWORD",
+    "TA_DB_PASSWORD",
     "TA_PASSWORD",
+]
+# left over from the Elasticsearch days: harmless, but worth removing
+OBSOLETE_ENV_VARS = [
+    "ES_URL",
+    "ELASTIC_USER",
+    "ELASTIC_PASSWORD",
+    "ELASTIC_PASSWORD_FILE",
+    "ES_SNAPSHOT_DIR",
+    "ES_DISABLE_VERIFY_SSL",
 ]
 UNEXPECTED_ENV_VARS = {
     "TA_UWSGI_PORT": "Has been replaced with 'TA_BACKEND_PORT'",
@@ -88,7 +97,7 @@ class Command(BaseCommand):
         self._additional_auth_vars_expectations()
         self._expected_vars()
         self._unexpected_vars()
-        self._elastic_user_overwrite()
+        self._database_settings()
         self._ta_port_overwrite()
         self._ta_backend_port_overwrite()
         self._disable_static_auth()
@@ -177,11 +186,21 @@ class Command(BaseCommand):
         message = "    ✓ no unexpected env vars found"
         self.stdout.write(self.style.SUCCESS(message))
 
-    def _elastic_user_overwrite(self):
-        """check for ELASTIC_USER overwrite"""
-        self.stdout.write("[3] check ES user overwrite")
-        env = EnvironmentSettings.ES_USER
-        self.stdout.write(self.style.SUCCESS(f"    ✓ ES user is set to {env}"))
+    def _database_settings(self):
+        """show database target, warn about obsolete ES vars"""
+        self.stdout.write("[3] check database settings")
+        env = EnvironmentSettings
+        target = f"{env.TA_DB_USER}@{env.TA_DB_HOST}:{env.TA_DB_PORT}"
+        self.stdout.write(
+            self.style.SUCCESS(f"    ✓ database {env.TA_DB_NAME} at {target}")
+        )
+        for var in OBSOLETE_ENV_VARS:
+            if var in os.environ:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"    {var} is set but unused since the move to Postgres"
+                    )
+                )
 
     def _ta_port_overwrite(self):
         """set TA_PORT overwrite for nginx"""

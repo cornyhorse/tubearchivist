@@ -6,7 +6,6 @@ functionality:
 import math
 
 from appsettings.src.config import AppConfig
-from common.src.es_connect import ElasticWrap
 from download.src.yt_dlp_base import YtWrap
 from user.src.user_config import UserConfig
 
@@ -14,8 +13,8 @@ from user.src.user_config import UserConfig
 class YouTubeItem:
     """base class for youtube"""
 
-    es_path = False
-    index_name = ""
+    # model with load_doc/save_doc, set by subclasses
+    model = None
     yt_base = ""
     yt_obs: dict[str, bool | str] = {
         "skip_download": True,
@@ -24,7 +23,6 @@ class YouTubeItem:
 
     def __init__(self, youtube_id):
         self.youtube_id = youtube_id
-        self.es_path = f"{self.index_name}/_doc/{youtube_id}"
         self.config = AppConfig().config
         self.error = None
         self.youtube_meta = False
@@ -53,35 +51,23 @@ class YouTubeItem:
             obs_request, self.config
         ).extract(url)
 
-    def get_from_es(self, print_error: bool = True) -> None:
-        """get indexed data from elastic search"""
-        print(f"{self.youtube_id}: get metadata from es")
-        resp, _ = ElasticWrap(f"{self.es_path}").get(print_error=print_error)
-        source = resp.get("_source")
-        self.json_data = source
+    def get_from_db(self) -> None:
+        """load the indexed document, None if not indexed"""
+        self.json_data = self.model.load_doc(self.youtube_id)
 
-    def upload_to_es(self):
-        """add json_data to elastic"""
-        _, _ = ElasticWrap(self.es_path).put(self.json_data, refresh=True)
+    def save_to_db(self):
+        """create or replace from json_data"""
+        self.model.save_doc(self.json_data)
 
     def deactivate(self):
-        """deactivate document in es"""
+        """mark inactive, the item is gone from youtube"""
         print(f"{self.youtube_id}: deactivate document")
-        key_match = {
-            "ta_video": "active",
-            "ta_channel": "channel_active",
-            "ta_playlist": "playlist_active",
-        }
-        path = f"{self.index_name}/_update/{self.youtube_id}?refresh=true"
-        data = {
-            "script": f"ctx._source.{key_match.get(self.index_name)} = false"
-        }
-        _, _ = ElasticWrap(path).post(data)
+        self.model.objects.filter(pk=self.youtube_id).update(active=False)
 
-    def del_in_es(self):
-        """delete item from elastic search"""
-        print(f"{self.youtube_id}: delete from es")
-        _, _ = ElasticWrap(self.es_path).delete(refresh=True)
+    def delete_from_db(self):
+        """delete item from the database"""
+        print(f"{self.youtube_id}: delete from database")
+        self.model.objects.filter(pk=self.youtube_id).delete()
 
 
 class Pagination:
@@ -136,10 +122,6 @@ class Pagination:
         """validate pagination with total_hits after making api call"""
         page_get = self.page_get
         max_pages = math.ceil(total_hits / self.page_size)
-        if total_hits >= 10000:
-            # es returns maximal 10000 results
-            self.pagination["max_hits"] = True
-            max_pages = max_pages - 1
 
         if page_get < max_pages and max_pages > 1:
             self.pagination["last_page"] = max_pages
