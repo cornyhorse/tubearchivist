@@ -384,9 +384,10 @@ def describe_result(job: Job) -> str:
 
 def allowed_actions(job: Job) -> list[str]:
     """actions that apply to the job now"""
+    order = ["move_to_top", "move_up", "move_down", "move_to_bottom"]
     by_status = {
-        JobStatus.QUEUED: ["cancel", "pause", "move_to_top"],
-        JobStatus.PAUSED: ["cancel", "resume", "move_to_top"],
+        JobStatus.QUEUED: ["cancel", "pause", *order],
+        JobStatus.PAUSED: ["cancel", "resume", *order],
         JobStatus.RUNNING: ["stop", "pause"],
         JobStatus.FAILED: ["retry"],
         JobStatus.CANCELLED: ["retry"],
@@ -466,6 +467,49 @@ def _move_to_top(job: Job) -> Job:
     return job
 
 
+def _waiting_order(job: Job) -> list[Job]:
+    """queued and paused jobs of the job's lane, in run order"""
+    return list(
+        Job.objects.filter(lane=job.lane, status__in=WAITING)
+        .run_order()
+        .select_for_update()
+    )
+
+
+def _swap(job: Job, step: int) -> Job:
+    """trade places with the waiting job before (-1) or after (+1)"""
+    jobs = _waiting_order(job)
+    index = next(i for i, j in enumerate(jobs) if j.pk == job.pk) + step
+    if not 0 <= index < len(jobs):
+        return job
+    other = jobs[index]
+    job.priority, other.priority = other.priority, job.priority
+    job.rank, other.rank = other.rank, job.rank
+    if job.rank == other.rank:
+        # equal ranks fall back to id order, nudge past it
+        job.rank = other.rank + step * 1e-6
+    other.save()
+    job.save()
+    return job
+
+
+def _move_up(job: Job) -> Job:
+    return _swap(job, -1)
+
+
+def _move_down(job: Job) -> Job:
+    return _swap(job, 1)
+
+
+def _move_to_bottom(job: Job) -> Job:
+    others = [j for j in _waiting_order(job) if j.pk != job.pk]
+    if others:
+        job.priority = min([job.priority] + [j.priority for j in others])
+        job.rank = max(j.rank for j in others) + 1
+    job.save()
+    return job
+
+
 ACTIONS = {
     "stop": _stop,
     "cancel": _cancel,
@@ -473,6 +517,9 @@ ACTIONS = {
     "resume": _resume,
     "retry": _retry,
     "move_to_top": _move_to_top,
+    "move_up": _move_up,
+    "move_down": _move_down,
+    "move_to_bottom": _move_to_bottom,
 }
 
 

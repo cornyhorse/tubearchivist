@@ -4300,6 +4300,20 @@ components:
           type: string
       required:
       - value
+    ChannelFacet:
+      type: object
+      description: a channel option of the filter, with its count
+      properties:
+        channel_id:
+          type: string
+        channel_name:
+          type: string
+        count:
+          type: integer
+      required:
+      - channel_id
+      - channel_name
+      - count
     ChannelList:
       type: object
       description: serialize channel list
@@ -4922,6 +4936,17 @@ components:
         * `auto_delete` - auto_delete
         * `import` - import
         * `unknown` - unknown
+    FoundFacets:
+      type: object
+      description: filter options for the current tab, other filters applied
+      properties:
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelFacet'
+          description: up to 200, most videos first
+      required:
+      - channels
     FoundFilter:
       type: object
       description: |-
@@ -5005,9 +5030,12 @@ components:
           $ref: '#/components/schemas/Pagination'
         counts:
           $ref: '#/components/schemas/FoundTabCounts'
+        facets:
+          $ref: '#/components/schemas/FoundFacets'
       required:
       - counts
       - data
+      - facets
       - paginate
     FoundStateEnum:
       enum:
@@ -5133,6 +5161,9 @@ components:
         type_label:
           type: string
           description: plain words, e.g. 'Check channel for new videos'
+        label:
+          type: string
+          description: 'type and target, e.g. ''Download video: Riding the coaster'''
         lane:
           $ref: '#/components/schemas/LaneEnum'
         target:
@@ -5207,6 +5238,7 @@ components:
       - error
       - finished_at
       - id
+      - label
       - lane
       - max_attempts
       - merged
@@ -5236,6 +5268,9 @@ components:
       - resume
       - retry
       - move_to_top
+      - move_up
+      - move_down
+      - move_to_bottom
       type: string
       description: |-
         * `stop` - stop
@@ -5244,6 +5279,9 @@ components:
         * `resume` - resume
         * `retry` - retry
         * `move_to_top` - move_to_top
+        * `move_up` - move_up
+        * `move_down` - move_down
+        * `move_to_bottom` - move_to_bottom
     JobBulkAction:
       type: object
       description: 'POST /api/queue/jobs/action/: same action on explicit ids'
@@ -5420,10 +5458,15 @@ components:
           type: string
           nullable: true
           description: display name, if known
+        url:
+          type: string
+          nullable: true
+          description: YouTube page of the target, if any
       required:
       - id
       - kind
       - title
+      - url
     JobTargetKindEnum:
       enum:
       - channel
@@ -5937,10 +5980,17 @@ components:
           minimum: 0
     PatchedScheduledJobUpdate:
       type: object
-      description: 'PATCH /api/queue/scheduled/<name>/: pause or resume a schedule'
+      description: |-
+        PATCH /api/queue/scheduled/<name>/: pause or resume a schedule, or
+        change when it runs; a schedule that doesn't exist yet is created
       properties:
         enabled:
           type: boolean
+        schedule:
+          type: string
+          nullable: true
+          description: cron 'minute hour weekday', e.g. '0 */6 *', 'auto' for the
+            default, or null to turn the schedule off
     Ping:
       type: object
       description: serialize ping response
@@ -6712,9 +6762,7 @@ components:
       - description
       - key
       - label
-      - needs_value
       - patch
-      - value_field
     RulePreview:
       type: object
       description: '''38 download / 12 skipped'', with the reasons'
@@ -6856,9 +6904,11 @@ components:
           $ref: '#/components/schemas/LaneEnum'
         schedule:
           type: string
-          description: 'cron: minute hour weekday'
+          nullable: true
+          description: 'cron: minute hour weekday; null: no schedule (off)'
         schedule_human:
           type: string
+          nullable: true
           description: e.g. 'At 18:00'
         enabled:
           type: boolean
