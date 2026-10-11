@@ -49,7 +49,7 @@ def _document_sources() -> dict:
     from playlist.models import Playlist
     from storage.importer import episode_to_doc, rule_to_doc
     from user.models import UserConfig
-    from video.models import CommentRefresh, SubtitleLine, Video
+    from video.models import CommentRefresh, SubtitleLine
     from video.src.comments import Comments
 
     def config():
@@ -57,11 +57,6 @@ def _document_sources() -> dict:
             yield document.key, document.value
         for user_config in UserConfig.objects.order_by("user_id"):
             yield f"user_{user_config.user_id}", {"config": user_config.config}
-
-    def videos():
-        queryset = Video.objects.select_related("channel").order_by("pk")
-        for video in queryset.iterator(chunk_size=CHUNK_SIZE):
-            yield video.pk, video.to_doc()
 
     def downloads():
         queue = Download.objects.with_channel_indexed().order_by("pk")
@@ -78,7 +73,7 @@ def _document_sources() -> dict:
         "channel": lambda: (
             (c.pk, c.to_doc()) for c in Channel.objects.order_by("pk")
         ),
-        "video": videos,
+        "video": _video_documents,
         "playlist": lambda: (
             (p.pk, p.to_doc()) for p in Playlist.objects.order_by("pk")
         ),
@@ -97,6 +92,26 @@ def _document_sources() -> dict:
             for n in EpisodeNumber.objects.order_by("pk")
         ),
     }
+
+
+def _video_documents():
+    """(_id, document) of every video, playlists loaded per chunk"""
+    # pylint: disable=import-outside-toplevel
+    from video.models import Video
+
+    queryset = Video.objects.select_related("channel").order_by("pk")
+    chunk: list = []
+    for video in queryset.iterator(chunk_size=CHUNK_SIZE):
+        chunk.append(video)
+        if len(chunk) == CHUNK_SIZE:
+            yield from _with_ids(Video.to_docs(chunk))
+            chunk = []
+    yield from _with_ids(Video.to_docs(chunk))
+
+
+def _with_ids(docs: list[dict]):
+    """(youtube_id, document) pairs"""
+    return ((doc["youtube_id"], doc) for doc in docs)
 
 
 def iter_documents(index: str):

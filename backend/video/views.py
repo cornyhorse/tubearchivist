@@ -59,7 +59,11 @@ class VideoApiListView(ApiBaseView):
             return Response([])
 
         self.get_document_list(
-            request, "ta_video", queryset, progress_match=request.user.id
+            request,
+            "ta_video",
+            queryset,
+            progress_match=request.user.id,
+            to_docs=Video.to_docs,
         )
 
         response_serializer = VideoListSerializer(self.response)
@@ -278,6 +282,7 @@ class VideoSimilarView(ApiBaseView):
             "ta_video",
             Video.objects.similar_to(video_id),
             pagination=False,
+            to_docs=Video.to_docs,
         )
         serializer = VideoSerializer(self.response["data"], many=True)
         return Response(serializer.data)

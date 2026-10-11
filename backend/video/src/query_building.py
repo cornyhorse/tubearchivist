@@ -1,7 +1,7 @@
 """build the video list queryset from request parameters"""
 
 from common.src.ta_redis import RedisArchivist
-from django.db.models import OuterRef, Q, QuerySet, Subquery, Value
+from django.db.models import F, OuterRef, Q, QuerySet, Subquery, Value
 from django.db.models.functions import Coalesce
 from playlist.models import Playlist, PlaylistEntry
 from video.models import Video
@@ -108,9 +108,10 @@ class QueryBuilder:
         if not hasattr(OrderEnum, order.upper()):
             raise ValueError(f"'{order}' not in OrderEnum")
 
+        # missing values sort last either way, like ES
         if getattr(OrderEnum, order.upper()) == OrderEnum.ASC:
-            return [f"{field}"]
-        return [f"-{field}"]
+            return [F(field).asc(nulls_last=True)]
+        return [F(field).desc(nulls_last=True)]
 
     @staticmethod
     def _get_playlist_sort(playlist_id: str):

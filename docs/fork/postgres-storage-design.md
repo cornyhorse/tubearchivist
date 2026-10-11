@@ -37,7 +37,7 @@ move there too, replacing SQLite.
 | Model | Replaces | Notes |
 |---|---|---|
 | `channel.Channel` | `ta_channel` | `channel_overwrites` become nullable columns (null = use the global setting). `emby_numbering` choice. |
-| `video.Video` | `ta_video` | FK to `Channel`, so the copy of the channel embedded in every video and the painless "sync channel into videos" script both go away. Real columns for everything filtered or sorted: published, downloaded, type, size, duration, watched, stats, and `width`/`height` from the first video stream. JSONB only for semi-structured data read whole: `streams`, `subtitles` (file list), `sponsorblock`. |
+| `video.Video` | `ta_video` | FK to `Channel`, so the copy of the channel embedded in every video and the painless "sync channel into videos" script both go away. Real columns for everything filtered or sorted: published, downloaded, type, size, duration, watched, stats, and `width`/`height` from the first video stream (the height filter uses this column; ES matched any stream, but `MediaStreamExtractor` skips cover-art streams and yt-dlp merges leave one video stream, so the two agree). JSONB only for semi-structured data read whole: `streams`, `subtitles` (file list), `sponsorblock`. |
 | `video.SubtitleLine` | `ta_subtitle` | FK to `Video`. The denormalized channel and title fields come from the join instead. |
 | `video.Comment` + `CommentRefresh` | `ta_comment` | One row per comment, with thread order kept as `position`. |
 | `playlist.Playlist` + `PlaylistEntry` | `ta_playlist` + `video.playlist` | Entries are rows `(playlist, idx, youtube_id)`. `downloaded` is computed (`Exists(Video)`), and a video's playlist list is derived from entries, so the two duplicated arrays can't drift apart. |

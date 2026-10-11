@@ -17,6 +17,8 @@ from common.tests.docs import (
     subtitle_doc,
     video_doc,
 )
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django_celery_beat.models import CrontabSchedule
 from download.models import Download
 from playlist.models import Playlist, PlaylistEntry
@@ -392,3 +394,22 @@ def test_delete_file(backup_dir):
     assert deleted == str(backup_dir / "ta_backup-20260101-auto.zip")
     assert not os.listdir(backup_dir)
     assert handler.delete_file("ta_backup-20260101-auto.zip") is False
+
+
+def test_video_documents_load_playlists_per_chunk(monkeypatch):
+    """one PlaylistEntry query per chunk, not per video"""
+    monkeypatch.setattr(backup_module, "CHUNK_SIZE", 2)
+    Channel.save_doc(channel_doc())
+    for i in range(5):
+        Video.save_doc(video_doc(youtube_id=f"vid0000000{i}"))
+    Playlist.save_doc(playlist_doc("PL1", ["vid00000003"]))
+
+    with CaptureQueriesContext(connection) as context:
+        docs = dict(iter_documents("video"))
+
+    assert sorted(docs) == [f"vid0000000{i}" for i in range(5)]
+    assert docs["vid00000003"]["playlist"] == ["PL1"]
+    entry_queries = [
+        q for q in context.captured_queries if "playlistentry" in q["sql"]
+    ]
+    assert len(entry_queries) == 3

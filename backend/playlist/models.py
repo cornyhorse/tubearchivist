@@ -112,10 +112,12 @@ class Playlist(models.Model):
             for entry in doc.get("playlist_entries") or []
         ]
 
-    def to_doc(self) -> dict:
-        """legacy ta_playlist document shape, as the API returns it"""
-        entries = self.entries.with_downloaded().order_by("idx")
-        return {
+    def to_doc(self, with_entries: bool = True) -> dict:
+        """
+        legacy ta_playlist document shape, as the API returns it
+        with_entries: False leaves out playlist_entries, saving the query
+        """
+        doc = {
             "playlist_id": self.playlist_id,
             "playlist_name": self.name,
             "playlist_description": self.description,
@@ -128,8 +130,12 @@ class Playlist(models.Model):
             "playlist_thumbnail": self.thumbnail,
             "playlist_type": self.playlist_type,
             "emby_numbering": self.emby_numbering,
-            "playlist_entries": [entry.to_doc() for entry in entries],
         }
+        if with_entries:
+            entries = self.entries.with_downloaded().order_by("idx")
+            doc["playlist_entries"] = [entry.to_doc() for entry in entries]
+
+        return doc
 
 
 class PlaylistEntryQuerySet(models.QuerySet):

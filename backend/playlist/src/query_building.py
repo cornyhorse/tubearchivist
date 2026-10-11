@@ -1,6 +1,7 @@
 """build the playlist list queryset"""
 
 from django.db.models import QuerySet
+from django.db.models.functions import Lower
 from playlist.models import Playlist
 from playlist.src.constants import PlaylistTypesEnum
 
@@ -28,7 +29,7 @@ class QueryBuilder:
                 playlist_type=self.parse_type(playlist_type)
             )
 
-        return queryset.order_by("name", "playlist_id")
+        return queryset.order_by(Lower("name"), "playlist_id")
 
     @staticmethod
     def parse_type(playlist_type: str) -> str:

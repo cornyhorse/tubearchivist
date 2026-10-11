@@ -326,8 +326,9 @@ def get_channels(
     """get a list of all channels as documents, sorted by name"""
     # pylint: disable=import-outside-toplevel
     from channel.models import Channel
+    from django.db.models.functions import Lower
 
-    channels = Channel.objects.order_by("name", "channel_id")
+    channels = Channel.objects.order_by(Lower("name"), "channel_id")
     if subscribed_only:
         channels = channels.filter(subscribed=True)
 
@@ -339,15 +340,20 @@ def get_playlists(
 ) -> list[dict]:
     """get list of active playlists as documents"""
     # pylint: disable=import-outside-toplevel
+    from django.db.models.functions import Lower
     from playlist.models import Playlist
 
     playlists = Playlist.objects.filter(active=True).order_by(
-        "-channel_name", "playlist_id"
+        Lower("channel_name").desc(), "playlist_id"
     )
     if subscribed_only:
         playlists = playlists.filter(subscribed=True)
 
-    return [_project(playlist.to_doc(), source) for playlist in playlists]
+    with_entries = not source or "playlist_entries" in source
+    return [
+        _project(playlist.to_doc(with_entries=with_entries), source)
+        for playlist in playlists
+    ]
 
 
 def calc_is_watched(duration: float, position: float) -> bool:

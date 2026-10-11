@@ -208,3 +208,24 @@ class TestCommentList:
             yt_wrap.return_value.extract.return_value = (None, None)
             comment_list.index()
         yt_wrap.return_value.extract.assert_called_once()
+
+
+def test_upload_drops_duplicate_comment_ids(enabled, video):
+    """yt-dlp can return a comment twice when pages overlap"""
+    comments = Comments(video.youtube_id, config=enabled)
+    comments.json_data = {
+        "comment_comments": [
+            {"comment_id": "c1", "comment_text": "first"},
+            {"comment_id": "c2", "comment_text": "second"},
+            {"comment_id": "c1", "comment_text": "again"},
+        ],
+        "comment_last_refresh": 1700000000,
+    }
+
+    comments.upload_comments()
+
+    assert list(Comment.objects.values_list("comment_id", "text")) == [
+        ("c1", "first"),
+        ("c2", "second"),
+    ]
+    assert Video.objects.get().comment_count == 2

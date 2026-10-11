@@ -26,8 +26,8 @@ def test_build_queryset():
         queryset = QueryBuilder(**kwargs).build_queryset()
         return list(queryset.values_list("playlist_id", flat=True))
 
-    # byte order like the ES keyword sort: "Playlist PL3" before "a list"
-    assert ids() == ["PL3", "PL2", "PL1"]
+    # case insensitive like the ES to_lower keyword sort
+    assert ids() == ["PL2", "PL1", "PL3"]
     assert ids(subscribed=True) == ["PL2"]
     assert ids(channel="UCx") == ["PL3"]
     assert ids(type="custom") == ["PL3"]

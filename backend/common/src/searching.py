@@ -233,16 +233,25 @@ class QueryBuilder:
         return similar, False
 
     @staticmethod
-    def _hits(index: str, objects, to_doc=None) -> list[tuple]:
-        to_doc = to_doc or (lambda obj: obj.to_doc())
-        return [(index, to_doc(o), float(o.score or 0), None) for o in objects]
+    def _hits(index: str, objects, to_docs=None) -> list[tuple]:
+        objects = list(objects)
+        if to_docs:
+            docs = to_docs(objects)
+        else:
+            docs = [obj.to_doc() for obj in objects]
+        return [
+            (index, doc, float(obj.score or 0), None)
+            for obj, doc in zip(objects, docs)
+        ]
 
     def _videos(self, term, extra: Q | None = None):
         queryset = Video.objects.select_related("channel")
         if extra is not None:
             queryset = queryset.filter(extra)
         videos, _ = self._ranked(queryset, "title", term)
-        return self._hits("ta_video", videos[:RESULT_SIZE])
+        return self._hits(
+            "ta_video", videos[:RESULT_SIZE], to_docs=Video.to_docs
+        )
 
     def _channels(self, term, extra: Q | None = None):
         queryset = Channel.objects.all()
