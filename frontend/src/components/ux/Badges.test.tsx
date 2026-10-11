@@ -12,6 +12,12 @@ vi.mock('../../api/actions/updateEmbyNumbering', async importOriginal => ({
   default: (...args: unknown[]) => saveNumbering(...args),
 }));
 
+vi.mock('../../api/ux/client', async importOriginal => ({
+  ...(await importOriginal<object>()),
+  previewScheme: vi.fn().mockResolvedValue({ status: 501 }),
+  setScheme: vi.fn().mockResolvedValue({ status: 501 }),
+}));
+
 afterEach(() => {
   cleanup();
   saveRule.mockReset();
@@ -90,6 +96,7 @@ describe('NumberingBadge', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Emby episode numbering' }), {
       target: { value: 'date' },
     });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(saveNumbering).toHaveBeenCalledWith('playlist', 'p1', 'date');
   });

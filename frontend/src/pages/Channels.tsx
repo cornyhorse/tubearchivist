@@ -38,6 +38,8 @@ import {
 import { SortState } from '../components/ux/DataTable';
 import Modal from '../components/ux/Modal';
 import DownloadRuleForm from '../components/DownloadRuleForm';
+import { createJob } from '../api/ux/client';
+import useQueueAvailable from '../functions/useQueueAvailable';
 
 type ChannelOverwritesType = {
   download_format: string | null;
@@ -108,6 +110,8 @@ const Channels = () => {
   const { userConfig, setUserConfig } = useUserConfigStore();
   const { currentPage, setCurrentPage } = useOutletContext() as OutletContextType;
   const isAdmin = useIsAdmin();
+  const queueAvailable = useQueueAvailable();
+  const [checkMessage, setCheckMessage] = useState('');
 
   const [channelListResponse, setChannelListResponse] =
     useState<ApiResponseType<ChannelsListResponse>>();
@@ -190,6 +194,19 @@ const Channels = () => {
   );
 
   const selectedIds = Array.from(selected);
+
+  const checkChannels = async (ids: string[]) => {
+    const results = await Promise.all(
+      ids.map(id => createJob({ type: 'check_channel', target_id: id })),
+    );
+    const merged = results.filter(result => result.data?.merged).length;
+    setCheckMessage(
+      `Queued ${ids.length - merged} check${ids.length - merged === 1 ? '' : 's'}` +
+        (merged ? `; ${merged} already waiting moved up` : '') +
+        '. Follow them on the Queue page.',
+    );
+    setSelected(new Set());
+  };
 
   const bulkSubscribe = async (subscribe: boolean) => {
     await updateBulkChannelSubscriptions(selectedIds.join('\n'), subscribe);
@@ -290,6 +307,15 @@ const Channels = () => {
           {query && ` matching “${query}”`}
         </p>
 
+        {checkMessage && (
+          <p className="ux-toast" role="status">
+            {checkMessage}{' '}
+            <button type="button" className="ux-link-button" onClick={() => setCheckMessage('')}>
+              Dismiss
+            </button>
+          </p>
+        )}
+
         {isAdmin && isTable && (
           <BulkBar count={selected.size} noun="channel" onClear={() => setSelected(new Set())}>
             <button
@@ -306,6 +332,15 @@ const Channels = () => {
             >
               Set numbering…
             </button>
+            {queueAvailable && (
+              <button
+                type="button"
+                title="Check the selected channels for new videos now"
+                onClick={() => checkChannels(selectedIds)}
+              >
+                Check now
+              </button>
+            )}
             <button
               type="button"
               title="Check the selected channels for new videos on the schedule"
@@ -394,6 +429,9 @@ const Channels = () => {
                 reload();
               }}
               onChanged={reload}
+              onCheckNow={
+                queueAvailable ? channel => checkChannels([channel.channel_id]) : undefined
+              }
             />
           )
         ) : (

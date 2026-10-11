@@ -10,6 +10,8 @@ const Routes = {
   Playlists: '/playlist/',
   Playlist: (id: string) => `/playlist/${id}`,
   Downloads: '/downloads/',
+  Queue: '/queue/',
+  Rules: '/rules/',
   DownloadsByChannelId: (channelId: string) => `/downloads/?channel=${channelId}&ignored=false`,
   IgnoredByChannelId: (channelId: string) => `/downloads/?channel=${channelId}&ignored=true`,
   Search: '/search/',

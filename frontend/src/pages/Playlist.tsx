@@ -147,7 +147,13 @@ const Playlist = () => {
               id={playlist.playlist_id}
               name={playlist.playlist_name}
               value={playlist.emby_numbering}
-              options={['playlist_position', 'date', 'year_frozen', 'absolute_frozen']}
+              options={[
+                'playlist_frozen',
+                'playlist_position',
+                'date',
+                'year_frozen',
+                'absolute_frozen',
+              ]}
               canEdit={isAdmin}
               onSaved={() => setRefresh(true)}
             />
@@ -361,7 +367,13 @@ const Playlist = () => {
                   kind="playlist"
                   id={playlist.playlist_id}
                   value={playlist.emby_numbering ?? 'playlist_position'}
-                  options={['playlist_position', 'date', 'year_frozen', 'absolute_frozen']}
+                  options={[
+                    'playlist_frozen',
+                    'playlist_position',
+                    'date',
+                    'year_frozen',
+                    'absolute_frozen',
+                  ]}
                   onSaved={() => setRefresh(true)}
                 />
               )}

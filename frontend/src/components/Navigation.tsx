@@ -7,6 +7,7 @@ import NavigationItem from './NavigationItem';
 import logOut from '../api/actions/logOut';
 import useIsAdmin from '../functions/useIsAdmin';
 import ThemePicker from './ThemePicker';
+import QueueIndicator from './QueueIndicator';
 
 const Navigation = () => {
   const isAdmin = useIsAdmin();
@@ -30,10 +31,17 @@ const Navigation = () => {
           </div>
           <div className="nav-item-group">
             <NavigationItem label="playlists" navigateTo={Routes.Playlists} />
-            {isAdmin && <NavigationItem label="downloads" navigateTo={Routes.Downloads} />}
+            {isAdmin && <NavigationItem label="found videos" navigateTo={Routes.Downloads} />}
           </div>
+          {isAdmin && (
+            <div className="nav-item-group">
+              <NavigationItem label="queue" navigateTo={Routes.Queue} />
+              <NavigationItem label="rules" navigateTo={Routes.Rules} />
+            </div>
+          )}
         </div>
         <div className="nav-icons">
+          {isAdmin && <QueueIndicator />}
           <ThemePicker />
           <Link to={Routes.Search} title="Search videos, channels and playlists">
             <img src={iconSearch} alt="Search" />

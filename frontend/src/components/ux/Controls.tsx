@@ -174,3 +174,45 @@ export const BulkBar = ({ count, noun, onClear, children }: BulkBarProps) => {
     </div>
   );
 };
+
+export type TabOption<V extends string> = { value: V; label: string; count?: number };
+
+type TabsProps<V extends string> = {
+  label: string;
+  tabs: TabOption<V>[];
+  value: V;
+  onChange: (value: V) => void;
+};
+
+/** tabs with counts; arrow keys move between them */
+export const Tabs = <V extends string>({ label, tabs, value, onChange }: TabsProps<V>) => {
+  const move = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    event.preventDefault();
+    const next = tabs[(index + step + tabs.length) % tabs.length];
+    onChange(next.value);
+    const buttons = event.currentTarget.parentElement?.querySelectorAll('button');
+    buttons?.[(index + step + tabs.length) % tabs.length]?.focus();
+  };
+  return (
+    <div className="ux-tabs" role="tablist" aria-label={label}>
+      {tabs.map((tab, index) => (
+        <button
+          key={tab.value}
+          type="button"
+          role="tab"
+          aria-selected={tab.value === value}
+          tabIndex={tab.value === value ? 0 : -1}
+          onClick={() => onChange(tab.value)}
+          onKeyDown={event => move(event, index)}
+        >
+          {tab.label}
+          {tab.count !== undefined && (
+            <span className="ux-tab-count">{tab.count.toLocaleString()}</span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+};

@@ -89,5 +89,6 @@ export const NUMBERING_SHORT: Record<EmbyNumberingType, string> = {
   date: 'By date',
   year_frozen: 'By year',
   absolute_frozen: 'Absolute',
+  playlist_frozen: 'Playlist order, frozen',
   playlist_position: 'Playlist order',
 };

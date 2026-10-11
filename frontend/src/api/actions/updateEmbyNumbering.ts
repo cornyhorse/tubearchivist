@@ -1,12 +1,19 @@
 import APIClient from '../../functions/APIClient';
 
-export type EmbyNumberingType = 'date' | 'year_frozen' | 'absolute_frozen' | 'playlist_position';
+export type EmbyNumberingType =
+  | 'date'
+  | 'year_frozen'
+  | 'absolute_frozen'
+  | 'playlist_frozen'
+  | 'playlist_position';
 
 export const EMBY_NUMBERING_LABELS: Record<EmbyNumberingType, string> = {
-  date: 'Date: season = year, episode = MMDD×10+n',
+  date: 'Date: season = year, episode = MMDD×100+n',
   year_frozen: 'Year: season = year, numbered in order, never renumbered',
   absolute_frozen: 'Absolute: one season, numbered in order, never renumbered',
-  playlist_position: 'Playlist position: follows the playlist order',
+  playlist_frozen:
+    'Playlist order, frozen: numbered in playlist order when added, never renumbered',
+  playlist_position: 'Playlist position: follows the playlist order, renumbers on reorder',
 };
 
 const updateEmbyNumbering = async (

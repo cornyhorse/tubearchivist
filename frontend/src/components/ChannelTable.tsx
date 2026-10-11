@@ -17,6 +17,8 @@ type ChannelTableProps = {
   onSelectedChange: (selected: Set<string>) => void;
   onToggleSubscribe: (channel: ChannelType) => void;
   onChanged: () => void;
+  /** set when the server has the work queue */
+  onCheckNow?: (channel: ChannelType) => void;
 };
 
 /** a count, or a dash while the server doesn't send it yet */
@@ -36,6 +38,7 @@ const ChannelTable = ({
   onSelectedChange,
   onToggleSubscribe,
   onChanged,
+  onCheckNow,
 }: ChannelTableProps) => {
   const columns: Column<ChannelType>[] = [
     {
@@ -154,18 +157,31 @@ const ChannelTable = ({
       header: 'Actions',
       className: 'ux-col-actions',
       render: channel => (
-        <button
-          type="button"
-          className="ux-row-button"
-          title={
-            channel.channel_subscribed
-              ? 'Stop checking this channel for new videos. Downloaded videos stay.'
-              : 'Check this channel for new videos on the schedule.'
-          }
-          onClick={() => onToggleSubscribe(channel)}
-        >
-          {channel.channel_subscribed ? 'Unsubscribe' : 'Subscribe'}
-        </button>
+        <div className="ux-row-actions">
+          {onCheckNow && (
+            <button
+              type="button"
+              className="ux-row-button"
+              title="Check this channel for new videos now, at high priority"
+              aria-label={`Check ${channel.channel_name} now`}
+              onClick={() => onCheckNow(channel)}
+            >
+              Check now
+            </button>
+          )}
+          <button
+            type="button"
+            className="ux-row-button"
+            title={
+              channel.channel_subscribed
+                ? 'Stop checking this channel for new videos. Downloaded videos stay.'
+                : 'Check this channel for new videos on the schedule.'
+            }
+            onClick={() => onToggleSubscribe(channel)}
+          >
+            {channel.channel_subscribed ? 'Unsubscribe' : 'Subscribe'}
+          </button>
+        </div>
       ),
     });
   }

@@ -3,7 +3,7 @@ import { DownloadRuleType } from '../../api/actions/updateDownloadRule';
 import { EmbyNumberingType } from '../../api/actions/updateEmbyNumbering';
 import { NUMBERING_SHORT, summarizeRule } from '../../functions/describeRule';
 import DownloadRuleForm from '../DownloadRuleForm';
-import EmbyNumberingSelect from '../EmbyNumberingSelect';
+import NumberingEditor from '../rules/NumberingEditor';
 import Modal from './Modal';
 
 type RuleBadgeProps = {
@@ -73,7 +73,8 @@ const NUMBERING_HELP: Record<EmbyNumberingType, string> = {
   date: 'Season is the upload year; episode comes from the upload date.',
   year_frozen: 'Season is the upload year; episodes are numbered in order and never renumbered.',
   absolute_frozen: 'One season; episodes are numbered in order and never renumbered.',
-  playlist_position: 'Episodes follow the playlist order.',
+  playlist_frozen: 'Episodes are numbered in playlist order when added and never renumbered.',
+  playlist_position: 'Episodes follow the playlist order and renumber when it changes.',
 };
 
 type NumberingBadgeProps = {
@@ -126,7 +127,7 @@ export const NumberingBadge = ({
             How this {kind}'s videos are numbered as episodes in the Emby library. Numbers that are
             already assigned are kept when you add older videos.
           </p>
-          <EmbyNumberingSelect
+          <NumberingEditor
             kind={kind}
             id={id}
             value={scheme}

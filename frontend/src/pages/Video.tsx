@@ -32,6 +32,7 @@ import updateCustomPlaylist from '../api/actions/updateCustomPlaylist';
 import loadCommentsbyVideoId, { CommentsResponseType } from '../api/loader/loadCommentsbyVideoId';
 import CommentBox from '../components/CommentBox';
 import Button from '../components/Button';
+import VideoChoices from '../components/rules/VideoChoices';
 import getApiUrl from '../configuration/getApiUrl';
 import loadVideoNav, { VideoNavResponseType } from '../api/loader/loadVideoNav';
 import useIsAdmin from '../functions/useIsAdmin';
@@ -472,6 +473,8 @@ const Video = () => {
               })}
           </div>
         </div>
+        {isAdmin && <VideoChoices youtubeId={video.youtube_id} />}
+
         {video.tags && video.tags.length > 0 && (
           <div className="description-box">
             <div className="video-tag-box">

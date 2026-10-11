@@ -29,7 +29,9 @@ import ChannelBase from './pages/ChannelBase';
 import ChannelVideo from './pages/ChannelVideo';
 import ChannelPlaylist from './pages/ChannelPlaylist';
 import ChannelAbout from './pages/ChannelAbout';
-import Download from './pages/Download';
+import FoundVideos from './pages/FoundVideos';
+import Queue from './pages/Queue';
+import Rules from './pages/Rules';
 import loadUserAccount from './api/loader/loadUserAccount';
 import loadAppsettingsConfig from './api/loader/loadAppsettingsConfig';
 import NotFound from './pages/NotFound';
@@ -114,7 +116,15 @@ const router = createBrowserRouter(
         },
         {
           path: Routes.Downloads,
-          element: <Download />,
+          element: <FoundVideos />,
+        },
+        {
+          path: Routes.Queue,
+          element: <Queue />,
+        },
+        {
+          path: Routes.Rules,
+          element: <Rules />,
         },
         {
           path: Routes.Search,
