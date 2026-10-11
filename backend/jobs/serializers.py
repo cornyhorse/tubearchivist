@@ -180,7 +180,9 @@ class JobCreateSerializer(serializers.Serializer):
 class JobCreateResponseSerializer(serializers.Serializer):
     """the job, and whether it merged into an existing one"""
 
-    job = JobSerializer()
+    job = JobSerializer(
+        allow_null=True, help_text="null when there was nothing to do"
+    )
     merged = serializers.BooleanField(
         help_text="true if an identical job was already queued"
     )

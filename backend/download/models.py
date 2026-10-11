@@ -113,6 +113,11 @@ class Download(models.Model):
     message = models.TextField(null=True, blank=True)
     # why a download rule ignored this item, None if added by hand
     ignore_reason = models.TextField(null=True, blank=True)
+    ignore_reason_key = models.CharField(max_length=32, null=True, blank=True)
+    # how TA found it: channel_check, playlist_check, user, agent, ...
+    found_by_kind = models.CharField(max_length=32, default="unknown")
+    found_by_job = models.IntegerField(null=True, blank=True)
+    found_playlist_id = models.CharField(max_length=64, null=True, blank=True)
     vid_thumb_url = models.TextField(blank=True, default="")
 
     objects = DownloadQuerySet.as_manager()
@@ -146,6 +151,10 @@ class Download(models.Model):
             "auto_start": bool(doc.get("auto_start", False)),
             "message": doc.get("message"),
             "ignore_reason": doc.get("ignore_reason"),
+            "ignore_reason_key": doc.get("ignore_reason_key"),
+            "found_by_kind": doc.get("found_by_kind") or "unknown",
+            "found_by_job": doc.get("found_by_job"),
+            "found_playlist_id": doc.get("found_playlist_id"),
             "vid_thumb_url": doc.get("vid_thumb_url") or "",
         }
 

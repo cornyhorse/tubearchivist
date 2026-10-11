@@ -34,7 +34,7 @@ class ChannelSubscription:
         if not all_channels:
             return 0
 
-        all_channel_urls = self._process_channel_urls(all_channels)
+        all_channel_urls = self.channel_urls(all_channels)
 
         if self.task:
             self.task.send_progress([f"Scanning {len(all_channels)} channels"])
@@ -49,7 +49,7 @@ class ChannelSubscription:
 
         return added
 
-    def _process_channel_urls(self, all_channels: list[dict]):
+    def channel_urls(self, all_channels: list[dict]):
         """process channels, build queries"""
 
         all_channel_urls: list[ParsedURLType] = []

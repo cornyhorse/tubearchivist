@@ -1,366 +1,199 @@
 """
 Functionality:
-- collect tasks
-- handle task callbacks
-- handle task notifications
-- handle task locking
+- the task names the scheduler and the older API endpoints start
+- every task only queues jobs in the work queue (jobs app), which runs
+  them in lanes; nothing here blocks or drops a request
 """
 
-from appsettings.src.backup import DatabaseBackup
-from appsettings.src.config import ReleaseVersion
-from appsettings.src.filesystem import Scanner
-from appsettings.src.manual import ImportFolderScanner
-from appsettings.src.reindex import Reindex, ReindexManual, ReindexPopulate
-from appsettings.src.snapshot import DbSnapshot
-from celery import Task, shared_task
-from celery.exceptions import Retry
-from channel.src.index import YoutubeChannel
-from common.src.ta_redis import RedisArchivist
+from appsettings.src.reindex import ReindexManual
+from celery import shared_task
 from common.src.urlparser import ParsedURLType, Parser
-from download.src.queue import PendingList
-from download.src.subscriptions import SubscriptionHandler, SubscriptionScanner
-from download.src.thumbnails import ThumbValidator
-from download.src.yt_dlp_handler import VideoDownloader
-from emby.src.sync import paths_from_env, sync_all
-from task.src.notify import Notifications
-from task.src.task_config import TASK_CONFIG
-from task.src.task_manager import TaskManager
-from video.src.meta_embed import MetadataEmbed
+from download.models import Download, DownloadStatus
+from jobs.models import CreatedBy, Priority
+from jobs.src.engine import enqueue
+
+# scheduled runs pass created_by="schedule" through the schedule's kwargs
+PRIORITY = {CreatedBy.SCHEDULE: Priority.LOW}
 
 
-class BaseTask(Task):
-    """base class to inherit each class from"""
+def _queue(job_type, target_id=None, created_by=CreatedBy.USER, **kwargs):
+    """queue a job, low priority for schedules, high for people"""
+    kwargs.setdefault("priority", PRIORITY.get(created_by, Priority.HIGH))
+    job, merged = enqueue(job_type, target_id, created_by=created_by, **kwargs)
+    verb = "merged into" if merged else "queued"
+    return f"{verb} job #{job.pk}"
 
-    # pylint: disable=abstract-method
 
-    def on_failure(self, exc, task_id, args, kwargs, einfo):
-        """callback for task failure"""
-        print(f"{task_id} Failed callback")
-        message, key = self._build_message(level="error")
-        message.update({"messages": [f"Task failed: {exc}"]})
-        RedisArchivist().set_message(key, message, expire=20)
+@shared_task(name="update_subscribed")
+def update_subscribed(created_by=CreatedBy.USER):
+    """check every subscribed channel and playlist"""
+    return _queue("check_subscriptions", created_by=created_by)
 
-    def on_success(self, retval, task_id, args, kwargs):
-        """callback task completed"""
-        print(f"{task_id} success callback")
-        message, key = self._build_message()
-        message.update({"messages": ["Task completed"]})
-        RedisArchivist().set_message(key, message, expire=5)
 
-    def before_start(self, task_id, args, kwargs):
-        """callback before initiating task"""
-        print(f"{self.name} create callback")
-        message, key = self._build_message()
-        message.update({"messages": ["New task received."]})
-        RedisArchivist().set_message(key, message)
-
-    def after_return(self, status, retval, task_id, args, kwargs, einfo):
-        """callback after task returns"""
-        print(f"{task_id} return callback")
-        task_title = TASK_CONFIG.get(self.name).get("title")
-        Notifications(self.name).send(task_id, task_title)
-
-    def send_progress(
-        self, message_lines, progress=False, title=False, level="info"
+@shared_task(name="download_pending")
+def download_pending(auto_only=False, created_by=CreatedBy.USER):
+    """queue a download job for every waiting found video"""
+    items = Download.objects.filter(
+        status=DownloadStatus.PENDING, message__isnull=True
+    )
+    if auto_only:
+        items = items.filter(auto_start=True)
+    queued = 0
+    for youtube_id, title in items.queue_order().values_list(
+        "youtube_id", "title"
     ):
-        """send progress message"""
-        message, key = self._build_message(level=level)
-        message.update(
-            {
-                "messages": message_lines,
-                "progress": progress,
-            }
+        _queue(
+            "download_video",
+            youtube_id,
+            created_by=created_by,
+            target_title=title,
         )
-        if title:
-            message["title"] = title
-
-        RedisArchivist().set_message(key, message)
-
-    def _build_message(self, level="info"):
-        """build message dict"""
-        task_id = self.request.id
-        message = TASK_CONFIG.get(self.name).copy()
-        message.update({"level": level, "id": task_id})
-        task_result = TaskManager().get_task(task_id)
-        if task_result:
-            command = task_result.get("command", None)
-            message.update({"command": command})
-
-        key = f"message:{message.get('group')}:{task_id.split('-')[0]}"
-        return message, key
-
-    def is_stopped(self):
-        """check if task is stopped"""
-        return TaskManager().is_stopped(self.request.id)
+        queued += 1
+    return f"queued {queued} downloads"
 
 
-@shared_task(name="update_subscribed", bind=True, base=BaseTask)
-def update_subscribed(self):
-    """look for missing videos and add to pending"""
-    manager = TaskManager()
-    if manager.is_pending(self):
-        print(f"[task][{self.name}] rescan already running")
-        self.send_progress(["Rescan already in progress."])
-        return None
-
-    manager.init(self)
-    handler = SubscriptionScanner(task=self)
-    added = handler.scan()
-    auto_start = handler.auto_start
-    if added:
-        if auto_start:
-            download_pending.delay(auto_only=True)
-
-        return f"Found {added} videos to add to the queue."
-
-    return None
+def _entry_params(entry: ParsedURLType) -> dict:
+    vid_type = getattr(entry["vid_type"], "value", entry["vid_type"])
+    return {**entry, "vid_type": str(vid_type)}
 
 
-@shared_task(
-    name="download_pending",
-    bind=True,
-    base=BaseTask,
-    max_retries=3,
-    default_retry_delay=10,
-)
-def download_pending(self, auto_only=False):
-    """download latest pending videos"""
-    manager = TaskManager()
-    if manager.is_pending(self):
-        print(f"[task][{self.name}] download queue already running")
-        self.send_progress(["Download Queue is already running."])
-        return None
-
-    manager.init(self)
-    try:
-        downloader = VideoDownloader(task=self)
-        downloaded, failed = downloader.run_queue(auto_only=auto_only)
-
-        if failed and not self.is_stopped():
-            print(f"[task][{self.name}] Videos failed, retry.")
-            self.send_progress(["Videos failed, retry."])
-            raise self.retry()
-
-    except Retry as exc:
-        raise exc
-
-    if downloaded:
-        queue_emby_sync()
-        return f"downloaded {downloaded} video(s)."
-
-    return None
-
-
-@shared_task(name="extract_download", bind=True, base=BaseTask)
+@shared_task(name="extract_download")
 def extrac_dl(
-    self,
     youtube_ids: str | list[ParsedURLType],
     auto_start: bool = False,
     flat: bool = False,
     force: bool = False,
     status: str = "pending",
-) -> str | None:
-    """parse list passed and add to pending"""
-    TaskManager().init(self)
+    created_by=CreatedBy.USER,
+) -> str:
+    """queue a scan job per link, downloads follow if auto_start"""
     if isinstance(youtube_ids, str):
         to_add = Parser(youtube_ids).parse()
     else:
         to_add = youtube_ids
 
-    pending_handler = PendingList(
-        youtube_ids=to_add,
-        task=self,
-        auto_start=auto_start,
-        flat=flat,
-        force=force,
-    )
-    videos_added = pending_handler.parse_url_list(status=status)
+    params = {
+        "download_now": auto_start,
+        "flat": flat,
+        "force": force,
+        "status": status,
+    }
+    job_types = {
+        "video": "fetch_video",
+        "channel": "check_channel",
+        "playlist": "check_playlist",
+    }
+    messages = []
+    for entry in to_add:
+        entry_params = {**params, "vid_type": _entry_params(entry)["vid_type"]}
+        if entry["type"] == "channel":
+            entry_params["entries"] = [_entry_params(entry)]
+        if entry.get("limit"):
+            entry_params["newest_n"] = entry["limit"]
+        messages.append(
+            _queue(
+                job_types[entry["type"]],
+                entry["url"],
+                created_by=created_by,
+                params=entry_params,
+            )
+        )
+    return "; ".join(messages)
 
-    if auto_start:
-        download_pending.delay(auto_only=True)
 
-    if videos_added:
-        return f"added {videos_added} Videos to Queue"
-
-    return None
-
-
-@shared_task(bind=True, name="check_reindex", base=BaseTask)
-def check_reindex(self, data=False, extract_videos=False):
-    """run the reindex main command"""
+@shared_task(name="check_reindex")
+def check_reindex(data=False, extract_videos=False, created_by=CreatedBy.USER):
+    """refresh metadata: what data names, else recent and outdated items"""
     if data:
-        # started from frontend through API
-        print(f"[task][{self.name}] reindex {data}")
-        self.send_progress(["Add items to the reindex Queue."])
         ReindexManual(extract_videos=extract_videos).extract_data(data)
-
-    manager = TaskManager()
-    if manager.is_pending(self):
-        print(f"[task][{self.name}] reindex queue is already running")
-        self.send_progress(["Reindex Queue is already running."])
-        return
-
-    manager.init(self)
-    if not data:
-        # started from scheduler
-        populate = ReindexPopulate()
-        print(f"[task][{self.name}] reindex outdated documents")
-        self.send_progress(["Add recent documents to the reindex Queue."])
-        populate.get_interval()
-        populate.add_recent()
-        self.send_progress(["Add outdated documents to the reindex Queue."])
-        populate.add_outdated()
-
-    handler = Reindex(task=self)
-    handler.reindex_all()
-    queue_emby_sync()
-
-    return handler.build_message()
+    return _queue(
+        "reindex", created_by=created_by, params={"populate": not data}
+    )
 
 
-@shared_task(bind=True, name="manual_import", base=BaseTask)
-def manual_import(self, ignore_error, prefer_local):
-    """called from settings page, to go through import folder"""
-    manager = TaskManager()
-    if manager.is_pending(self):
-        print(f"[task][{self.name}] manual import is already running")
-        self.send_progress(["Manual import is already running."])
-        return
-
-    manager.init(self)
-    ImportFolderScanner(
-        task=self, ignore_error=ignore_error, prefer_local=prefer_local
-    ).scan()
+@shared_task(name="manual_import")
+def manual_import(ignore_error, prefer_local, created_by=CreatedBy.USER):
+    """go through the import folder"""
+    return _queue(
+        "manual_import",
+        created_by=created_by,
+        params={"ignore_error": ignore_error, "prefer_local": prefer_local},
+    )
 
 
-@shared_task(bind=True, name="run_backup", base=BaseTask)
-def run_backup(self, reason="auto"):
-    """called from settings page, dump backup to zip file"""
-    manager = TaskManager()
-    if manager.is_pending(self):
-        print(f"[task][{self.name}] backup is already running")
-        self.send_progress(["Backup is already running."])
-        return
-
-    manager.init(self)
-    DatabaseBackup(reason=reason, task=self).backup_all_indexes()
+@shared_task(name="run_backup")
+def run_backup(reason="auto", created_by=CreatedBy.USER):
+    """zip backup"""
+    return _queue("backup", created_by=created_by, params={"reason": reason})
 
 
-@shared_task(bind=True, name="restore_backup", base=BaseTask)
-def run_restore_backup(self, filename):
-    """called from settings page, dump backup to zip file"""
-    manager = TaskManager()
-    if manager.is_pending(self):
-        print(f"[task][{self.name}] restore is already running")
-        self.send_progress(["Restore is already running."])
-        return None
-
-    manager.init(self)
-    DatabaseBackup(task=self).restore(filename)
-    print("index restore finished")
-
-    return f"backup restore completed: {filename}"
+@shared_task(name="restore_backup")
+def run_restore_backup(filename, created_by=CreatedBy.USER):
+    """restore a zip backup"""
+    return _queue(
+        "restore",
+        filename,
+        created_by=created_by,
+        params={"filename": filename},
+    )
 
 
-@shared_task(bind=True, name="rescan_filesystem", base=BaseTask)
-def rescan_filesystem(self, ignore_error, prefer_local):
+@shared_task(name="rescan_filesystem")
+def rescan_filesystem(ignore_error, prefer_local, created_by=CreatedBy.USER):
     """check the media folder for mismatches"""
-    manager = TaskManager()
-    if manager.is_pending(self):
-        print(f"[task][{self.name}] filesystem rescan already running")
-        self.send_progress(["Filesystem Rescan is already running."])
-        return
-
-    manager.init(self)
-    handler = Scanner(
-        task=self, ignore_error=ignore_error, prefer_local=prefer_local
+    return _queue(
+        "filesystem_rescan",
+        created_by=created_by,
+        params={"ignore_error": ignore_error, "prefer_local": prefer_local},
     )
-    handler.scan()
-    handler.apply()
-    thumbnail_check.delay()
 
 
-@shared_task(bind=True, name="thumbnail_check", base=BaseTask)
-def thumbnail_check(self):
+@shared_task(name="thumbnail_check")
+def thumbnail_check(created_by=CreatedBy.USER):
     """validate thumbnails"""
-    manager = TaskManager()
-    if manager.is_pending(self):
-        print(f"[task][{self.name}] thumbnail check is already running")
-        self.send_progress(["Thumbnail check is already running."])
-        return
-
-    manager.init(self)
-    thumbnail = ThumbValidator(task=self)
-    thumbnail.validate()
-    thumbnail.clean_up()
+    return _queue("thumbnail_check", created_by=created_by)
 
 
-@shared_task(bind=True, name="resync_metadata", base=BaseTask)
-def re_sync_metadata(self):
-    """resync metadata to media files"""
-    manager = TaskManager()
-    if manager.is_pending(self):
-        print(f"[task][{self.name}] metadata re-embed is already running")
-        self.send_progress(["Metadata re-embed is already running."])
-        return
-
-    manager.init(self)
-    MetadataEmbed(task=self).embed()
+@shared_task(name="resync_metadata")
+def re_sync_metadata(created_by=CreatedBy.USER):
+    """embed metadata in media files"""
+    return _queue("resync_metadata", created_by=created_by)
 
 
-@shared_task(bind=True, name="subscribe_to", base=BaseTask)
-def subscribe_to(self, url_str: str, expected_type: str | bool = False):
-    """
-    take a list of urls to subscribe to
-    optionally validate expected_type channel / playlist
-    """
-    SubscriptionHandler(url_str, task=self).subscribe(expected_type)
-
-
-@shared_task(bind=True, name="index_playlists", base=BaseTask)
-def index_channel_playlists(self, channel_id):
-    """add all playlists of channel to index"""
-    channel = YoutubeChannel(channel_id, task=self)
-    channel.index_channel_playlists()
-
-
-@shared_task(bind=True, name="emby_sync", base=BaseTask)
-def emby_sync(self):
-    """write the Emby library tree, if TA_EMBY_ROOT is set"""
-    paths = paths_from_env()
-    if not paths:
-        return "Emby sync is disabled, set TA_EMBY_ROOT"
-
-    manager = TaskManager()
-    if manager.is_pending(self):
-        print(f"[task][{self.name}] emby sync is already running")
-        return None
-
-    manager.init(self)
-    self.send_progress(["Writing the Emby library."])
-    report = sync_all(paths)
-    for warning in report.warnings[:20]:
-        print(f"[emby] {warning}")
-
-    return (
-        f"Emby: {len(report.created)} created, {len(report.updated)} updated, "
-        f"{len(report.renamed)} renamed, {len(report.deleted)} removed"
+@shared_task(name="subscribe_to")
+def subscribe_to(
+    url_str: str,
+    expected_type: str | bool = False,
+    created_by=CreatedBy.USER,
+):
+    """subscribe to the channels and playlists in url_str"""
+    return _queue(
+        "subscribe",
+        created_by=created_by,
+        params={"urls": url_str, "expected_type": expected_type},
+        dedupe_key=f"subscribe:{url_str}",
     )
 
 
-def queue_emby_sync() -> None:
-    """start an Emby sync after library changes, if enabled"""
-    if paths_from_env():
-        emby_sync.delay()
+@shared_task(name="index_playlists")
+def index_channel_playlists(channel_id, created_by=CreatedBy.USER):
+    """add all playlists of a channel"""
+    return _queue("index_playlists", channel_id, created_by=created_by)
+
+
+@shared_task(name="emby_sync")
+def emby_sync(created_by=CreatedBy.USER):
+    """write the Emby library tree"""
+    return _queue("emby_write", created_by=created_by)
 
 
 @shared_task(name="db_snapshot")
-def db_snapshot():
+def db_snapshot(created_by=CreatedBy.SCHEDULE):
     """daily database snapshot, scheduled by DbSnapshot.setup"""
-    DbSnapshot().take_snapshot_now()
+    return _queue("snapshot", created_by=created_by)
 
 
 @shared_task(name="version_check")
-def version_check():
+def version_check(created_by=CreatedBy.SCHEDULE):
     """check for new updates"""
-    ReleaseVersion().check()
+    return _queue("version_check", created_by=created_by)

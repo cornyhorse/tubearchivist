@@ -7,6 +7,8 @@ from common.serializers import (
 from common.views_base import AdminOnly, ApiBaseView
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiResponse, extend_schema
+from jobs.models import Job
+from jobs.src.engine import ActionNotAllowed, apply_action
 from rest_framework.response import Response
 from task.models import CustomPeriodicTask
 from task.serializers import (
@@ -149,6 +151,10 @@ class TaskIDView(ApiBaseView):
 
         command = validated_data["command"]
 
+        if task_id.startswith("job-"):
+            # progress messages of work queue jobs carry job-<id>
+            return self._stop_job(int(task_id.removeprefix("job-")))
+
         task_result = TaskManager().get_task(task_id)
         if not task_result:
             error = ErrorResponseSerializer({"error": "task ID not found"})
@@ -172,6 +178,19 @@ class TaskIDView(ApiBaseView):
 
             TaskCommand().kill(task_id)
 
+        return Response(status=204)
+
+    @staticmethod
+    def _stop_job(job_id: int) -> Response:
+        """stop and kill both stop the job"""
+        try:
+            apply_action(job_id, "stop")
+        except Job.DoesNotExist:
+            error = ErrorResponseSerializer({"error": "task ID not found"})
+            return Response(error.data, status=404)
+        except ActionNotAllowed as err:
+            error = ErrorResponseSerializer({"error": str(err)})
+            return Response(error.data, status=400)
         return Response(status=204)
 
 

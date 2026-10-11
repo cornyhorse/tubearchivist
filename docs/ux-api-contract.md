@@ -1,6 +1,8 @@
 # UX API contract (backend ↔ frontend)
 
 Status: **draft for agreement with the frontend session**, 2026-10-10.
+Built so far: section 1 (queue) and section 2 (found videos), see
+[`fork/jobs-engine.md`](fork/jobs-engine.md).
 Spec: MattsTools `docs/architecture/tubearchivist-fork-ux-proposal.md`.
 
 The machine-readable contract is [`ux-api-schema.yaml`](ux-api-schema.yaml)
@@ -89,7 +91,7 @@ Endpoints:
 | PATCH | `/api/queue/lanes/<lane>/` | `{paused?, concurrency?, min_interval_seconds?}` | `Lane` |
 | GET | `/api/queue/scheduled/` | | `ScheduledJob[]` with `next_run` |
 | PATCH | `/api/queue/scheduled/<name>/` | `{enabled}` | `ScheduledJob` |
-| POST | `/api/queue/scheduled/<name>/run/` | | 201/200 `{job, merged}` |
+| POST | `/api/queue/scheduled/<name>/run/` | | 201/200 `{job, merged}`; for `download_pending` the last download job queued, `job: null` if nothing was waiting |
 
 `status` accepts a comma list, or `active` (queued,running,paused; sorted
 in run order: running first, then by priority and age) or `history`

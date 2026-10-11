@@ -4,7 +4,6 @@ import apprise
 from appsettings.models import ConfigDocument
 from django.db import transaction
 from task.src.task_config import TASK_CONFIG
-from task.src.task_manager import TaskManager
 
 NOTIFY_KEY = "notify"
 
@@ -15,18 +14,13 @@ class Notifications:
     def __init__(self, task_name: str):
         self.task_name = task_name
 
-    def send(self, task_id: str, task_title: str) -> None:
-        """send notifications"""
-        apobj = apprise.Apprise()
+    def notify(self, title: str, body: str | None) -> None:
+        """send title and body to the urls of this task, if any"""
         urls: list[str] = self.get_urls()
-        if not urls:
+        if not urls or not body:
             return
 
-        title, body = self._build_message(task_id, task_title)
-
-        if not body:
-            return
-
+        apobj = apprise.Apprise()
         for url in urls:
             apobj.add(url)
 
@@ -63,17 +57,6 @@ class Notifications:
             success = False
             message = f"Notification error: {str(err)}"
             return success, message
-
-    def _build_message(
-        self, task_id: str, task_title: str
-    ) -> tuple[str, str | None]:
-        """build message to send notification"""
-        task = TaskManager().get_task(task_id)
-        status = task.get("status")
-        title: str = f"[TA] {task_title} process ended with {status}"
-        body: str | None = task.get("result")
-
-        return title, body
 
     def get_urls(self) -> list[str]:
         """get stored urls for task"""

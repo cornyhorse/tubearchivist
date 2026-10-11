@@ -6,6 +6,7 @@ Functionality:
 """
 
 from datetime import datetime
+from typing import Callable
 from zoneinfo import ZoneInfo
 
 from appsettings.src.config import AppConfig
@@ -20,10 +21,10 @@ from common.src.helper import (
 )
 from common.src.urlparser import ParsedURLType
 from django.db import transaction
-from download.models import Download
+from download.models import Download, DownloadRule
 from download.serializers import DownloadItemSerializer
 from download.src.queue_interact import PendingInteract
-from download.src.rules import RuleSet
+from download.src.rules import RuleSet, check_rule
 from download.src.thumbnails import ThumbManager
 from playlist.src.index import YoutubePlaylist
 from video.models import Video
@@ -110,7 +111,17 @@ class PendingList(PendingIndex):
         auto_start=False,
         flat=False,
         force=False,
+        on_added: Callable[[list[dict]], None] | None = None,
+        found_by: dict | None = None,
+        rule: DownloadRule | None | bool = False,
     ):
+        """
+        on_added: called with the new entries as soon as they're stored,
+        then videos are stored one by one instead of per url
+        found_by: found_by_kind, found_by_job, found_playlist_id fields
+        rule: use this rule for every channel instead of the stored rules,
+        None for no rule, False (default) for the stored rules
+        """
         super().__init__()
         self.config = AppConfig().config
         self.youtube_ids = youtube_ids
@@ -122,9 +133,14 @@ class PendingList(PendingIndex):
         self.missing_videos: list[dict] = []
         self.added = 0
         self.rules = RuleSet()
+        self.on_added = on_added
+        self.found_by = found_by or {}
+        self.rule = rule
+        self.status = "pending"
 
     def parse_url_list(self, status="pending") -> int:
         """extract youtube ids from list"""
+        self.status = status
         self.get_download()
         self.get_indexed()
         self.get_channels()
@@ -231,6 +247,7 @@ class PendingList(PendingIndex):
                 continue
 
             self.missing_videos.append(to_add)
+            self._stream()
             self._notify_add(
                 item_type="channel",
                 name=channel_handler.json_data["channel_name"],
@@ -266,16 +283,27 @@ class PendingList(PendingIndex):
 
         return to_add
 
+    def _stream(self) -> None:
+        """store found videos right away when someone waits for them"""
+        if not self.on_added:
+            return
+        self.to_skip.extend(i["youtube_id"] for i in self.missing_videos)
+        self.added += self.add_to_pending(self.status)
+        self.missing_videos = []
+
     def _apply_rules(self, to_add: dict) -> bool:
         """
         check the channel's download rule; False if the video is skipped,
         True if it goes into the queue (possibly as ignored)
         """
-        failed = self.rules.check(to_add)
+        if self.rule is False:
+            failed = self.rules.check(to_add)
+        else:
+            failed = check_rule(self.rule, to_add)
         if not failed:
             return True
 
-        action, reason = failed
+        action, reason, key = failed
         print(f"{to_add['youtube_id']}: download rule: {reason}")
         if action == "skip":
             self.to_skip.append(to_add["youtube_id"])
@@ -283,6 +311,7 @@ class PendingList(PendingIndex):
 
         to_add["status"] = "ignore"
         to_add["ignore_reason"] = reason
+        to_add["ignore_reason_key"] = key
         return True
 
     def _parse_playlist(self, url: str, limit: int | None):
@@ -322,6 +351,7 @@ class PendingList(PendingIndex):
                 continue
 
             self.missing_videos.append(to_add)
+            self._stream()
             self._notify_add(
                 item_type="playlist",
                 name=playlist.json_data["playlist_name"],
@@ -499,6 +529,7 @@ class PendingList(PendingIndex):
             video_entry["auto_start"] = self.auto_start
             # a download rule may already have set ignore
             video_entry.setdefault("status", status)
+            video_entry.update(self.found_by)
             items.append(Download.from_doc(video_entry))
 
         try:
@@ -520,6 +551,8 @@ class PendingList(PendingIndex):
             return 0
 
         self._notify_done(total)
+        if self.on_added:
+            self.on_added(list(self.missing_videos))
         return len(self.missing_videos)
 
     def _notify_add(

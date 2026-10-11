@@ -26,3 +26,7 @@ app.config_from_object(
 )
 app.autodiscover_tasks()
 app.conf.timezone = EnvironmentSettings.TZ
+# safety net for the work queue: start due jobs even if no event did
+app.conf.beat_schedule = {
+    "jobs-pump": {"task": "jobs_pump", "schedule": 60.0},
+}

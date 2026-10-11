@@ -7,7 +7,16 @@ from channel.models import Channel
 from common.tests.docs import channel_doc
 from download.models import DownloadRule
 from download.serializers import DownloadRuleSerializer
-from download.src.rules import RuleSet, failed_reason, get_rule, set_rule
+from download.src.rules import (
+    RuleSet,
+    check_rule,
+    failed_reason,
+    get_rule,
+    reason_label,
+    rule_ref,
+    rule_summary,
+    set_rule,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -80,11 +89,16 @@ def test_ruleset_default_channel_and_disabled():
 
     rules = RuleSet()
 
-    assert rules.check(entry()) == ("skip", "longer than 100s (600s)")
+    assert rules.check(entry()) == (
+        "skip",
+        "longer than 100s (600s)",
+        "too_long",
+    )
     assert rules.check(entry(channel_id=CHANNEL_B, duration_seconds=1)) is None
     assert rules.check(entry(channel_id=CHANNEL_C, duration_seconds=1)) == (
         "ignore",
         "shorter than 60s (1s)",
+        "too_short",
     )
     assert rules.check(entry(channel_id=CHANNEL_C)) is None
 
@@ -133,3 +147,67 @@ def test_rule_serializer(data, valid):
     """regex must compile, min not above max"""
     serializer = DownloadRuleSerializer(data=data)
     assert serializer.is_valid() is valid
+
+
+@pytest.mark.parametrize(
+    "kwargs, expected",
+    [
+        ({}, "Everything"),
+        ({"enabled": False, "min_duration": 5}, "Off"),
+        ({"vid_types": ["videos", "streams"]}, "No Shorts"),
+        (
+            {"vid_types": ["videos"], "min_duration": 600},
+            "No livestreams · No Shorts · >10 min",
+        ),
+        ({"max_duration": 3600}, "<1 h"),
+        ({"max_duration": 5400}, "<1 h 30 min"),
+        ({"min_duration": 45}, ">45 s"),
+        (
+            {"title_include": "train", "title_exclude": "trailer"},
+            "title has /train/ · title not /trailer/",
+        ),
+        (
+            {"published_after": date(2024, 1, 2), "action": "skip"},
+            "after 2024-01-02 (others not added)",
+        ),
+    ],
+)
+def test_rule_summary(kwargs, expected):
+    assert rule_summary(DownloadRule(**kwargs)) == expected
+
+
+def test_rule_summary_none_and_ref():
+    assert rule_summary(None) == "Everything"
+    assert rule_ref(None) is None
+    channel_rule = DownloadRule(channel_id="UC1", min_duration=60)
+    assert rule_ref(channel_rule) == {
+        "scope": "channel",
+        "target_id": "UC1",
+        "summary": ">1 min",
+    }
+
+
+@pytest.mark.parametrize(
+    "key, rule, entry, expected",
+    [
+        ("vid_type", None, {"vid_type": "shorts"}, "Shorts"),
+        ("vid_type", None, {"vid_type": "streams"}, "Livestreams"),
+        ("vid_type", None, {"vid_type": "odd"}, "Type"),
+        ("too_long", DownloadRule(max_duration=3600), {}, ">1 h"),
+        ("too_short", DownloadRule(min_duration=60), {}, "<1 min"),
+        ("too_long", None, {}, "Other"),
+        ("title_exclude", None, {}, "Title excluded"),
+        ("published_before", None, {}, "Too old"),
+        ("always_ignore", None, {}, "Always ignore"),
+        ("title_include", None, {}, "Title doesn't match"),
+    ],
+)
+def test_reason_label(key, rule, entry, expected):
+    assert reason_label(key, rule, entry) == expected
+
+
+def test_check_rule_disabled_draft():
+    assert (
+        check_rule(DownloadRule(enabled=False, min_duration=10), entry())
+        is None
+    )

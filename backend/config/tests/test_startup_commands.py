@@ -20,6 +20,8 @@ from django.conf import settings
 from django.core.management import CommandError, call_command
 from django.db import OperationalError
 from django_celery_beat.models import CrontabSchedule
+from jobs.models import Job
+from jobs.src.engine import enqueue
 from task.models import CustomPeriodicTask
 from user.models import Account
 
@@ -424,6 +426,9 @@ def test_startup_existing_install(startup):
     redis.set_message("message:download:abc", {"status": "x"})
     redis.set_message(ReleaseVersion.NEW_KEY, {"version": "v0.0.1"})
     TaskRedis().set_key("t1", {"status": "PENDING", "task_id": "t1"})
+    lost, _ = enqueue("thumbnail_check", dispatch=False)
+    Job.objects.filter(pk=lost.pk).update(status="running", attempts=1)
+    CustomPeriodicTask.objects.update(kwargs="{}")
     (startup.cache / "download" / "leftover.part").write_text("x")
     CustomPeriodicTask.objects.filter(name="version_check").update(
         last_run_at=None
@@ -440,6 +445,11 @@ def test_startup_existing_install(startup):
     assert "✓ cleared key dl_queue" in output
     assert "✓ cleared 1 messages" in output
     assert TaskRedis().get_single("t1")["status"] == "FAILED"
+    assert "✓ requeued 1 jobs" in output
+    assert Job.objects.get(pk=lost.pk).status == "queued"
+    assert set(
+        CustomPeriodicTask.objects.values_list("kwargs", flat=True)
+    ) == {'{"created_by": "schedule"}'}
     assert "✓ cleared 1 files" in output
     assert f"✓ update to {settings.TA_VERSION} completed" in output
     assert "✓ send initial version check task" in output

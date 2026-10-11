@@ -1,8 +1,12 @@
 """work queue API views, /api/queue/"""
 
+from channel.models import Channel
 from common.serializers import ErrorResponseSerializer
-from common.views_base import AdminOnly, ApiBaseView, not_built
+from common.src.index_generic import Pagination
+from common.views_base import AdminOnly, ApiBaseView
+from download.models import Download
 from drf_spectacular.utils import OpenApiResponse, extend_schema
+from jobs.models import CreatedBy, Job, Lane, Priority
 from jobs.serializers import (
     JobActionSerializer,
     JobBulkActionResponseSerializer,
@@ -18,8 +22,37 @@ from jobs.serializers import (
     ScheduledJobSerializer,
     ScheduledJobUpdateSerializer,
 )
+from jobs.src.engine import (
+    ActionNotAllowed,
+    apply_action,
+    enqueue,
+    ensure_lanes,
+    pump,
+)
+from jobs.src.present import (
+    filter_jobs,
+    job_dict,
+    jobs_dicts,
+    lane_dicts,
+    summary,
+)
+from jobs.src.registry import LANES, get_spec
+from jobs.src.schedules import (
+    SCHEDULED,
+    run_now,
+    schedule_dicts,
+    set_enabled,
+)
+from playlist.models import Playlist
+from rest_framework.response import Response
+from task.models import CustomPeriodicTask
+from video.models import Video
 
-STEP = "jobs engine"
+PRIORITIES = {
+    "high": Priority.HIGH,
+    "normal": Priority.NORMAL,
+    "low": Priority.LOW,
+}
 NOT_FOUND = OpenApiResponse(ErrorResponseSerializer(), description="not found")
 BAD_REQUEST = OpenApiResponse(
     ErrorResponseSerializer(), description="bad request"
@@ -30,6 +63,35 @@ CONFLICT = OpenApiResponse(
 )
 
 
+def target_title(kind: str, target_id: str | None) -> str | None:
+    """display name of a job target, if TA knows it"""
+    lookups = {
+        "channel": lambda: Channel.objects.filter(pk=target_id).values_list(
+            "name", flat=True
+        ),
+        "playlist": lambda: Playlist.objects.filter(pk=target_id).values_list(
+            "name", flat=True
+        ),
+        "video": lambda: list(
+            Download.objects.filter(pk=target_id).values_list(
+                "title", flat=True
+            )
+        )
+        + list(
+            Video.objects.filter(pk=target_id).values_list("title", flat=True)
+        ),
+    }
+    if kind not in lookups or not target_id:
+        return None
+    return next(iter(lookups[kind]()), None)
+
+
+def created_response(job: Job | None, merged: bool) -> Response:
+    """201 for a new job, 200 when merged or nothing to do"""
+    data = {"job": job_dict(job) if job else None, "merged": merged}
+    return Response(data, status=201 if job and not merged else 200)
+
+
 class QueueSummaryView(ApiBaseView):
     """resolves to /api/queue/summary/
     GET: counts for the header indicator, any signed in user
@@ -38,7 +100,7 @@ class QueueSummaryView(ApiBaseView):
     @extend_schema(responses=QueueSummarySerializer())
     def get(self, request):
         """running, queued and per-lane counts"""
-        return not_built(STEP)
+        return Response(summary())
 
 
 class JobListView(ApiBaseView):
@@ -59,7 +121,20 @@ class JobListView(ApiBaseView):
         list jobs; status=active sorts in run order (running first, then
         queued by priority and age), status=history newest finished first
         """
-        return not_built(STEP)
+        query = JobListQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        try:
+            queryset = filter_jobs(query.validated_data)
+        except ValueError as err:
+            return Response({"error": str(err)}, status=400)
+        pagination = Pagination(
+            request, page_size=query.validated_data.get("page_size")
+        )
+        page = pagination.pagination
+        start = page["page_from"]
+        jobs = list(queryset[start : start + page["page_size"]])
+        pagination.validate(queryset.count())
+        return Response({"data": jobs_dicts(jobs), "paginate": page})
 
     @extend_schema(
         request=JobCreateSerializer(),
@@ -74,7 +149,23 @@ class JobListView(ApiBaseView):
     )
     def post(self, request):
         """queue a job"""
-        return not_built(STEP)
+        serializer = JobCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        spec = get_spec(data["type"])
+        target_id = data.get("target_id")
+        if spec.target_kind != "none" and not target_id:
+            return Response(
+                {"error": f"{data['type']} needs a target_id"}, status=400
+            )
+        job, merged = enqueue(
+            data["type"],
+            target_id if spec.target_kind != "none" else None,
+            target_title=target_title(spec.target_kind, target_id),
+            priority=PRIORITIES[data["priority"]],
+            created_by=CreatedBy.USER,
+        )
+        return created_response(job, merged)
 
 
 class JobView(ApiBaseView):
@@ -90,7 +181,10 @@ class JobView(ApiBaseView):
     )
     def get(self, request, job_id):
         """job detail"""
-        return not_built(STEP)
+        job = Job.objects.filter(pk=job_id).first()
+        if not job:
+            return Response({"error": "job not found"}, status=404)
+        return Response(job_dict(job))
 
 
 class JobActionView(ApiBaseView):
@@ -111,7 +205,15 @@ class JobActionView(ApiBaseView):
     )
     def post(self, request, job_id):
         """apply an action to one job"""
-        return not_built(STEP)
+        serializer = JobActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            job = apply_action(job_id, serializer.validated_data["action"])
+        except Job.DoesNotExist:
+            return Response({"error": "job not found"}, status=404)
+        except ActionNotAllowed as err:
+            return Response({"error": str(err)}, status=409)
+        return Response(job_dict(job))
 
 
 class JobBulkActionView(ApiBaseView):
@@ -128,7 +230,18 @@ class JobBulkActionView(ApiBaseView):
     )
     def post(self, request):
         """apply an action to many jobs"""
-        return not_built(STEP)
+        serializer = JobBulkActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        action = serializer.validated_data["action"]
+        changed, skipped = [], {}
+        for job_id in serializer.validated_data["ids"]:
+            try:
+                changed.append(apply_action(job_id, action).pk)
+            except Job.DoesNotExist:
+                skipped[str(job_id)] = "not found"
+            except ActionNotAllowed as err:
+                skipped[str(job_id)] = str(err)
+        return Response({"changed": changed, "skipped": skipped})
 
 
 class LaneListView(ApiBaseView):
@@ -141,7 +254,7 @@ class LaneListView(ApiBaseView):
     @extend_schema(responses=LaneSerializer(many=True))
     def get(self, request):
         """list lanes"""
-        return not_built(STEP)
+        return Response(lane_dicts())
 
 
 class LaneView(ApiBaseView):
@@ -157,7 +270,14 @@ class LaneView(ApiBaseView):
     )
     def patch(self, request, lane):
         """change lane settings"""
-        return not_built(STEP)
+        if lane not in LANES:
+            return Response({"error": "lane not found"}, status=404)
+        serializer = LaneUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ensure_lanes()
+        Lane.objects.filter(name=lane).update(**serializer.validated_data)
+        pump()
+        return Response(next(i for i in lane_dicts() if i["name"] == lane))
 
 
 class ScheduledListView(ApiBaseView):
@@ -170,7 +290,7 @@ class ScheduledListView(ApiBaseView):
     @extend_schema(responses=ScheduledJobSerializer(many=True))
     def get(self, request):
         """list schedules"""
-        return not_built(STEP)
+        return Response(schedule_dicts())
 
 
 class ScheduledView(ApiBaseView):
@@ -186,7 +306,13 @@ class ScheduledView(ApiBaseView):
     )
     def patch(self, request, name):
         """enable or disable"""
-        return not_built(STEP)
+        serializer = ScheduledJobUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            item = set_enabled(name, serializer.validated_data["enabled"])
+        except CustomPeriodicTask.DoesNotExist:
+            return Response({"error": "schedule not found"}, status=404)
+        return Response(item)
 
 
 class ScheduledRunView(ApiBaseView):
@@ -209,4 +335,7 @@ class ScheduledRunView(ApiBaseView):
     )
     def post(self, request, name):
         """queue the schedule's job now"""
-        return not_built(STEP)
+        if name not in SCHEDULED:
+            return Response({"error": "schedule not found"}, status=404)
+        job, merged = run_now(name)
+        return created_response(job, merged)

@@ -24,19 +24,6 @@ SCHEMA = Path(__file__).resolve().parents[3] / "docs" / "ux-api-schema.yaml"
 
 # (method, url, open to any signed in user)
 NOT_BUILT = [
-    ("get", "/api/queue/summary/", True),
-    ("get", "/api/queue/jobs/", False),
-    ("post", "/api/queue/jobs/", False),
-    ("post", "/api/queue/jobs/action/", False),
-    ("get", "/api/queue/jobs/1/", False),
-    ("post", "/api/queue/jobs/1/action/", False),
-    ("get", "/api/queue/lanes/", False),
-    ("patch", "/api/queue/lanes/scan/", False),
-    ("get", "/api/queue/scheduled/", False),
-    ("patch", "/api/queue/scheduled/update_subscribed/", False),
-    ("post", "/api/queue/scheduled/update_subscribed/run/", False),
-    ("get", "/api/found/", False),
-    ("post", "/api/found/actions/", False),
     ("post", "/api/add/", False),
     ("post", "/api/add/preview/", False),
     ("get", "/api/rules/", False),

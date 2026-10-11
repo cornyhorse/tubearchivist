@@ -5310,7 +5310,10 @@ components:
       description: the job, and whether it merged into an existing one
       properties:
         job:
-          $ref: '#/components/schemas/Job'
+          allOf:
+          - $ref: '#/components/schemas/Job'
+          nullable: true
+          description: null when there was nothing to do
         merged:
           type: boolean
           description: true if an identical job was already queued

@@ -75,12 +75,12 @@ class Pagination:
     figure out the pagination based on page size and total_hits
     """
 
-    def __init__(self, request):
+    def __init__(self, request, page_size: int | None = None):
         self.request = request
         self.page_get = False
         self.params = False
         self.get_params()
-        self.page_size = self.get_page_size()
+        self.page_size = page_size or self.get_page_size()
         self.pagination = self.first_guess()
 
     def get_params(self):
