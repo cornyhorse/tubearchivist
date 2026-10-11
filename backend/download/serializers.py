@@ -8,6 +8,8 @@ from common.serializers import PaginationSerializer, ValidateUnknownFieldsMixin
 from rest_framework import serializers
 from video.src.constants import VideoTypeEnum
 
+RULE_ACTIONS = ["ignore", "skip"]
+
 
 class DownloadItemSerializer(serializers.Serializer):
     """serialize download item"""
@@ -156,7 +158,7 @@ class DownloadRuleSerializer(serializers.Serializer):
     )
     published_after = serializers.DateField(required=False, allow_null=True)
     action = serializers.ChoiceField(
-        choices=["ignore", "skip"], required=False, default="ignore"
+        choices=RULE_ACTIONS, required=False, default="ignore"
     )
 
     @staticmethod
