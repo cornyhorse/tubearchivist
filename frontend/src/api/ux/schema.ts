@@ -1698,6 +1698,12 @@ export interface components {
       value: number;
       value_str?: string;
     };
+    /** @description a channel option of the filter, with its count */
+    ChannelFacet: {
+      channel_id: string;
+      channel_name: string;
+      count: number;
+    };
     /** @description serialize channel list */
     ChannelList: {
       data: components['schemas']['Channel'][];
@@ -2003,6 +2009,11 @@ export interface components {
       | 'auto_delete'
       | 'import'
       | 'unknown';
+    /** @description filter options for the current tab, other filters applied */
+    FoundFacets: {
+      /** @description up to 200, most videos first */
+      channels: components['schemas']['ChannelFacet'][];
+    };
     /** @description filters of the found videos list; the same object selects
      *     'all matching' in bulk actions */
     FoundFilter: {
@@ -2047,6 +2058,7 @@ export interface components {
       data: components['schemas']['FoundVideo'][];
       paginate: components['schemas']['Pagination'];
       counts: components['schemas']['FoundTabCounts'];
+      facets: components['schemas']['FoundFacets'];
     };
     /**
      * @description * `waiting` - waiting
@@ -2104,6 +2116,8 @@ export interface components {
       type: components['schemas']['JobTypeEnum'];
       /** @description plain words, e.g. 'Check channel for new videos' */
       type_label: string;
+      /** @description type and target, e.g. 'Download video: Riding the coaster' */
+      label: string;
       lane: components['schemas']['LaneEnum'];
       target: components['schemas']['JobTarget'];
       status: components['schemas']['JobStatusEnum'];
@@ -2148,9 +2162,21 @@ export interface components {
      *     * `resume` - resume
      *     * `retry` - retry
      *     * `move_to_top` - move_to_top
+     *     * `move_up` - move_up
+     *     * `move_down` - move_down
+     *     * `move_to_bottom` - move_to_bottom
      * @enum {string}
      */
-    JobActionEnum: 'stop' | 'cancel' | 'pause' | 'resume' | 'retry' | 'move_to_top';
+    JobActionEnum:
+      | 'stop'
+      | 'cancel'
+      | 'pause'
+      | 'resume'
+      | 'retry'
+      | 'move_to_top'
+      | 'move_up'
+      | 'move_down'
+      | 'move_to_bottom';
     /** @description POST /api/queue/jobs/action/: same action on explicit ids */
     JobBulkAction: {
       action: components['schemas']['JobActionEnum'];
@@ -2174,7 +2200,8 @@ export interface components {
     };
     /** @description the job, and whether it merged into an existing one */
     JobCreateResponse: {
-      job: components['schemas']['Job'];
+      /** @description null when there was nothing to do */
+      job: components['schemas']['Job'] | null;
       /** @description true if an identical job was already queued */
       merged: boolean;
     };
@@ -2249,6 +2276,8 @@ export interface components {
       id: string | null;
       /** @description display name, if known */
       title: string | null;
+      /** @description YouTube page of the target, if any */
+      url: string | null;
     };
     /**
      * @description * `channel` - channel
@@ -2484,10 +2513,16 @@ export interface components {
      * @description * `date` - date
      *     * `year_frozen` - year_frozen
      *     * `absolute_frozen` - absolute_frozen
+     *     * `playlist_frozen` - playlist_frozen
      *     * `playlist_position` - playlist_position
      * @enum {string}
      */
-    NumberingSchemeEnum: 'date' | 'year_frozen' | 'absolute_frozen' | 'playlist_position';
+    NumberingSchemeEnum:
+      | 'date'
+      | 'year_frozen'
+      | 'absolute_frozen'
+      | 'playlist_frozen'
+      | 'playlist_position';
     /** @description serialize paginate response */
     Pagination: {
       page_size: number;
@@ -2510,9 +2545,12 @@ export interface components {
       concurrency?: number;
       min_interval_seconds?: number;
     };
-    /** @description PATCH /api/queue/scheduled/<name>/: pause or resume a schedule */
+    /** @description PATCH /api/queue/scheduled/<name>/: pause or resume a schedule, or
+     *     change when it runs; a schedule that doesn't exist yet is created */
     PatchedScheduledJobUpdate: {
       enabled?: boolean;
+      /** @description cron 'minute hour weekday', e.g. '0 *\/6 *', or 'auto' */
+      schedule?: string;
     };
     /** @description serialize ping response */
     Ping: {

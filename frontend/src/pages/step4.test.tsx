@@ -62,7 +62,7 @@ const foundPage = (
     data,
     paginate: { current_page: 0, total_hits: 250, last_page: 3 },
     counts: { waiting: 250, ignored: 12, failed: 1, downloaded: 4 },
-    facets: { channels: [{ id: 'UC1', name: 'Trains', count: 250 }] },
+    facets: { channels: [{ channel_id: 'UC1', channel_name: 'Trains', count: 250 }] },
   });
 
 describe('FoundVideos', () => {
@@ -331,6 +331,9 @@ describe('AddDialog', () => {
     fireEvent.click(screen.getByRole('radio', { name: /Subscribe and keep checking/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     await waitFor(() => expect(screen.getByText('Could not add those links.')).toBeTruthy());
+    clientMock.addUrls.mockRejectedValue({ status: 400, message: 'x' });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(screen.getByText(/None of those links could be read/)).toBeTruthy());
   });
 
   it('uses the old add form on an older server', async () => {
@@ -399,7 +402,7 @@ describe('Queue', () => {
             job(2, {
               status: 'running',
               type_label: 'Check channel',
-              target: { kind: 'channel', id: 'UC1', title: 'Trains' },
+              target: { kind: 'channel', id: 'UC1', title: 'Trains', url: null },
               actions: ['stop'],
               children: 3,
               progress: {
@@ -438,11 +441,20 @@ describe('Queue', () => {
             merged: 2,
             actions: ['move_to_top', 'move_up', 'move_down', 'pause', 'cancel'] as never,
           }),
+          job(10, {
+            label: 'Download video: Riding',
+            target: {
+              kind: 'video',
+              id: 'r',
+              title: 'Riding',
+              url: 'https://youtube.com/watch?v=r',
+            },
+          }),
           job(4, {
             status: 'paused',
             position: null,
             actions: ['resume', 'cancel'],
-            target: { kind: 'playlist', id: 'PL1', title: 'Best of' },
+            target: { kind: 'playlist', id: 'PL1', title: 'Best of', url: null },
           }),
         ],
       });
@@ -502,6 +514,9 @@ describe('Queue', () => {
     ).toBe('50');
     expect(screen.getByText(/Downloading video · 50% · 4MiB\/s · 1 min 30 s left/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Check channel: Trains' })).toBeTruthy();
+    expect(
+      (await screen.findByRole('link', { name: 'Download video: Riding' })).getAttribute('href'),
+    ).toBe('https://youtube.com/watch?v=r');
     await waitFor(() => expect(screen.getByText(/high priority · asked for 3 times/)).toBeTruthy());
     expect(screen.getByText('Every 6 hours')).toBeTruthy();
     expect(screen.getByText('Failed: 429')).toBeTruthy();

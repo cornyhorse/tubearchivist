@@ -104,7 +104,12 @@ const AddDialog = ({ onClose, onAdded }: AddDialogProps) => {
         onAdded?.();
       }
     } catch (failure) {
-      setError((failure as ApiError).message ?? 'Could not add those links.');
+      const apiError = failure as ApiError;
+      setError(
+        apiError.status === 400
+          ? 'None of those links could be read. Check them and preview again.'
+          : 'Could not add those links.',
+      );
     }
     setLoading(false);
   };

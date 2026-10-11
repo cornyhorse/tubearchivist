@@ -128,7 +128,7 @@ const FoundVideos = () => {
   const [showMore, setShowMore] = useState(false);
   const [sort, setSort] = useState<SortState>({ key: 'found', order: 'desc' });
   const [page, setPage] = useState(1);
-  const [response, setResponse] = useState<FoundList & { facets?: FoundFacets }>();
+  const [response, setResponse] = useState<FoundList>();
   const [legacy, setLegacy] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [allMatching, setAllMatching] = useState(false);
@@ -154,7 +154,7 @@ const FoundVideos = () => {
         setLegacy(true);
         return;
       }
-      if (result.data) setResponse(result.data as FoundList & { facets?: FoundFacets });
+      if (result.data) setResponse(result.data);
     })();
   }, [apiFilter, sort, page, nonce]);
 
@@ -409,8 +409,8 @@ const FoundVideos = () => {
             >
               <option value="">All channels</option>
               {facets.channels.map(channel => (
-                <option key={channel.id} value={channel.id}>
-                  {channel.name} ({channel.count})
+                <option key={channel.channel_id} value={channel.channel_id}>
+                  {channel.channel_name} ({channel.count})
                 </option>
               ))}
             </select>
@@ -618,10 +618,6 @@ const FoundVideos = () => {
       </div>
     </>
   );
-};
-
-type FoundFacets = {
-  channels?: { id: string; name: string; count: number }[];
 };
 
 export default FoundVideos;

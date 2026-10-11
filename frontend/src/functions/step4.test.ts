@@ -75,12 +75,17 @@ describe('jobLabel', () => {
       jobLabel(
         job(2, {
           type_label: 'Check channel',
-          target: { kind: 'channel', id: 'UC1', title: 'Trains' },
+          target: { kind: 'channel', id: 'UC1', title: 'Trains', url: null },
         }),
       ),
     ).toBe('Check channel: Trains');
     expect(
-      jobLabel(job(3, { type_label: 'Back up', target: { kind: 'none', id: null, title: null } })),
+      jobLabel(
+        job(3, {
+          type_label: 'Back up',
+          target: { kind: 'none', id: null, title: null, url: null },
+        }),
+      ),
     ).toBe('Back up');
   });
 });

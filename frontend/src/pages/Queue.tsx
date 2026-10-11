@@ -28,6 +28,20 @@ const targetLink = (job: Job) => {
   return null;
 };
 
+/** the job's name, linked to its channel or playlist here, or to the video on YouTube */
+const JobTitle = ({ job }: { job: Job }) => {
+  const inside = targetLink(job);
+  if (inside) return <Link to={inside}>{jobLabel(job)}</Link>;
+  if (job.target.url) {
+    return (
+      <a href={job.target.url} target="_blank" rel="noreferrer">
+        {jobLabel(job)}
+      </a>
+    );
+  }
+  return <>{jobLabel(job)}</>;
+};
+
 const ACTION_LABEL: Partial<Record<JobAction | string, [string, string]>> = {
   stop: ['Stop', 'Stop this job now'],
   cancel: ['Cancel', 'Take it out of the queue'],
@@ -237,11 +251,7 @@ const Queue = () => {
               <li key={job.id} className="ux-job running">
                 <div className="ux-job-main">
                   <span className="ux-job-title">
-                    {targetLink(job) ? (
-                      <Link to={targetLink(job)!}>{jobLabel(job)}</Link>
-                    ) : (
-                      jobLabel(job)
-                    )}
+                    <JobTitle job={job} />
                   </span>
                   <span className="ux-muted">
                     started {ago(job.started_at)} ·{' '}
@@ -272,11 +282,7 @@ const Queue = () => {
                 </span>
                 <div className="ux-job-main">
                   <span className="ux-job-title">
-                    {targetLink(job) ? (
-                      <Link to={targetLink(job)!}>{jobLabel(job)}</Link>
-                    ) : (
-                      jobLabel(job)
-                    )}
+                    <JobTitle job={job} />
                   </span>
                   <span className="ux-muted">
                     {lanes.find(item => item.name === job.lane)?.label ?? job.lane}
