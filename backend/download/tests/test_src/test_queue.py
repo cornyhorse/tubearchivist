@@ -660,3 +660,21 @@ def test_playlist_streams(yt):
     ).parse_url_list()
 
     assert reported == [1, 1]
+
+
+def test_playlist_one_off_rule(yt):
+    """stored rules skip playlists, a one-off rule applies"""
+    DownloadRule.objects.create(channel=None, max_duration=1)
+    FakePlaylist.youtube_meta = {
+        "channel": "Test Channel",
+        "channel_id": CHANNEL_ID,
+        "entries": [flat_entry("p1", duration=600)],
+    }
+
+    PendingList([playlist_url()], flat=True).parse_url_list()
+    assert queued("p1").status == "pending"
+
+    Download.objects.all().delete()
+    rule = DownloadRule(min_duration=1000, action="skip")
+    PendingList([playlist_url()], flat=True, rule=rule).parse_url_list()
+    assert queued("p1") is None

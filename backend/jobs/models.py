@@ -28,6 +28,13 @@ class Priority(models.IntegerChoices):
     LOW = 10
 
 
+PRIORITY_BY_NAME = {
+    "high": Priority.HIGH,
+    "normal": Priority.NORMAL,
+    "low": Priority.LOW,
+}
+
+
 class CreatedBy(models.TextChoices):
     """who asked for the job"""
 

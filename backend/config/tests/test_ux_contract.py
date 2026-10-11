@@ -24,8 +24,6 @@ SCHEMA = Path(__file__).resolve().parents[3] / "docs" / "ux-api-schema.yaml"
 
 # (method, url, open to any signed in user)
 NOT_BUILT = [
-    ("post", "/api/add/", False),
-    ("post", "/api/add/preview/", False),
     ("get", "/api/rules/", False),
     ("get", "/api/rules/presets/", True),
     ("get", "/api/rules/default/", False),

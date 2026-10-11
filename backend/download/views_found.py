@@ -3,6 +3,7 @@
 from common.serializers import ErrorResponseSerializer
 from common.src.index_generic import Pagination
 from common.views_base import AdminOnly, ApiBaseView, not_built
+from download.models import DownloadRule
 from download.serializers_found import (
     AddResultSerializer,
     AddSerializer,
@@ -13,6 +14,7 @@ from download.serializers_found import (
     PreviewQuerySerializer,
     PreviewSerializer,
 )
+from download.src.add import add, preview
 from download.src.found import (
     NotBuiltYet,
     found_action,
@@ -21,6 +23,8 @@ from download.src.found import (
     tab_counts,
 )
 from drf_spectacular.utils import OpenApiResponse, extend_schema
+from jobs.models import PRIORITY_BY_NAME, CreatedBy
+from jobs.src.present import jobs_dicts
 from rest_framework.response import Response
 
 BAD_REQUEST = OpenApiResponse(
@@ -102,7 +106,15 @@ class AddPreviewView(ApiBaseView):
         preview links; reads YouTube (flat), so it can take a few seconds
         per channel; results are cached for 10 minutes per link
         """
-        return not_built("scoped scan and add")
+        serializer = PreviewQuerySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        rule = False
+        if "rule" in data:
+            rule = DownloadRule(**data["rule"]) if data["rule"] else None
+        return Response(
+            preview(data["urls"], rule=rule, newest_n=data.get("newest_n"))
+        )
 
 
 class AddView(ApiBaseView):
@@ -118,4 +130,21 @@ class AddView(ApiBaseView):
     )
     def post(self, request):
         """queue one high priority scan job per link"""
-        return not_built("scoped scan and add")
+        serializer = AddSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        jobs, errors = add(
+            data["urls"],
+            data["mode"],
+            newest_n=data.get("newest_n"),
+            rule=data.get("rule", False),
+            save_rule=data.get("save_rule"),
+            numbering=data.get("numbering"),
+            download_now=data["download_now"],
+            priority=PRIORITY_BY_NAME[data["priority"]],
+            created_by=CreatedBy.USER,
+        )
+        status = 201 if jobs else 400
+        return Response(
+            {"jobs": jobs_dicts(jobs), "errors": errors}, status=status
+        )

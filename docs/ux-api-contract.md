@@ -1,7 +1,8 @@
 # UX API contract (backend ↔ frontend)
 
 Status: **draft for agreement with the frontend session**, 2026-10-10.
-Built so far: section 1 (queue) and section 2 (found videos), see
+Built so far: section 1 (queue), section 2 (found videos) and section 3
+(add dialog), see
 [`fork/jobs-engine.md`](fork/jobs-engine.md).
 Spec: MattsTools `docs/architecture/tubearchivist-fork-ux-proposal.md`.
 
@@ -178,9 +179,12 @@ download_now (default true), priority (default high)}`:
   `save_rule` defaults false (the rule applies to this add only).
 - `mode=newest_n`: like `once`, limited to the `newest_n` newest videos.
 - `numbering` sets the channel's/playlist's scheme.
+- For playlists a rule is always one-off for now (stored playlist rules
+  arrive with the rules API step); stored channel and default rules don't
+  apply to playlist checks yet, as before.
 
-Response 201 `{jobs: Job[], errors[]}` — one high priority scan job per
-link (`check_channel`, `check_playlist` or `fetch_video`); follow them in
+Response 201 `{jobs: Job[], errors[]}` (400 with the same shape when no
+link could be read) — one high priority scan job per link (`check_channel`, `check_playlist` or `fetch_video`); follow them in
 the queue.
 
 ## 4. Rules — `/api/rules/`
