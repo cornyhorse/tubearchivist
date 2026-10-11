@@ -73,7 +73,8 @@ const NUMBERING_HELP: Record<EmbyNumberingType, string> = {
   date: 'Season is the upload year; episode comes from the upload date.',
   year_frozen: 'Season is the upload year; episodes are numbered in order and never renumbered.',
   absolute_frozen: 'One season; episodes are numbered in order and never renumbered.',
-  playlist_position: 'Episodes follow the playlist order.',
+  playlist_frozen: 'Episodes are numbered in playlist order when added and never renumbered.',
+  playlist_position: 'Episodes follow the playlist order and renumber when it changes.',
 };
 
 type NumberingBadgeProps = {

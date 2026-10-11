@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   addUrls,
+  AddRequest,
   AddResult,
   getRule,
   toRuleBody,
@@ -94,7 +95,7 @@ const AddDialog = ({ onClose, onAdded }: AddDialogProps) => {
         newest_n: mode === 'newest_n' ? newestN : undefined,
         rule: rule ?? undefined,
         save_rule: mode === 'subscribe' && rule !== null,
-        numbering: numbering || undefined,
+        numbering: (numbering || undefined) as AddRequest['numbering'],
         download_now: true,
         priority: 'high',
       });
@@ -287,7 +288,7 @@ const AddDialog = ({ onClose, onAdded }: AddDialogProps) => {
                   >
                     {(Object.keys(EMBY_NUMBERING_LABELS) as NumberingScheme[])
                       .filter(
-                        scheme => scheme !== 'playlist_position' || items[0]?.kind === 'playlist',
+                        scheme => !scheme.startsWith('playlist_') || items[0]?.kind === 'playlist',
                       )
                       .map(scheme => (
                         <option key={scheme} value={scheme}>

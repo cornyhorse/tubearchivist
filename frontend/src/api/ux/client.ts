@@ -35,7 +35,8 @@ export type RulePreset = Schemas['RulePreset'];
 export type RulePreview = Schemas['RulePreview'];
 export type EffectiveRule = Schemas['EffectiveRule'];
 export type VideoOverride = Schemas['VideoOverride'];
-export type NumberingScheme = Schemas['NumberingSchemeEnum'];
+/** playlist_frozen arrives with the Emby review fixes (cornyhorse/review-fixes-emby) */
+export type NumberingScheme = Schemas['NumberingSchemeEnum'] | 'playlist_frozen';
 export type Scheme = Schemas['Scheme'];
 export type SchemePreview = Schemas['SchemePreview'];
 export type VideoNumber = Schemas['VideoNumber'];
