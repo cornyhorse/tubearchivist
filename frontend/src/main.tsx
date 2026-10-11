@@ -16,9 +16,12 @@ import Search from './pages/Search';
 import SettingsDashboard from './pages/SettingsDashboard';
 import Video from './pages/Video';
 import Login from './pages/Login';
-import SettingsActions from './pages/SettingsActions';
-import SettingsApplication from './pages/SettingsApplication';
-import SettingsScheduling from './pages/SettingsScheduling';
+import SettingsMaintenance from './pages/SettingsMaintenance';
+import SettingsDownload from './pages/SettingsDownload';
+import SettingsWhen from './pages/SettingsWhen';
+import SettingsMediaServer from './pages/SettingsMediaServer';
+import SettingsYouTube from './pages/SettingsYouTube';
+import SettingsNotifications from './pages/SettingsNotifications';
 import SettingsUser from './pages/SettingsUser';
 import loadUserMeConfig from './api/loader/loadUserConfig';
 import loadAuth from './api/loader/loadAuth';
@@ -122,16 +125,40 @@ const router = createBrowserRouter(
           element: <SettingsDashboard />,
         },
         {
-          path: Routes.SettingsActions,
-          element: <SettingsActions />,
+          path: Routes.SettingsDownload,
+          element: <SettingsDownload />,
+        },
+        {
+          path: Routes.SettingsWhen,
+          element: <SettingsWhen />,
+        },
+        {
+          path: Routes.SettingsMediaServer,
+          element: <SettingsMediaServer />,
+        },
+        {
+          path: Routes.SettingsYouTube,
+          element: <SettingsYouTube />,
+        },
+        {
+          path: Routes.SettingsNotifications,
+          element: <SettingsNotifications />,
+        },
+        {
+          path: Routes.SettingsMaintenance,
+          element: <SettingsMaintenance />,
         },
         {
           path: Routes.SettingsApplication,
-          element: <SettingsApplication />,
+          loader: () => redirect(Routes.SettingsDownload),
         },
         {
           path: Routes.SettingsScheduling,
-          element: <SettingsScheduling />,
+          loader: () => redirect(Routes.SettingsWhen),
+        },
+        {
+          path: Routes.SettingsActions,
+          loader: () => redirect(Routes.SettingsMaintenance),
         },
         {
           path: Routes.SettingsUser,

@@ -10,8 +10,9 @@ import { ApiResponseType } from '../functions/APIClient';
 import ToggleConfig from '../components/ToggleConfig';
 import queueStartFilesystemRescan from '../api/actions/queueStartFilesystemRescan';
 import queueManualImport from '../api/actions/queueManualImport';
+import SnapshotSettings from '../components/settings/SnapshotSettings';
 
-const SettingsActions = () => {
+const SettingsMaintenance = () => {
   const [deleteIgnored, setDeleteIgnored] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [processingImports, setProcessingImports] = useState(false);
@@ -42,7 +43,7 @@ const SettingsActions = () => {
 
   return (
     <>
-      <title>TA | Actions</title>
+      <title>TA | Maintenance</title>
       <div className="boxed-content">
         <SettingsNavigation />
         <Notifications
@@ -68,10 +69,15 @@ const SettingsActions = () => {
         />
 
         <div className="title-bar">
-          <h1>Actions</h1>
+          <h1>Maintenance</h1>
+          <p className="ux-help">
+            Repairs and backups. Each one runs in the background; you can follow it in the
+            notifications above.
+          </p>
         </div>
+        <SnapshotSettings />
         <div className="settings-group">
-          <h2>Manual media files import.</h2>
+          <h2>Import video files</h2>
           <p>
             Add files to the <span className="settings-current">cache/import</span> folder. Make
             sure to follow the instructions in the{' '}
@@ -117,7 +123,7 @@ const SettingsActions = () => {
           </div>
         </div>
         <div className="settings-group">
-          <h2>Embed metadata into media file</h2>
+          <h2>Write metadata into video files</h2>
           <p>Embed metadata into media files as mp4 tags.</p>
           <div id="re-meta">
             {reSyncMeta && <p>Processing video metadata</p>}
@@ -133,7 +139,7 @@ const SettingsActions = () => {
           </div>
         </div>
         <div className="settings-group">
-          <h2>Sync Emby library</h2>
+          <h2>Rewrite the Emby library</h2>
           <p>
             Write the Emby library tree (episode NFOs, thumbnails and media links). Runs on its own
             after downloads and refreshes when TA_EMBY_ROOT is set; only changed files are written.
@@ -152,7 +158,7 @@ const SettingsActions = () => {
           </div>
         </div>
         <div className="settings-group">
-          <h2>ZIP file index backup</h2>
+          <h2>Back up to a zip file now</h2>
           <p>
             Export your database to a zip file stored at{' '}
             <span className="settings-current">cache/backup</span>.
@@ -218,7 +224,7 @@ const SettingsActions = () => {
           )}
         </div>
         <div className="settings-group">
-          <h2>Rescan filesystem</h2>
+          <h2>Match the archive to the files on disk</h2>
           <p>
             <span className="danger-zone">Danger Zone</span>: This will delete the metadata of
             deleted videos from the filesystem.
@@ -271,4 +277,4 @@ const SettingsActions = () => {
   );
 };
 
-export default SettingsActions;
+export default SettingsMaintenance;
