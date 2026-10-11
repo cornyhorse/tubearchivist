@@ -4769,6 +4769,8 @@ components:
           $ref: '#/components/schemas/TaskNotificationItem'
         emby_sync:
           $ref: '#/components/schemas/TaskNotificationItem'
+        emby_health:
+          $ref: '#/components/schemas/TaskNotificationItem'
     EffectiveRule:
       type: object
       description: the rule that applies to a target and where it comes from
@@ -7345,6 +7347,7 @@ components:
       - subscribe_to
       - version_check
       - emby_sync
+      - emby_health
       type: string
       description: |-
         * `update_subscribed` - update_subscribed
@@ -7361,6 +7364,7 @@ components:
         * `subscribe_to` - subscribe_to
         * `version_check` - version_check
         * `emby_sync` - emby_sync
+        * `emby_health` - emby_health
     TaskNotificationItem:
       type: object
       description: serialize single task notification

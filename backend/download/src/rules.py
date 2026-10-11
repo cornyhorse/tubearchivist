@@ -4,10 +4,17 @@ Functionality:
 - pure evaluation: a queue entry in, the reason it fails out
 """
 
-import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
+import regex
+from common.src.env_settings import EnvironmentSettings
 from download.models import DownloadRule, VideoOverride
+
+# a title regex gets this long to match before it counts as no match
+REGEX_TIMEOUT = 0.1
+MAX_PATTERN = 300
+MAX_TITLE = 1000
 
 OVERRIDE_REASONS = {"ignore": "always ignore, set by you"}
 OVERRIDE_SUMMARY = {"download": "Download anyway", "ignore": "Always ignore"}
@@ -126,7 +133,23 @@ def _published_date(entry: dict) -> date | None:
     published = entry.get("published")
     if published is None:
         return None
-    return datetime.fromtimestamp(int(published), tz=timezone.utc).date()
+    tz = ZoneInfo(EnvironmentSettings.TZ)
+    return datetime.fromtimestamp(int(published), tz=tz).date()
+
+
+def title_matches(pattern: str, title: str) -> bool:
+    """case insensitive search, bounded in pattern, title length and time"""
+    try:
+        return bool(
+            regex.search(
+                pattern[:MAX_PATTERN],
+                title[:MAX_TITLE],
+                regex.IGNORECASE,
+                timeout=REGEX_TIMEOUT,
+            )
+        )
+    except (TimeoutError, regex.error):
+        return False
 
 
 def failed_reason(rule: DownloadRule, entry: dict) -> str | None:
@@ -155,9 +178,9 @@ def failed_check(rule: DownloadRule, entry: dict) -> tuple[str, str] | None:
         )
 
     title = entry.get("title") or ""
-    if rule.title_include and not re.search(rule.title_include, title, re.I):
+    if rule.title_include and not title_matches(rule.title_include, title):
         return "title_include", f"title doesn't match /{rule.title_include}/"
-    if rule.title_exclude and re.search(rule.title_exclude, title, re.I):
+    if rule.title_exclude and title_matches(rule.title_exclude, title):
         return (
             "title_exclude",
             f"title matches excluded /{rule.title_exclude}/",

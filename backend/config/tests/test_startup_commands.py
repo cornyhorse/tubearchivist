@@ -558,3 +558,14 @@ def test_import_sqlite(tmp_path):
 def test_import_sqlite_missing(tmp_path):
     with pytest.raises(CommandError, match="no such file"):
         run("ta_import_sqlite", str(tmp_path / "nope.sqlite3"))
+
+
+@pytest.mark.django_db
+def test_startup_schedules_emby_health(startup, monkeypatch):
+    # pylint: disable=unused-argument
+    monkeypatch.setattr(ta_startup, "paths_from_env", lambda: "paths")
+    output = run("ta_startup")
+    assert "scheduled the hourly Emby check" in output
+    task = CustomPeriodicTask.objects.get(name="emby_health")
+    assert task.schedule_parsed == "30 * *"
+    assert "hourly Emby check" not in run("ta_startup")

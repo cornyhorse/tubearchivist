@@ -391,7 +391,7 @@ def test_scheduled_lists_off_tasks(admin_client, schedules):
     # pylint: disable=unused-argument
     data = admin_client.get("/api/queue/scheduled/").json()
     names = [i["name"] for i in data]
-    assert len(names) == 10
+    assert len(names) == 11
     off = next(i for i in data if i["name"] == "manual_import")
     assert (off["schedule"], off["enabled"], off["next_run"]) == (
         None,

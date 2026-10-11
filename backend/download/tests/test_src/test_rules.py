@@ -16,6 +16,7 @@ from download.src.rules import (
     rule_ref,
     rule_summary,
     set_rule,
+    title_matches,
 )
 
 pytestmark = pytest.mark.django_db
@@ -210,4 +211,37 @@ def test_check_rule_disabled_draft():
     assert (
         check_rule(DownloadRule(enabled=False, min_duration=10), entry())
         is None
+    )
+
+
+@pytest.mark.parametrize(
+    "pattern, title, expected",
+    [
+        ("train", "Steam TRAINS", True),
+        ("train", "coaster", False),
+        ("(a+)+$", "a" * 40 + "!", False),
+        ("[unclosed", "anything", False),
+    ],
+)
+def test_title_matches_is_bounded(pattern, title, expected):
+    """review S1: catastrophic or broken patterns give up as no match"""
+    assert title_matches(pattern, title) is expected
+
+
+def test_long_pattern_rejected():
+    serializer = DownloadRuleSerializer(data={"title_include": "a" * 301})
+    assert not serializer.is_valid()
+    assert "longer than 300" in str(serializer.errors)
+
+
+def test_published_after_uses_local_date(monkeypatch):
+    """review S2: 2025-01-01 03:00 UTC is still 2024-12-31 in New York"""
+    # pylint: disable=import-outside-toplevel
+    from common.src.env_settings import EnvironmentSettings
+
+    monkeypatch.setattr(EnvironmentSettings, "TZ", "America/New_York")
+    rule = DownloadRule(published_after=date(2025, 1, 1))
+    late_new_year = 1735700400  # 2025-01-01T03:00:00Z
+    assert failed_reason(rule, entry(published=late_new_year)) == (
+        "published 2024-12-31 before 2025-01-01"
     )

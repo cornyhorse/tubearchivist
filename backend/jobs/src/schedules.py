@@ -30,6 +30,7 @@ SCHEDULED = {
     "resync_metadata": ("resync_metadata", "Write metadata into media files"),
     "manual_import": ("manual_import", "Import videos from the import folder"),
     "emby_sync": ("emby_write", "Write the Emby library"),
+    "emby_health": ("emby_health", "Check the Emby library sync"),
 }
 
 
