@@ -30,6 +30,26 @@ def test_admin_only(user_client):
     assert user_client.get("/api/task/schedule/").status_code == 403
 
 
+def test_notifications_admin_only(user_client, monkeypatch):
+    def fake_test(self, url):
+        raise AssertionError(f"non-admin reached apprise with {url}")
+
+    monkeypatch.setattr(Notifications, "test", fake_test)
+    Notifications("run_backup").add_url("json://secret")
+    url = "/api/task/notification/"
+    body = {"task_name": "run_backup", "url": "json://x"}
+
+    assert user_client.get(url).status_code == 403
+    assert user_client.post(url, body, format="json").status_code == 403
+    assert user_client.delete(url, body, format="json").status_code == 403
+    test_url = "/api/task/notification/test/"
+    test_body = {"url": "json://169.254.169.254"}
+    assert (
+        user_client.post(test_url, test_body, format="json").status_code == 403
+    )
+    assert Notifications("run_backup").get_urls() == ["json://secret"]
+
+
 def test_task_list(admin_client, redis_ns):
     # pylint: disable=unused-argument
     assert admin_client.get("/api/task/by-name/").json() == []
@@ -153,17 +173,19 @@ def test_schedule_delete(admin_client):
     assert not CustomPeriodicTask.objects.exists()
 
 
-def test_notifications(user_client):
+def test_notifications(admin_client):
     url = "/api/task/notification/"
 
-    missing = user_client.post(url, {"task_name": "run_backup"}, format="json")
-    added = user_client.post(
+    missing = admin_client.post(
+        url, {"task_name": "run_backup"}, format="json"
+    )
+    added = admin_client.post(
         url, {"task_name": "run_backup", "url": "json://a"}, format="json"
     )
-    user_client.post(
+    admin_client.post(
         url, {"task_name": "run_backup", "url": "json://b"}, format="json"
     )
-    user_client.post(
+    admin_client.post(
         url, {"task_name": "thumbnail_check", "url": "json://c"}, format="json"
     )
 
@@ -173,21 +195,21 @@ def test_notifications(user_client):
         "run_backup": {"urls": ["json://a"], "title": "Index Backup"}
     }
 
-    removed_url = user_client.delete(
+    removed_url = admin_client.delete(
         url, {"task_name": "run_backup", "url": "json://a"}, format="json"
     )
-    removed_task = user_client.delete(
+    removed_task = admin_client.delete(
         url, {"task_name": "thumbnail_check"}, format="json"
     )
 
     assert removed_url.status_code == 204
     assert removed_task.status_code == 204
-    assert user_client.get(url).json() == {
+    assert admin_client.get(url).json() == {
         "run_backup": {"urls": ["json://b"], "title": "Index Backup"}
     }
 
 
-def test_notification_test(user_client, monkeypatch):
+def test_notification_test(admin_client, monkeypatch):
     calls = []
 
     def fake_test(self, url):
@@ -197,8 +219,8 @@ def test_notification_test(user_client, monkeypatch):
     monkeypatch.setattr(Notifications, "test", fake_test)
     url = "/api/task/notification/test/"
 
-    good = user_client.post(url, {"url": "json://ok"}, format="json")
-    bad = user_client.post(
+    good = admin_client.post(url, {"url": "json://ok"}, format="json")
+    bad = admin_client.post(
         url, {"url": "json://bad", "task_name": "run_backup"}, format="json"
     )
 
