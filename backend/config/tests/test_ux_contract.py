@@ -44,12 +44,6 @@ NOT_BUILT = [
     ("get", "/api/numbering/video/vid00000001/", False),
     ("put", "/api/numbering/video/vid00000001/", False),
     ("delete", "/api/numbering/video/vid00000001/", False),
-    ("get", "/api/mediaserver/", False),
-    ("put", "/api/mediaserver/", False),
-    ("post", "/api/mediaserver/test/", False),
-    ("get", "/api/mediaserver/libraries/", False),
-    ("post", "/api/mediaserver/notify/", False),
-    ("post", "/api/mediaserver/refresh/", False),
 ]
 
 

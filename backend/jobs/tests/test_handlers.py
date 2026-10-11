@@ -370,10 +370,10 @@ def test_emby_write(monkeypatch, capsys):
     assert handlers.emby_write(ctx) == {"skipped": "TA_EMBY_ROOT is not set"}
 
     report = SimpleNamespace(
-        created=[1, 2],
-        updated=[1],
+        created=["c/A/1.nfo", "c/A/2.nfo"],
+        updated=["c/A/tvshow.nfo"],
         renamed=[],
-        deleted=[1],
+        deleted=["c/B/"],
         warnings=["w1"],
     )
     monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
