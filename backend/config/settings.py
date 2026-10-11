@@ -168,6 +168,16 @@ elif _login_auth_mode == "ldap_local":
         "django.contrib.auth.backends.ModelBackend",
     )
     from .ldap_settings import *  # noqa: F403 F401
+elif _login_auth_mode == "forwardauth_local":
+    # fork: the proxy's user header from trusted proxies only, and the
+    # username/password login keeps working beside it
+    from .fwd_auth_settings import *  # noqa: F403 F401
+
+    AUTHENTICATION_BACKENDS = (
+        "user.src.remote_user_auth.TrustedRemoteUserBackend",
+        "django.contrib.auth.backends.ModelBackend",
+    )
+    MIDDLEWARE.append("user.src.remote_user_auth.TrustedRemoteUserMiddleware")
 else:
     # If none of these cases match, AUTHENTICATION_BACKENDS is unset, which
     # means the ModelBackend should be used by default

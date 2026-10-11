@@ -21,6 +21,8 @@ AUTH_ENV = [
     "TA_ENABLE_AUTH_PROXY",
     "DISABLE_CORS",
     "TA_AUTH_PROXY_USERNAME_HEADER",
+    "TA_AUTH_PROXY_TRUSTED_IPS",
+    "TA_AUTH_PROXY_CREATE_USERS",
     "TA_LDAP_DISABLE_CERT_CHECK",
     "TA_LDAP_PROMOTE_USERNAMES_TO_SUPERUSER",
     "TA_LDAP_PROMOTE_USERNAMES_TO_STAFF",
@@ -37,6 +39,8 @@ MODEL = "django.contrib.auth.backends.ModelBackend"
 LDAP = "django_auth_ldap.backend.LDAPBackend"
 REMOTE = "django.contrib.auth.backends.RemoteUserBackend"
 REMOTE_MIDDLEWARE = "user.src.remote_user_auth.HttpRemoteUserMiddleware"
+TRUSTED = "user.src.remote_user_auth.TrustedRemoteUserBackend"
+TRUSTED_MIDDLEWARE = "user.src.remote_user_auth.TrustedRemoteUserMiddleware"
 
 
 SETTINGS_MODULES = ["settings", "ldap_settings", "fwd_auth_settings"]
@@ -93,6 +97,28 @@ def test_auth_modes(env, variables, backends, remote):
 
     assert module.AUTHENTICATION_BACKENDS == backends
     assert (REMOTE_MIDDLEWARE in module.MIDDLEWARE) is remote
+
+
+def test_forward_auth_local_mode(env):
+    module = reload_settings(env, TA_LOGIN_AUTH_MODE="forwardauth_local")
+
+    assert module.AUTHENTICATION_BACKENDS == (TRUSTED, MODEL)
+    assert TRUSTED_MIDDLEWARE in module.MIDDLEWARE
+    assert REMOTE_MIDDLEWARE not in module.MIDDLEWARE
+    assert module.TA_AUTH_PROXY_TRUSTED_IPS == ""
+    assert module.TA_AUTH_PROXY_CREATE_USERS is False
+
+
+def test_forward_auth_local_options(env):
+    module = reload_settings(
+        env,
+        TA_LOGIN_AUTH_MODE="forwardauth_local",
+        TA_AUTH_PROXY_TRUSTED_IPS="192.168.17.16/32",
+        TA_AUTH_PROXY_CREATE_USERS="1",
+    )
+
+    assert module.TA_AUTH_PROXY_TRUSTED_IPS == "192.168.17.16/32"
+    assert module.TA_AUTH_PROXY_CREATE_USERS is True
 
 
 def test_single_mode_defaults(env):

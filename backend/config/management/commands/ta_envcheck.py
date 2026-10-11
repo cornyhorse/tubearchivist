@@ -136,6 +136,14 @@ class Command(BaseCommand):
             UNEXPECTED_ENV_VARS["TA_ENABLE_AUTH_PROXY"] = (
                 "TA_ENABLE_AUTH_PROXY is not valid with current auth mode"
             )
+        elif _login_auth_mode == "forwardauth_local":
+            EXPECTED_ENV_VARS.append("TA_AUTH_PROXY_TRUSTED_IPS")
+            UNEXPECTED_ENV_VARS["TA_LDAP"] = (
+                "TA_LDAP is not valid with current auth mode"
+            )
+            UNEXPECTED_ENV_VARS["TA_ENABLE_AUTH_PROXY"] = (
+                "TA_ENABLE_AUTH_PROXY is not valid with current auth mode"
+            )
         else:
             if bool(os.environ.get("TA_LDAP")):
                 EXPECTED_ENV_VARS.extend(ldap_required_env)
