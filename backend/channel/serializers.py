@@ -61,10 +61,32 @@ class ChannelSerializer(serializers.Serializer):
     _score = serializers.IntegerField(required=False)
 
 
+class ChannelCountsSerializer(serializers.Serializer):
+    """videos of a channel by state"""
+
+    downloaded = serializers.IntegerField()
+    queued = serializers.IntegerField(help_text="found, waiting to download")
+    ignored = serializers.IntegerField()
+    errors = serializers.IntegerField(help_text="found, download failed")
+
+
+class ChannelListItemSerializer(ChannelSerializer):
+    """a channel table row"""
+
+    counts = ChannelCountsSerializer()
+    rule_summary = serializers.CharField(
+        allow_null=True,
+        help_text="badge text of the channel's own rule; null: the default",
+    )
+    latest_upload = serializers.DateTimeField(
+        allow_null=True, help_text="newest published of its videos"
+    )
+
+
 class ChannelListSerializer(serializers.Serializer):
     """serialize channel list"""
 
-    data = ChannelSerializer(many=True)
+    data = ChannelListItemSerializer(many=True)
     paginate = PaginationSerializer()
 
 
@@ -74,7 +96,32 @@ class ChannelListQuerySerializer(serializers.Serializer):
     filter = serializers.ChoiceField(
         choices=["subscribed", "unsubscribed"], required=False
     )
+    q = serializers.CharField(
+        required=False, help_text="search name, @handle or channel id"
+    )
+    has_queued = serializers.BooleanField(required=False, allow_null=True)
+    has_rule = serializers.BooleanField(required=False, allow_null=True)
+    has_errors = serializers.BooleanField(required=False, allow_null=True)
+    sort = serializers.ChoiceField(
+        choices=[
+            "name",
+            "subscribed",
+            "downloaded",
+            "queued",
+            "ignored",
+            "latest_upload",
+            "last_checked",
+        ],
+        required=False,
+        default="name",
+    )
+    order = serializers.ChoiceField(
+        choices=["asc", "desc"], required=False, default="asc"
+    )
     page = serializers.IntegerField(required=False)
+    page_size = serializers.IntegerField(
+        required=False, min_value=1, max_value=100
+    )
 
 
 class ChannelUpdateSerializer(serializers.Serializer):

@@ -75,6 +75,18 @@ class TestList:
         assert data["data"][0]["player"]["progress"] == 50
         assert data["paginate"]["total_hits"] == 2
 
+    def test_list_search_and_page_size(self, client, videos):
+        """q on title and channel name, page_size overrides the user's"""
+        del videos
+        Video.objects.filter(pk=OTHER_ID).update(title="Steam trains")
+        found = client.get("/api/video/", {"q": "steam"}).json()
+        assert [i["youtube_id"] for i in found["data"]] == [OTHER_ID]
+        by_channel = client.get("/api/video/", {"q": "test chan"}).json()
+        assert len(by_channel["data"]) == 2
+        paged = client.get("/api/video/", {"page_size": 1}).json()
+        assert len(paged["data"]) == 1
+        assert paged["paginate"]["page_size"] == 1
+
     def test_list_loads_playlists_once(self, client, videos):
         """no PlaylistEntry query per video on a page"""
         del videos

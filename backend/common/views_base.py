@@ -72,13 +72,15 @@ class ApiBaseView(APIView):
         pagination: bool = True,
         progress_match=None,
         to_docs: Callable[[list], list[dict]] | None = None,
+        page_size: int | None = None,
     ) -> None:
         """
         format a page of queryset, or all of it without pagination
         to_docs: builds the documents of a whole page at once, over to_doc
+        page_size: overrides the user's page size
         """
         if pagination:
-            self.pagination_handler = Pagination(request)
+            self.pagination_handler = Pagination(request, page_size)
             page = self.pagination_handler.pagination
             start = page["page_from"]
             total = queryset.count()

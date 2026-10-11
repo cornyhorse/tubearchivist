@@ -58,6 +58,12 @@ class QueryBuilder:
         if height:
             queryset = queryset.filter(height=int(height))
 
+        query = self.request_params.get("q")
+        if query:
+            queryset = queryset.filter(
+                Q(title__icontains=query) | Q(channel__name__icontains=query)
+            )
+
         return queryset.order_by(*self.parse_sort(), "youtube_id")
 
     def parse_watch(self, watch: str) -> Q | None:
