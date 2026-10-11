@@ -11,11 +11,15 @@ class FakeTask:
         self.stop_after = stop_after
         self.stop_checks = 0
 
-    def send_progress(self, message_lines, progress=False, level="info"):
+    def send_progress(
+        self, message_lines, progress=False, level="info", **detail
+    ):
         """record a progress message"""
-        self.messages.append(
-            {"lines": message_lines, "progress": progress, "level": level}
-        )
+        message = {"lines": message_lines, "progress": progress}
+        message["level"] = level
+        if detail:
+            message["detail"] = detail
+        self.messages.append(message)
 
     def is_stopped(self) -> bool:
         """stopped once is_stopped was called stop_after times"""

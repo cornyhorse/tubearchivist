@@ -12,6 +12,8 @@ from django_celery_beat.models import CrontabSchedule
 from task.models import CustomPeriodicTask
 from task.src.task_config import TASK_CONFIG
 
+SCHEDULE_KWARGS = '{"created_by": "schedule"}'
+
 
 class ScheduleBuilder:
     """build schedule dicts for beat"""
@@ -53,6 +55,8 @@ class ScheduleBuilder:
                 description=description,
             )
 
+        # tells the task the run came from the scheduler, see task.tasks
+        task.kwargs = SCHEDULE_KWARGS
         if schedule:
             task_crontab = self.get_set_cron_tab(schedule)
             task.crontab = task_crontab

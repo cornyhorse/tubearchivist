@@ -89,51 +89,32 @@ def fixture_downloader(
     return post_processed
 
 
-def test_run_queue(downloader, dirs):
-    """downloads, moves to archive, records failures"""
+def test_download_one(downloader, dirs):
+    """downloads, indexes, moves to archive, leaves post processing"""
     _, media = dirs
-    Download.upsert_doc(download_doc(youtube_id="ok", timestamp=1))
-    Download.upsert_doc(
-        download_doc(youtube_id="bad", timestamp=2, auto_start=True)
-    )
-    Download.upsert_doc(download_doc(youtube_id="later", timestamp=3))
-    FakeYtWrap.failures = {"bad": "Video unavailable"}
+    item = Download.upsert_doc(download_doc(youtube_id="ok"))
     task = FakeTask()
 
-    downloaded, failed = VideoDownloader(task=task).run_queue()
+    assert VideoDownloader(task=task).download_one(item.to_doc())
 
-    assert (downloaded, failed) == (2, 1)
-    assert [i[0] for i in FakeYtWrap.calls] == ["bad", "ok", "later"]
     assert (media / CHANNEL_ID / "ok.mp4").read_bytes() == b"media"
-    bad = Download.objects.get()
-    assert (bad.youtube_id, bad.message) == ("bad", "Video unavailable")
-    assert not bad.auto_start
-    assert RedisQueue(DownloaderBase.VIDEO_QUEUE).get_all() == [
-        "ok",
-        "later",
-    ]
+    assert not Download.objects.exists()
+    assert RedisQueue(DownloaderBase.VIDEO_QUEUE).get_all() == ["ok"]
     assert RedisQueue(DownloaderBase.CHANNEL_QUEUE).get_all() == [CHANNEL_ID]
-    assert downloader == [1]
+    assert downloader == []
     assert "Processing Video: Queued video" in task.lines
 
 
-def test_run_queue_stopped(downloader):
-    """stopped task downloads nothing, resets auto start"""
-    Download.upsert_doc(download_doc(youtube_id="a", auto_start=True))
+def test_download_one_failed(downloader):
+    """the error is stored on the item, which stays queued"""
+    item = Download.upsert_doc(download_doc(youtube_id="bad"))
+    FakeYtWrap.failures = {"bad": "Video unavailable"}
 
-    result = VideoDownloader(task=FakeTask(stop_after=0)).run_queue(
-        auto_only=True
-    )
+    assert not VideoDownloader(task=FakeTask()).download_one(item.to_doc())
 
-    assert result == (0, 0)
-    assert not Download.objects.get().auto_start
-    assert not FakeYtWrap.calls
-
-
-def test_run_queue_empty(downloader):
-    """nothing queued, nothing to reset"""
-    assert VideoDownloader(task=FakeTask()).run_queue() == (0, 0)
-    assert downloader == [1]
+    bad = Download.objects.get()
+    assert (bad.youtube_id, bad.message) == ("bad", "Video unavailable")
+    assert RedisQueue(DownloaderBase.VIDEO_QUEUE).get_all() == []
 
 
 def test_notify_without_task(app_config):
@@ -150,8 +131,13 @@ def test_notify_without_task(app_config):
                 "_percent_str": " 50.0%",
                 "_speed_str": "1MiB/s",
                 "_eta_str": "00:05",
+                "eta": 5,
             },
-            (" 50.0% of 10MiB at 1MiB/s - time left: 00:05", 0.5),
+            (
+                " 50.0% of 10MiB at 1MiB/s - time left: 00:05",
+                0.5,
+                {"speed": "1MiB/s", "eta_seconds": 5},
+            ),
         ),
         (
             {
@@ -161,9 +147,13 @@ def test_notify_without_task(app_config):
                 "_speed_str": "1MiB/s",
                 "_eta_str": "00:09",
             },
-            ("25% of ~12MiB at 1MiB/s - time left: 00:09", 0.25),
+            (
+                "25% of ~12MiB at 1MiB/s - time left: 00:09",
+                0.25,
+                {"speed": "1MiB/s", "eta_seconds": None},
+            ),
         ),
-        ({"_total_bytes_str": "10MiB"}, ("processing", False)),
+        ({"_total_bytes_str": "10MiB"}, ("processing", False, None)),
     ],
 )
 def test_progress_hook(app_config, response, expected):
@@ -173,13 +163,14 @@ def test_progress_hook(app_config, response, expected):
     VideoDownloader(task=task)._progress_hook(response)
     VideoDownloader()._progress_hook(response)
 
-    assert task.messages == [
-        {
-            "lines": ["A video", expected[0]],
-            "progress": expected[1],
-            "level": "info",
-        }
-    ]
+    message = {
+        "lines": ["A video", expected[0]],
+        "progress": expected[1],
+        "level": "info",
+    }
+    if expected[2]:
+        message["detail"] = expected[2]
+    assert task.messages == [message]
 
 
 def test_build_obs_user_config(app_config, dirs):

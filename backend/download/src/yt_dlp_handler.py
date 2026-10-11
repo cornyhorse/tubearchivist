@@ -21,7 +21,6 @@ from common.src.helper import (
 )
 from common.src.ta_redis import RedisQueue
 from common.src.urlparser import ParsedURLType
-from django.db import transaction
 from download.models import Download
 from download.src.queue import PendingList
 from download.src.yt_dlp_base import YtWrap
@@ -58,44 +57,30 @@ class VideoDownloader(DownloaderBase):
         self.obs = False
         self._build_obs()
 
-    def run_queue(self, auto_only=False) -> tuple[int, int]:
-        """setup download queue in redis loop until no more items"""
-        downloaded = 0
-        failed = 0
-        while True:
-            video_data = self._get_next(auto_only)
-            if self.task.is_stopped() or not video_data:
-                self._reset_auto()
-                break
+    def download_one(self, video_data: dict) -> bool:
+        """
+        download, index and archive one queued video; post processing runs
+        separately for everything downloaded since it last ran
+        False if the download failed, the error is stored on the item
+        """
+        youtube_id = video_data["youtube_id"]
+        channel_id = video_data["channel_id"]
+        print(f"{youtube_id}: Downloading video")
+        self._notify(video_data, "Validate download format")
 
-            if downloaded > 0:
-                rand_sleep(self.config)
+        if not self._dl_single_vid(youtube_id, channel_id):
+            return False
 
-            youtube_id = video_data["youtube_id"]
-            channel_id = video_data["channel_id"]
-            print(f"{youtube_id}: Downloading video")
-            self._notify(video_data, "Validate download format")
+        self._notify(video_data, "Add video metadata to index", progress=1)
+        video_type = VideoTypeEnum(video_data["vid_type"])
+        vid_dict = index_new_video(youtube_id, video_type=video_type)
+        RedisQueue(self.CHANNEL_QUEUE).add(channel_id)
+        RedisQueue(self.VIDEO_QUEUE).add(youtube_id)
 
-            success = self._dl_single_vid(youtube_id, channel_id)
-            if not success:
-                failed += 1
-                continue
-
-            self._notify(video_data, "Add video metadata to index", progress=1)
-            video_type = VideoTypeEnum(video_data["vid_type"])
-            vid_dict = index_new_video(youtube_id, video_type=video_type)
-            RedisQueue(self.CHANNEL_QUEUE).add(channel_id)
-            RedisQueue(self.VIDEO_QUEUE).add(youtube_id)
-
-            self._notify(video_data, "Move downloaded file to archive")
-            self.move_to_archive(vid_dict)
-            self._delete_from_pending(youtube_id)
-            downloaded += 1
-
-        # post processing
-        DownloadPostProcess(self.task).run()
-
-        return downloaded, failed
+        self._notify(video_data, "Move downloaded file to archive")
+        self.move_to_archive(vid_dict)
+        self._delete_from_pending(youtube_id)
+        return True
 
     def _notify(self, video_data, message, progress=False):
         """send progress notification to task"""
@@ -107,15 +92,6 @@ class VideoDownloader(DownloaderBase):
         self.task.send_progress(
             [f"Processing {typ}: {title}", message], progress=progress
         )
-
-    @staticmethod
-    def _get_next(auto_only) -> dict | bool:
-        """next item in queue as document, False if empty"""
-        with transaction.atomic():
-            item = Download.objects.next_pending(auto_only=auto_only)
-            if not item:
-                return False
-            return item.to_doc()
 
     def _progress_hook(self, response):
         """process the progress_hooks from yt_dlp"""
@@ -130,12 +106,19 @@ class VideoDownloader(DownloaderBase):
             speed = response["_speed_str"]
             eta = response["_eta_str"]
             message = f"{percent} of {size} at {speed} - time left: {eta}"
+            detail = {
+                "speed": speed.strip(),
+                "eta_seconds": response.get("eta"),
+            }
         except KeyError:
             message = "processing"
+            detail = {}
 
         if self.task:
             title = response["info_dict"]["title"]
-            self.task.send_progress([title, message], progress=progress)
+            self.task.send_progress(
+                [title, message], progress=progress, **detail
+            )
 
     def _build_obs(self):
         """collection to build all obs passed to yt-dlp"""
@@ -244,13 +227,6 @@ class VideoDownloader(DownloaderBase):
     def _delete_from_pending(youtube_id):
         """delete downloaded video from the queue if its there"""
         Download.objects.filter(youtube_id=youtube_id).delete()
-
-    @staticmethod
-    def _reset_auto():
-        """reset autostart to defaults after queue stop"""
-        updated = Download.objects.reset_auto_start()
-        if updated:
-            print(f"[download] reset auto start on {updated} videos.")
 
 
 class DownloadPostProcess(DownloaderBase):

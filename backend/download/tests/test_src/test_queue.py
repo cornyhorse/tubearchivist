@@ -590,3 +590,73 @@ def test_notify_fail_without_ids(app_config):
     task = FakeTask()
     PendingList([], task=task)._notify_fail("boom")
     assert task.lines == ["Adding extracted videos failed.", "Error: boom"]
+
+
+def test_streams_each_video_with_found_by(yt):
+    """with on_added, each video is stored and reported as it is found"""
+    Channel.save_doc(channel_doc())
+    DownloadRule.objects.create(channel_id=CHANNEL_ID, max_duration=100)
+    yt.channel_videos = [
+        flat_entry("vid1"),
+        flat_entry("long", duration=600),
+        flat_entry("vid2"),
+    ]
+    reported = []
+
+    def on_added(items):
+        stored = list(Download.objects.values_list("youtube_id", flat=True))
+        reported.append(([i["youtube_id"] for i in items], sorted(stored)))
+
+    added = PendingList(
+        [channel_url()],
+        flat=True,
+        on_added=on_added,
+        found_by={"found_by_kind": "channel_check", "found_by_job": 7},
+    ).parse_url_list()
+
+    assert added == 3
+    # stored one at a time, before the next video is looked at
+    assert reported == [
+        (["vid1"], ["vid1"]),
+        (["long"], ["long", "vid1"]),
+        (["vid2"], ["long", "vid1", "vid2"]),
+    ]
+    long = queued("long")
+    assert (long.status, long.ignore_reason_key) == ("ignore", "too_long")
+    assert (long.found_by_kind, long.found_by_job) == ("channel_check", 7)
+
+
+@pytest.mark.parametrize(
+    "rule, expected",
+    [
+        (None, "pending"),
+        (DownloadRule(min_duration=1000), "ignore"),
+        (DownloadRule(min_duration=1000, enabled=False), "pending"),
+    ],
+)
+def test_rule_override(yt, rule, expected):
+    """a one-off rule replaces the stored ones, None means no rule"""
+    DownloadRule.objects.create(channel=None, max_duration=1)
+    yt.channel_videos = [flat_entry("vid1", duration=600)]
+
+    PendingList([channel_url()], flat=True, rule=rule).parse_url_list()
+
+    assert queued("vid1").status == expected
+
+
+def test_playlist_streams(yt):
+    """playlist videos stream too"""
+    FakePlaylist.youtube_meta = {
+        "channel": "Test Channel",
+        "channel_id": CHANNEL_ID,
+        "entries": [flat_entry("p1"), flat_entry("p2")],
+    }
+    reported = []
+
+    PendingList(
+        [playlist_url()],
+        flat=True,
+        on_added=lambda items: reported.append(len(items)),
+    ).parse_url_list()
+
+    assert reported == [1, 1]

@@ -1,7 +1,6 @@
 """notification urls stored in the database, sent through apprise"""
 
 import pytest
-from common.src.ta_redis import TaskRedis
 from task.src import notify
 from task.src.notify import Notifications, get_all_notifications
 
@@ -73,22 +72,18 @@ def test_no_urls_stored():
     assert Notifications("download_pending").get_urls() == []
 
 
-def test_send(apprise, redis_ns):
-    # pylint: disable=unused-argument
+def test_notify(apprise):
     handler = Notifications("download_pending")
-    TaskRedis().set_key("t1", {"status": "SUCCESS", "result": "done"})
-    TaskRedis().set_key("t2", {"status": "SUCCESS", "result": None})
-
-    handler.send("t1", "Downloading")
+    handler.notify("[TA] Downloading ended: done", "3 videos")
     assert not apprise.sent
 
     handler.add_url("json://one")
-    handler.send("t2", "Downloading")
+    handler.notify("[TA] Downloading ended: done", None)
     assert not apprise.sent
 
-    handler.send("t1", "Downloading")
+    handler.notify("[TA] Downloading ended: done", "3 videos")
     assert apprise.sent == [
-        (["json://one"], "[TA] Downloading process ended with SUCCESS", "done")
+        (["json://one"], "[TA] Downloading ended: done", "3 videos")
     ]
 
 

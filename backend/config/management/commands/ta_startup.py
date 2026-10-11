@@ -16,8 +16,9 @@ from common.src.ta_redis import RedisArchivist
 from django.core.management.base import BaseCommand
 from django.utils import dateformat
 from django_celery_beat.models import CrontabSchedule, PeriodicTasks
+from jobs.src.engine import recover_after_restart
 from task.models import CustomPeriodicTask
-from task.src.config_schedule import ScheduleBuilder
+from task.src.config_schedule import SCHEDULE_KWARGS, ScheduleBuilder
 from task.src.task_manager import TaskManager
 from task.tasks import version_check
 
@@ -99,6 +100,12 @@ class Command(BaseCommand):
         """clear tasks and messages"""
         self.stdout.write("[3] clear task leftovers")
         TaskManager().fail_pending()
+        requeued = recover_after_restart()
+        if requeued:
+            self.stdout.write(
+                self.style.SUCCESS(f"    ✓ requeued {requeued} jobs")
+            )
+        CustomPeriodicTask.objects.update(kwargs=SCHEDULE_KWARGS)
         redis_con = RedisArchivist()
         to_delete = redis_con.list_keys("message:")
         if to_delete:
