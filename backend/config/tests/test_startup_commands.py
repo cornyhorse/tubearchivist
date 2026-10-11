@@ -362,6 +362,11 @@ def test_envcheck_unexpected_var(envcheck):
             True,
             {"TA_ENABLE_AUTH_PROXY"},
         ),
+        (
+            {"TA_LOGIN_AUTH_MODE": "forwardauth_local"},
+            False,
+            {"TA_LDAP", "TA_ENABLE_AUTH_PROXY"},
+        ),
         ({"TA_LDAP": "1"}, True, {"TA_ENABLE_AUTH_PROXY"}),
         ({"TA_ENABLE_AUTH_PROXY": "1"}, False, {"TA_LDAP"}),
     ],
@@ -375,6 +380,9 @@ def test_envcheck_auth_modes(envcheck, variables, ldap_expected, unexpected):
 
     expected = ta_envcheck.EXPECTED_ENV_VARS
     assert ("TA_LDAP_SERVER_URI" in expected) is ldap_expected
+    assert ("TA_AUTH_PROXY_TRUSTED_IPS" in expected) is (
+        variables.get("TA_LOGIN_AUTH_MODE") == "forwardauth_local"
+    )
     assert set(ta_envcheck.UNEXPECTED_ENV_VARS) - before == unexpected
 
 
