@@ -55,3 +55,14 @@ def test_episode_without_date_or_runtime():
 
     assert root.find("aired") is None
     assert root.find("runtime") is None
+
+
+def test_strips_every_character_xml_disallows():
+    """E11: U+FFFE/U+FFFF and lone surrogates broke the XML, not just C0"""
+    bad = "a\x00b\x1fc\ud800d\udfffe￾f￿g"
+    keep = "tab\there é \U0001f3a2 �"
+    info = EpisodeInfo("abc", bad + keep, "show", 1, 1, aired=None)
+
+    root = ET.fromstring(render_episode(info))
+
+    assert root.findtext("title") == "abcdefg" + keep

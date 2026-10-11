@@ -4,13 +4,15 @@ Functionality:
 - deterministic: same input, same bytes (fixed element order, no timestamps)
 """
 
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import date
 
-# XML 1.0 can't carry most control characters; YouTube descriptions can
-_INVALID_XML = dict.fromkeys(
-    c for c in range(0x20) if c not in (0x09, 0x0A, 0x0D)
+# everything outside the XML 1.0 Char production: most C0 controls, lone
+# surrogates and U+FFFE/U+FFFF; YouTube descriptions can carry any of them
+_INVALID_XML = re.compile(
+    "[^\u0009\u000a\u000d\u0020-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]"
 )
 
 
@@ -41,7 +43,7 @@ class EpisodeInfo:
 
 
 def _clean(text: str | None) -> str:
-    return (text or "").translate(_INVALID_XML).strip()
+    return _INVALID_XML.sub("", text or "").strip()
 
 
 def _add(parent: ET.Element, tag: str, text, **attrib) -> None:
