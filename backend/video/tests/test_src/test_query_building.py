@@ -91,6 +91,17 @@ def test_sort(videos):
         QueryBuilder(user_id=1, sort="views", order="invalid").parse_sort()
 
 
+def test_sort_puts_missing_values_last(videos):
+    """like ES, videos without a value sort last in either order"""
+    del videos
+    Video.objects.filter(pk="c").update(published=None, view_count=None)
+
+    for order in ("desc", "asc"):
+        for sort in ("published", "views"):
+            queryset = QueryBuilder(1, sort=sort, order=order)
+            assert ids(queryset.build_queryset())[-1] == "c", (sort, order)
+
+
 def test_parse_watch_and_type():
     """invalid values raise"""
     qb = QueryBuilder(user_id=1)
