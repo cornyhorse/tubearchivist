@@ -123,7 +123,7 @@ const SettingsWhen = () => {
                   help={def.help}
                   offText={def.offText}
                   schedule={current?.schedule}
-                  serverNextRun={server?.next_run}
+                  serverNextRun={server?.next_run ?? current?.next_run_at}
                   extra={
                     def.extra && {
                       ...def.extra,
