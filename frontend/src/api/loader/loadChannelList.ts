@@ -48,7 +48,12 @@ const loadChannelList = async (
 
   const searchParams = new URLSearchParams();
   if (query.page) searchParams.append('page', query.page.toString());
-  if (query.filter) searchParams.append('filter', query.filter);
+  // subscribed/unsubscribed go in `filter`; the has_* quick filters are their own flags
+  if (query.filter === 'subscribed' || query.filter === 'unsubscribed') {
+    searchParams.append('filter', query.filter);
+  } else if (query.filter) {
+    searchParams.append(query.filter, 'true');
+  }
   if (query.q?.trim()) searchParams.append('q', query.q.trim());
   if (query.sort) searchParams.append('sort', query.sort);
   if (query.order) searchParams.append('order', query.order);
