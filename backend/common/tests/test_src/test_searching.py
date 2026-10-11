@@ -15,6 +15,8 @@ from common.tests.docs import (
     subtitle_doc,
     video_doc,
 )
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from playlist.models import Playlist
 from video.models import SubtitleLine, Video
 
@@ -584,3 +586,16 @@ def test_build_results_groups_by_index():
         "playlist_results": [],
         "fulltext_results": [],
     }
+
+
+def test_video_hits_load_playlists_once(library):
+    del library
+    with CaptureQueriesContext(connection) as context:
+        response = search("video:coaster")
+
+    hits = response["results"]["video_results"]
+    assert ids(hits, "youtube_id") == ["coaster0001", "coaster0002"]
+    entry_queries = [
+        q for q in context.captured_queries if "playlistentry" in q["sql"]
+    ]
+    assert len(entry_queries) == 1

@@ -70,8 +70,12 @@ class ApiBaseView(APIView):
         to_doc: Callable = lambda obj: obj.to_doc(),
         pagination: bool = True,
         progress_match=None,
+        to_docs: Callable[[list], list[dict]] | None = None,
     ) -> None:
-        """format a page of queryset, or all of it without pagination"""
+        """
+        format a page of queryset, or all of it without pagination
+        to_docs: builds the documents of a whole page at once, over to_doc
+        """
         if pagination:
             self.pagination_handler = Pagination(request)
             page = self.pagination_handler.pagination
@@ -82,7 +86,10 @@ class ApiBaseView(APIView):
             objects = queryset
 
         processor = SearchProcess(match_video_user_progress=progress_match)
-        documents = [to_doc(obj) for obj in objects]
+        if to_docs:
+            documents = to_docs(objects)
+        else:
+            documents = [to_doc(obj) for obj in objects]
         self.response["data"] = processor.process_many(index, documents)
         self.status_code = 200 if self.response["data"] else 404
 

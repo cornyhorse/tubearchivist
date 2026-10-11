@@ -190,6 +190,25 @@ class Video(models.Model):
         channel_id = (doc.get("channel") or {}).get("channel_id")
         return cls(channel_id=channel_id, **cls.fields_from_doc(doc))
 
+    @classmethod
+    def to_docs(cls, videos) -> list[dict]:
+        """legacy documents of many videos, with one PlaylistEntry query"""
+        # pylint: disable=import-outside-toplevel
+        from playlist.models import PlaylistEntry
+
+        videos = list(videos)
+        playlists: dict[str, set[str]] = {}
+        rows = PlaylistEntry.objects.filter(
+            youtube_id__in=[video.youtube_id for video in videos]
+        ).values_list("youtube_id", "playlist_id")
+        for youtube_id, playlist_id in rows:
+            playlists.setdefault(youtube_id, set()).add(playlist_id)
+
+        return [
+            video.to_doc(playlists=sorted(playlists.get(video.youtube_id, [])))
+            for video in videos
+        ]
+
     def to_doc(self, playlists: list[str] | None = None) -> dict:
         """
         legacy ta_video document shape, as the API returns it

@@ -12,6 +12,8 @@ from common.tests.docs import (
     subtitle_doc,
     video_doc,
 )
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from download.models import Download
 from emby.models import EpisodeNumber
 from playlist.models import Playlist
@@ -143,3 +145,30 @@ def test_download_timestamp_is_aware():
     assert item.published == datetime.fromtimestamp(
         1700000000, tz=timezone.utc
     )
+
+
+def _entry_queries(context) -> int:
+    return sum(
+        "playlist_playlistentry" in q["sql"] for q in context.captured_queries
+    )
+
+
+def test_to_docs_loads_playlists_in_one_query(channel):
+    del channel
+    for i in range(3):
+        Video.save_doc(video_doc(youtube_id=f"vid0000000{i}"))
+    Playlist.save_doc(playlist_doc("PLb", ["vid00000001", "vid00000002"]))
+    Playlist.save_doc(playlist_doc("PLa", ["vid00000001"]))
+    videos = list(Video.objects.select_related("channel").order_by("pk"))
+
+    with CaptureQueriesContext(connection) as context:
+        docs = Video.to_docs(videos)
+
+    assert _entry_queries(context) == 1
+    assert docs == [video.to_doc() for video in videos]
+    assert [doc.get("playlist") for doc in docs] == [
+        None,
+        ["PLa", "PLb"],
+        ["PLb"],
+    ]
+    assert not Video.to_docs([])

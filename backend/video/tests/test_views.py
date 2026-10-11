@@ -2,6 +2,8 @@
 
 import pytest
 from common.tests.docs import playlist_doc, video_doc
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from playlist.models import Playlist
 from rest_framework.test import APIClient
 from video.models import Video
@@ -72,6 +74,22 @@ class TestList:
         ]
         assert data["data"][0]["player"]["progress"] == 50
         assert data["paginate"]["total_hits"] == 2
+
+    def test_list_loads_playlists_once(self, client, videos):
+        """no PlaylistEntry query per video on a page"""
+        del videos
+        for i in range(3, 8):
+            Video.save_doc(video_doc(youtube_id=f"vid0000000{i}"))
+        Playlist.save_doc(playlist_doc("PL1", [YOUTUBE_ID, OTHER_ID]))
+
+        with CaptureQueriesContext(connection) as context:
+            response = client.get("/api/video/", {"sort": "published"})
+
+        assert response.json()["paginate"]["total_hits"] == 7
+        entry_queries = [
+            q for q in context.captured_queries if "playlistentry" in q["sql"]
+        ]
+        assert len(entry_queries) == 1
 
     def test_continue_nothing(self, client, videos):
         del videos
