@@ -6,6 +6,7 @@ from common.src.ta_redis import RedisArchivist
 from common.src.watched import WatchState
 from common.views_base import AdminWriteOnly, ApiBaseView
 from drf_spectacular.utils import OpenApiResponse, extend_schema
+from jobs.src.handlers import request_emby_write
 from playlist.src.index import YoutubePlaylist
 from rest_framework.response import Response
 from video.models import Video
@@ -119,6 +120,8 @@ class VideoApiView(ApiBaseView):
             error = ErrorResponseSerializer({"error": "video not found"})
             return Response(error.data, status=404)
 
+        # its link would pin the deleted media in the Emby tree (review T2)
+        request_emby_write()
         return Response(status=204)
 
 

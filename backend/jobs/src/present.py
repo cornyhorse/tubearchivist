@@ -13,6 +13,11 @@ from jobs.src.engine import allowed_actions, ensure_lanes
 from jobs.src.registry import LANES, get_spec
 
 STATUS_ALIASES = {"active": ACTIVE, "history": FINISHED}
+TARGET_URLS = {
+    "channel": "https://www.youtube.com/channel/{}",
+    "playlist": "https://www.youtube.com/playlist?list={}",
+    "video": "https://www.youtube.com/watch?v={}",
+}
 
 
 def parse_statuses(value: str | None) -> list[str] | None:
@@ -97,15 +102,22 @@ def job_dict(job: Job, positions: dict[int, int] | None = None) -> dict:
     children = getattr(job, "children_count", None)
     if children is None:
         children = job.children.count()
+    label = job_label(job.type)
+    target = job.target_title or job.target_id
+    url = TARGET_URLS.get(job.target_kind)
     return {
         "id": job.pk,
         "type": job.type,
-        "type_label": job_label(job.type),
+        "type_label": label,
+        "label": f"{label}: {target}" if target else label,
         "lane": job.lane,
         "target": {
             "kind": job.target_kind,
             "id": job.target_id,
             "title": job.target_title,
+            "url": (
+                url.format(job.target_id) if url and job.target_id else None
+            ),
         },
         "status": job.status,
         "priority": job.priority,

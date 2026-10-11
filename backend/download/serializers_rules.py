@@ -94,10 +94,13 @@ class RulePresetSerializer(serializers.Serializer):
     needs_value = serializers.ChoiceField(
         choices=["date", "text", "seconds"],
         allow_null=True,
+        required=False,
         help_text="the chip asks for a value, e.g. 'Only after date...'",
     )
     value_field = serializers.CharField(
-        allow_null=True, help_text="rule field the value goes into"
+        allow_null=True,
+        required=False,
+        help_text="rule field the value goes into",
     )
 
 

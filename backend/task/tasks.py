@@ -197,3 +197,9 @@ def db_snapshot(created_by=CreatedBy.SCHEDULE):
 def version_check(created_by=CreatedBy.SCHEDULE):
     """check for new updates"""
     return _queue("version_check", created_by=created_by)
+
+
+@shared_task(name="emby_health")
+def emby_health(created_by=CreatedBy.USER):
+    """check and repair the Emby library sync"""
+    return _queue("emby_health", created_by=created_by)

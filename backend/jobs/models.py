@@ -1,5 +1,7 @@
 """work queue: every unit of work is a job, run in lanes"""
 
+import time
+
 from django.db import models
 from django.db.models import Q
 
@@ -63,7 +65,7 @@ class JobQuerySet(models.QuerySet):
 
     def run_order(self):
         """order a lane runs its queued jobs in"""
-        return self.order_by("-priority", "created_at", "id")
+        return self.order_by("-priority", "rank", "id")
 
 
 class Job(models.Model):
@@ -78,6 +80,8 @@ class Job(models.Model):
     dedupe_key = models.CharField(max_length=128)
     params = models.JSONField(default=dict, blank=True)
     priority = models.IntegerField(default=Priority.NORMAL)
+    # order within a priority: creation time, changed by move up/down
+    rank = models.FloatField(default=time.time)
     status = models.CharField(
         max_length=16, choices=JobStatus.choices, default=JobStatus.QUEUED
     )
@@ -119,7 +123,7 @@ class Job(models.Model):
     class Meta:
         indexes = [
             models.Index(
-                fields=["lane", "status", "-priority", "created_at"],
+                fields=["lane", "status", "-priority", "rank"],
                 name="job_run_order",
             ),
             models.Index(fields=["target_id"], name="job_target"),

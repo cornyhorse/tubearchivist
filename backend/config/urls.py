@@ -17,6 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from mcp_server.views import McpView
 
 urlpatterns = [
     path("api/", include("common.urls")),
@@ -34,6 +35,8 @@ urlpatterns = [
     path("api/rules/", include("download.urls_rules")),
     path("api/numbering/", include("emby.urls")),
     path("api/mediaserver/", include("mediaserver.urls")),
+    path("api/mcp", McpView.as_view(), name="api-mcp"),
+    path("api/mcp/", McpView.as_view()),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "api/docs/",

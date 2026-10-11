@@ -117,12 +117,29 @@ class FoundTabCountsSerializer(serializers.Serializer):
     downloaded = serializers.IntegerField()
 
 
+class ChannelFacetSerializer(serializers.Serializer):
+    """a channel option of the filter, with its count"""
+
+    channel_id = serializers.CharField()
+    channel_name = serializers.CharField()
+    count = serializers.IntegerField()
+
+
+class FoundFacetsSerializer(serializers.Serializer):
+    """filter options for the current tab, other filters applied"""
+
+    channels = ChannelFacetSerializer(
+        many=True, help_text="up to 200, most videos first"
+    )
+
+
 class FoundListSerializer(serializers.Serializer):
     """GET /api/found/"""
 
     data = FoundVideoSerializer(many=True)
     paginate = PaginationSerializer()
     counts = FoundTabCountsSerializer()
+    facets = FoundFacetsSerializer()
 
 
 class FoundFilterSerializer(serializers.Serializer):

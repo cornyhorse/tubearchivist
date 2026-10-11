@@ -314,3 +314,28 @@ def test_action_errors(admin_client):
         status=400,
     )
     assert "downloaded" in downloaded["error"]
+
+
+def test_channel_facets(admin_client, app_config):
+    # pylint: disable=unused-argument
+    add("a", channel_id="UCa", channel_name="Alpha")
+    add("b", channel_id="UCa", channel_name="Alpha")
+    add("c", channel_id="UCb", channel_name="Beta")
+    add("d", channel_id="UCb", channel_name="Beta", status="ignore")
+
+    facets = get(admin_client, "channel=UCb")["facets"]["channels"]
+    assert facets == [
+        {"channel_id": "UCa", "channel_name": "Alpha", "count": 2},
+        {"channel_id": "UCb", "channel_name": "Beta", "count": 1},
+    ]
+    Channel.save_doc(channel_doc())
+    Video.save_doc(
+        video_doc(
+            youtube_id="v1",
+            date_downloaded=int(dj_timezone.now().timestamp()),
+        )
+    )
+    downloaded = get(admin_client, "tab=downloaded")["facets"]["channels"]
+    assert downloaded == [
+        {"channel_id": CHANNEL_ID, "channel_name": "Test Channel", "count": 1}
+    ]

@@ -51,7 +51,17 @@ USER_JOB_TYPES = [
     "resync_metadata",
     "backup",
 ]
-JOB_ACTIONS = ["stop", "cancel", "pause", "resume", "retry", "move_to_top"]
+JOB_ACTIONS = [
+    "stop",
+    "cancel",
+    "pause",
+    "resume",
+    "retry",
+    "move_to_top",
+    "move_up",
+    "move_down",
+    "move_to_bottom",
+]
 TARGET_KINDS = ["channel", "playlist", "video", "library", "none"]
 PRIORITY_NAMES = ["high", "normal", "low"]
 
@@ -65,6 +75,9 @@ class JobTargetSerializer(serializers.Serializer):
     )
     title = serializers.CharField(
         allow_null=True, help_text="display name, if known"
+    )
+    url = serializers.CharField(
+        allow_null=True, help_text="YouTube page of the target, if any"
     )
 
 
@@ -94,6 +107,9 @@ class JobSerializer(serializers.Serializer):
     type = serializers.ChoiceField(choices=JOB_TYPES)
     type_label = serializers.CharField(
         help_text="plain words, e.g. 'Check channel for new videos'"
+    )
+    label = serializers.CharField(
+        help_text="type and target, e.g. 'Download video: Riding the coaster'"
     )
     lane = serializers.ChoiceField(choices=LANES)
     target = JobTargetSerializer()
@@ -262,8 +278,13 @@ class ScheduledJobSerializer(serializers.Serializer):
     )
     job_type = serializers.ChoiceField(choices=JOB_TYPES)
     lane = serializers.ChoiceField(choices=LANES)
-    schedule = serializers.CharField(help_text="cron: minute hour weekday")
-    schedule_human = serializers.CharField(help_text="e.g. 'At 18:00'")
+    schedule = serializers.CharField(
+        allow_null=True,
+        help_text="cron: minute hour weekday; null: no schedule (off)",
+    )
+    schedule_human = serializers.CharField(
+        allow_null=True, help_text="e.g. 'At 18:00'"
+    )
     enabled = serializers.BooleanField()
     next_run = serializers.DateTimeField(allow_null=True)
     last_run = serializers.DateTimeField(allow_null=True)
@@ -273,6 +294,17 @@ class ScheduledJobSerializer(serializers.Serializer):
 
 
 class ScheduledJobUpdateSerializer(serializers.Serializer):
-    """PATCH /api/queue/scheduled/<name>/: pause or resume a schedule"""
+    """
+    PATCH /api/queue/scheduled/<name>/: pause or resume a schedule, or
+    change when it runs; a schedule that doesn't exist yet is created
+    """
 
-    enabled = serializers.BooleanField()
+    enabled = serializers.BooleanField(required=False)
+    schedule = serializers.CharField(
+        required=False,
+        allow_null=True,
+        help_text=(
+            "cron 'minute hour weekday', e.g. '0 */6 *', 'auto' for the "
+            "default, or null to turn the schedule off"
+        ),
+    )

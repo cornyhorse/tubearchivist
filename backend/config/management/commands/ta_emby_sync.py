@@ -13,6 +13,7 @@ from emby.src.sync import (
     validate_output_root,
 )
 from emby.src.writer import EmbyRootError
+from jobs.src.locks import with_emby_lock
 
 
 class Command(BaseCommand):
@@ -38,6 +39,7 @@ class Command(BaseCommand):
         for change in changes:
             self.stdout.write(f"{prefix}{change}")
 
+    @with_emby_lock
     def handle(self, *args, **options):
         output_root = options["output_root"].resolve()
         media_root = Path(EnvironmentSettings.MEDIA_DIR).resolve()

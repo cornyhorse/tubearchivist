@@ -16,6 +16,7 @@ from common.src.ta_redis import RedisArchivist
 from django.core.management.base import BaseCommand
 from django.utils import dateformat
 from django_celery_beat.models import CrontabSchedule, PeriodicTasks
+from emby.src.sync import paths_from_env
 from jobs.src.engine import recover_after_restart
 from task.models import CustomPeriodicTask
 from task.src.config_schedule import SCHEDULE_KWARGS, ScheduleBuilder
@@ -43,6 +44,7 @@ class Command(BaseCommand):
         self._clear_dl_cache()
         self._version_check()
         self._create_default_schedules()
+        self._ensure_emby_health_schedule()
         self._update_schedule_tz()
         self._init_app_config()
         self._snapshot_check()
@@ -147,6 +149,20 @@ class Command(BaseCommand):
                 self.style.SUCCESS("    ✓ send initial version check task")
             )
             version_check.delay()
+
+    def _ensure_emby_health_schedule(self) -> None:
+        """hourly Emby sync health check, when the Emby writer is on"""
+        if not paths_from_env():
+            return
+        if CustomPeriodicTask.objects.filter(name="emby_health").exists():
+            return
+        builder = ScheduleBuilder()
+        builder.get_set_task(
+            "emby_health", schedule=builder.SCHEDULES["emby_health"]
+        )
+        self.stdout.write(
+            self.style.SUCCESS("    ✓ scheduled the hourly Emby check")
+        )
 
     def _create_default_schedules(self) -> None:
         """create default schedules for new installations"""

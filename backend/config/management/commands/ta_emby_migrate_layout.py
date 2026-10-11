@@ -9,6 +9,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from emby.src.migrate_layout import AlreadyMigrated, migrate_layout
 from emby.src.sync import paths_from_env, sync_all
+from jobs.src.locks import with_emby_lock
 
 
 class _DryRun(Exception):
@@ -43,8 +44,8 @@ class Command(BaseCommand):
         )
         parser.add_argument("--verbose-changes", action="store_true")
 
+    @with_emby_lock
     def handle(self, *args, **options):
-        # TODO: take the emby_sync lock (review T1) once it exists
         paths = paths_from_env()
         if not paths and not (options["no_sync"] or options["dry_run"]):
             raise CommandError("TA_EMBY_ROOT is not set; use --no-sync")

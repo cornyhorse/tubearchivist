@@ -364,6 +364,22 @@ def test_search_found(client):
     assert response.data["channel_id"] == CH
 
 
+def test_delete_and_numbering_queue_emby_write(client, monkeypatch):
+    """review T2: the Emby tree follows deletes and numbering changes"""
+    # pylint: disable=import-outside-toplevel
+    from jobs.models import Job
+    from jobs.src import handlers
+
+    monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
+    add_channels()
+    client.post(URL, {"emby_numbering": "year_frozen"}, format="json")
+    assert Job.objects.filter(type="emby_write").count() == 1
+    Job.objects.update(status="done")
+
+    assert client.delete(URL).status_code == 204
+    assert Job.objects.filter(type="emby_write", status="queued").exists()
+
+
 def _table_data():
     """channels with videos, found items and a rule"""
     add_channels()

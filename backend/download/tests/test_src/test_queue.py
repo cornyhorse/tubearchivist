@@ -678,3 +678,44 @@ def test_playlist_rules(yt):
     rule = DownloadRule(min_duration=1000, action="skip")
     PendingList([playlist_url()], flat=True, rule=rule).parse_url_list()
     assert queued("p1") is None
+
+
+def test_duplicate_in_batch_keeps_the_batch(yt):
+    """review P3: a video twice in one playlist doesn't drop the rest"""
+    FakePlaylist.youtube_meta = {
+        "channel": "Test Channel",
+        "channel_id": CHANNEL_ID,
+        "entries": [flat_entry("p1"), flat_entry("p2"), flat_entry("p1")],
+    }
+
+    added = PendingList([playlist_url()], flat=True).parse_url_list()
+
+    assert added == 2
+    assert queued("p1") and queued("p2")
+
+
+def test_rules_checked_on_flat_data_first(yt, monkeypatch):
+    """review T3: a video the rules turn away is not fully extracted"""
+    Channel.save_doc(channel_doc())
+    DownloadRule.objects.create(
+        channel_id=CHANNEL_ID, max_duration=100, action="skip"
+    )
+    yt.channel_videos = [
+        flat_entry("long", duration=5000),
+        flat_entry("short", duration=50),
+    ]
+    yt.videos["short"] = yt_meta("short", duration=50)
+    extracted = []
+    real = PendingList._parse_video
+
+    def parse_video(self, url, vid_type):
+        extracted.append(url)
+        return real(self, url, vid_type)
+
+    monkeypatch.setattr(PendingList, "_parse_video", parse_video)
+
+    PendingList([channel_url()]).parse_url_list()
+
+    assert extracted == ["short"]
+    assert queued("long") is None
+    assert queued("short").status == "pending"
