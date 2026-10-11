@@ -206,6 +206,21 @@ def test_pump_not_before_and_dependency(handlers, no_broker):
     assert statuses()["after"] == "running"
 
 
+def test_one_wakeup_at_a_time(handlers, no_broker):
+    # pylint: disable=unused-argument
+    make(target="later", not_before=timezone.now() + timedelta(seconds=30))
+
+    pump()
+    pump()
+
+    wakeups = [i for i in no_broker if i[0] == "jobs_pump"]
+    assert len(wakeups) == 1
+    # an earlier due time still gets its own wake-up
+    make(target="sooner", not_before=timezone.now() + timedelta(seconds=5))
+    pump()
+    assert len([i for i in no_broker if i[0] == "jobs_pump"]) == 2
+
+
 def test_schedule_next_pump_nothing_due(handlers, no_broker):
     # pylint: disable=unused-argument
     pump()
@@ -586,7 +601,10 @@ def test_celery_entry_points(monkeypatch):
     # pylint: disable=import-outside-toplevel
     from jobs import tasks
 
+    cleared = []
     monkeypatch.setattr(tasks, "execute", lambda job_id: f"ran {job_id}")
     monkeypatch.setattr(tasks, "pump", lambda: [1])
+    monkeypatch.setattr(tasks, "clear_next_pump", lambda: cleared.append(1))
     assert tasks.run_job.run(5) == "ran 5"
     assert tasks.jobs_pump.run() == [1]
+    assert cleared == [1]

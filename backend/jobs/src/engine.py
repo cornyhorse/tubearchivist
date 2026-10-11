@@ -9,6 +9,7 @@ Functionality:
 import traceback
 from datetime import datetime, timedelta
 
+from common.src.ta_redis import RedisBase
 from django.db import IntegrityError, transaction
 from django.db.models import Max, Min, Q
 from django.utils import timezone
@@ -28,6 +29,7 @@ from jobs.src.registry import LANES, Defer, JobError, get_spec
 # a running job without a sign of life for this long is presumed lost
 STALE_AFTER = timedelta(minutes=60)
 RETRY_BACKOFF = 30  # seconds, doubled per attempt
+NEXT_PUMP_KEY = "jobs:next_pump"
 
 
 class ActionNotAllowed(ValueError):
@@ -204,11 +206,23 @@ def _schedule_next_pump() -> None:
     upcoming = [i for i in due if i and i > now]
     if not upcoming:
         return
+    seconds = min(int((min(upcoming) - now).total_seconds()) + 1, 60)
+    fire_at = now.timestamp() + seconds
+    # at most one wake-up waits at a time: skip if one fires before this
+    conn, key = RedisBase().conn, RedisBase.NAME_SPACE + NEXT_PUMP_KEY
+    pending = conn.get(key)
+    if pending and float(pending) <= fire_at:
+        return
+    conn.set(key, fire_at, ex=seconds + 5)
     # pylint: disable=import-outside-toplevel
     from jobs.tasks import jobs_pump
 
-    seconds = (min(upcoming) - now).total_seconds()
-    jobs_pump.apply_async(countdown=min(int(seconds) + 1, 60))
+    jobs_pump.apply_async(countdown=seconds)
+
+
+def clear_next_pump() -> None:
+    """the scheduled wake-up is running, the next one may be scheduled"""
+    RedisBase().conn.delete(RedisBase.NAME_SPACE + NEXT_PUMP_KEY)
 
 
 def _fail_stale() -> None:
