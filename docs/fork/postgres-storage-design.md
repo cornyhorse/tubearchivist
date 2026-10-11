@@ -233,6 +233,18 @@ by name. Output is deterministic and strips XML-invalid control characters.
 - Dry-run simulates moves and removals, so its report matches a real run,
   and stores no numbers or names.
 
+Health check (`health.py`, `manage.py ta_emby_health [--no-repair]`): every
+real `sync_all` records its outcome in the `emby_sync_state` config
+document (last run, last success, last error, and per series how many runs
+in a row it failed). The check reports a sync with no success for 6 hours,
+the last run's error, a series failing 3 runs in a row, the old layout, a
+manifest from a newer writer and stale temp files. It repairs what is safe:
+names that hit ENAMETOOLONG are frozen shorter (60 bytes), stale temp files
+are removed, a corrupt manifest is set aside for the next sync to rebuild,
+and an interrupted rename is finished by the next sync (`rerun_sync`). The
+caller holds the emby_sync lock, notifies `message()` when not `healthy`,
+and queues a sync when `rerun_sync` is set.
+
 `manage.py ta_emby_sync <root> [--channel ID | --playlist ID] [--dry-run]
 [--verbose-changes]` refuses an output root inside the media dir.
 `sync_all` reconciles the whole root, which also cleans up deleted series.

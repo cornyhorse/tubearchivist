@@ -8,8 +8,10 @@ Functionality:
   `manage.py ta_emby_migrate_layout` converted it (see migrate_layout.py)
 """
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
+from datetime import timezone as dt_timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -35,6 +37,9 @@ from video.models import Video
 # MMDD*100+n numbers and frozen playlists
 LAYOUT_KEY = "emby_layout"
 LAYOUT_VERSION = 2
+# ConfigDocument key of the last sync_all outcomes, read by health.py
+STATE_KEY = "emby_sync_state"
+_FOLDER = re.compile(r"(channels|playlists)/.* \[([^\]/]+)\]")
 
 
 class EmbyLayoutOutdated(RuntimeError):
@@ -440,10 +445,24 @@ def sync_all(paths: EmbyPaths, dry_run: bool = False) -> SyncReport:
     series that no longer exist (or were renamed) are cleaned up too
     a series that can't be planned is reported in errors and left as it
     is on disk, the others still sync
+    a real run records its outcome for the health check (health.py)
     """
+    try:
+        report = _sync_all(paths, dry_run)
+    except Exception as err:
+        if not dry_run:
+            record_run(error=f"{type(err).__name__}: {err}")
+        raise
+    if not dry_run:
+        record_run(report=report)
+    return report
+
+
+def _sync_all(paths: EmbyPaths, dry_run: bool) -> SyncReport:
     check_layout(dry_run)
     writer = EmbyWriter(paths.output_root, dry_run=dry_run)
     desired, warnings, errors, keep = [], [], [], set()
+    failed = {}
     sources = [
         ("channels", c.channel_id, channel_series, c)
         for c in Channel.objects.order_by("pk")
@@ -457,6 +476,7 @@ def sync_all(paths: EmbyPaths, dry_run: bool = False) -> SyncReport:
             files, plan_warnings = plan_series(series, episodes)
         except (ValueError, OSError) as err:
             errors.append(f"{kind}/{series_id}: {err}")
+            failed[f"{kind}/{series_id}"] = str(err)
             keep |= _folders_of(writer, kind, series_id)
             continue
         desired.extend(files)
@@ -465,4 +485,46 @@ def sync_all(paths: EmbyPaths, dry_run: bool = False) -> SyncReport:
     report = writer.sync(desired, scope=None, keep=keep)
     report.warnings[:0] = warnings
     report.errors[:0] = errors
+    report.failed = failed | {
+        series_key(folder): error for folder, error in report.failed.items()
+    }
     return report
+
+
+def series_key(folder: str) -> str:
+    """<kind>/<series_id> of a series folder <kind>/<Name> [<series_id>]"""
+    match = _FOLDER.fullmatch(folder)
+    return f"{match[1]}/{match[2]}" if match else folder
+
+
+def sync_state() -> dict:
+    """outcome of the last real sync_all runs"""
+    document = ConfigDocument.objects.filter(key=STATE_KEY).first()
+    return dict(document.value) if document else {}
+
+
+def record_run(
+    report: SyncReport | None = None, error: str | None = None
+) -> None:
+    """
+    remember when sync_all last ran and succeeded, and for how many runs
+    in a row each failing series has failed
+    """
+    now = datetime.now(dt_timezone.utc).isoformat()
+    state = sync_state()
+    state["last_run"] = now
+    state["last_error"] = error
+    if report is not None:
+        state["last_success"] = now
+        previous = state.get("failing", {})
+        state["failing"] = {
+            key: {
+                "runs": previous.get(key, {}).get("runs", 0) + 1,
+                "error": message,
+                "since": previous.get(key, {}).get("since", now),
+            }
+            for key, message in report.failed.items()
+        }
+    ConfigDocument.objects.update_or_create(
+        key=STATE_KEY, defaults={"value": state}
+    )

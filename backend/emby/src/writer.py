@@ -69,6 +69,8 @@ class SyncReport:
     warnings: list[str] = field(default_factory=list)
     # failures; the series they belong to was left as it was
     errors: list[str] = field(default_factory=list)
+    # series folder (or <kind>/<id> if it couldn't be planned): first error
+    failed: dict[str, str] = field(default_factory=dict)
 
     @property
     def changed(self) -> int:
@@ -389,6 +391,7 @@ class EmbyWriter:
             operation(*args)
         except (OSError, ValueError) as err:
             self.report.errors.append(f"{relpath}: {err}")
+            self.report.failed.setdefault(series_scope(relpath), str(err))
             self._keep.add(series_scope(relpath))
 
     def _may_clean(self, relpath: str, scope: str | None) -> bool:
@@ -396,8 +399,9 @@ class EmbyWriter:
             _within(relpath, kept) for kept in self._keep
         )
 
-    def _sweep_temp(self) -> None:
-        """remove temp files a crashed run left in directories we own"""
+    def leftover_temp_files(self) -> list[str]:
+        """temp files a crashed run left in directories we own"""
+        found = []
         for rel in sorted({"."} | self.manifest.dirs):
             try:
                 path = self.root if rel == "." else self._abs(rel)
@@ -405,13 +409,17 @@ class EmbyWriter:
                 continue
             if path.is_symlink() or not path.is_dir():
                 continue
-            for child in path.iterdir():
+            for child in sorted(path.iterdir()):
                 relpath = str(child.relative_to(self.root))
-                if relpath in self.manifest.files or not _is_temp(child.name):
-                    continue
-                if not self.dry_run:
-                    child.unlink()
-                self.report.warnings.append(f"{relpath}: removed leftover")
+                if relpath not in self.manifest.files and _is_temp(child.name):
+                    found.append(relpath)
+        return found
+
+    def _sweep_temp(self) -> None:
+        for relpath in self.leftover_temp_files():
+            if not self.dry_run:
+                (self.root / relpath).unlink()
+            self.report.warnings.append(f"{relpath}: removed leftover")
 
     def _abs(self, relpath: str) -> Path:
         # resolve the parent only: a symlinked dir escaping root is an
