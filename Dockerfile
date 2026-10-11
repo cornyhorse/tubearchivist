@@ -42,7 +42,8 @@ ARG INSTALL_DEBUG
 
 ENV PYTHONUNBUFFERED=1
 
-COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
+# deno 2.9.7, multi-arch index digest
+COPY --from=denoland/deno:bin-2.9.7@sha256:bc5aa4466e21b6d3021226a85ba2e1911f7c386254d97b9d797903ab74edace2 /deno /usr/local/bin/deno
 
 # copy build requirements
 COPY --from=builder /root/.local /root/.local
