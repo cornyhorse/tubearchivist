@@ -15,26 +15,12 @@ from emby.src.layout import (
     series_dir,
 )
 from emby.src.nfo import EpisodeInfo, SeriesInfo
-from emby.src.writer import MANIFEST_NAME, DesiredFile, EmbyWriter
-
-
-@pytest.fixture(name="media")
-def fixture_media(tmp_path):
-    """fake archive with three small media files and thumbs"""
-    root = tmp_path / "media"
-    cache = tmp_path / "cache"
-    (root / "UC1").mkdir(parents=True)
-    (cache / "videos").mkdir(parents=True)
-    for youtube_id in ("aaa", "bbb", "ccc"):
-        (root / "UC1" / f"{youtube_id}.mp4").write_bytes(
-            b"video " + youtube_id.encode()
-        )
-        thumb_dir = cache / "videos" / youtube_id[0]
-        thumb_dir.mkdir(exist_ok=True)
-        (thumb_dir / f"{youtube_id}.jpg").write_bytes(
-            b"jpg " + youtube_id.encode()
-        )
-    return root, cache
+from emby.src.writer import (
+    MANIFEST_NAME,
+    DesiredFile,
+    EmbyWriter,
+    ManifestTooNew,
+)
 
 
 def series_files(media, titles: dict[str, str], episodes=None):
@@ -224,14 +210,14 @@ def test_sync_rejects_bad_input(tmp_path):
         writer.sync([data_file("a/x"), data_file("a/x")], "a")
     with pytest.raises(ValueError, match="outside scope"):
         writer.sync([data_file("b/x")], "a")
-    with pytest.raises(ValueError, match="escapes root"):
+    with pytest.raises(ValueError, match="unsafe path"):
         writer.sync([data_file("a/../../x")], None)
 
 
 def test_unsupported_manifest_version(tmp_path):
     (tmp_path / MANIFEST_NAME).write_text('{"version": 99}')
 
-    with pytest.raises(ValueError, match="unsupported manifest"):
+    with pytest.raises(ManifestTooNew, match="refusing"):
         EmbyWriter(tmp_path)
 
 
@@ -480,5 +466,9 @@ def test_symlinked_dir_escaping_root_is_refused(tmp_path, media):
     (out / "channels" / "My Channel [UC1]").symlink_to(tmp_path)
     desired, scope = series_files(media, TITLES)
 
-    with pytest.raises(ValueError, match="escapes root"):
-        EmbyWriter(out).sync(desired, scope)
+    report = EmbyWriter(out).sync(desired, scope)
+
+    assert report.errors
+    assert all("escapes root" in e for e in report.errors)
+    assert not report.created
+    assert {p.name for p in tmp_path.iterdir()} == {"media", "cache", "out"}
