@@ -8,6 +8,8 @@ export const FileSizeUnits = {
   Metric: 'metric',
 };
 
+export type HomeLayoutType = 'default' | 'shelves' | 'timeline' | 'whatsnew';
+
 export type UserConfigType = {
   stylesheet: ThemeSlug;
   page_size: number;
@@ -27,6 +29,8 @@ export type UserConfigType = {
   show_subed_only: boolean | null;
   show_subed_only_playlists: boolean | null;
   show_help_text: boolean;
+  /** fork: which Home layout this user sees; older servers don't send it */
+  home_layout?: HomeLayoutType;
 };
 
 const updateUserConfig = async (config: Partial<UserConfigType>) => {
