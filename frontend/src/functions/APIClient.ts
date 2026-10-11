@@ -85,7 +85,8 @@ const APIClient = async <T>(
   try {
     const responseJson = await response.json();
 
-    const hasErrorMessage = responseJson.error;
+    // a JSON null body (e.g. "no default rule") is data, not an error
+    const hasErrorMessage = responseJson?.error;
 
     return {
       data: !hasErrorMessage ? responseJson : undefined,

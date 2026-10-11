@@ -24,6 +24,13 @@ import { useUserConfigStore } from '../stores/UserConfigStore';
 import { ApiResponseType } from '../functions/APIClient';
 import { useFilterBarTempConf } from '../stores/FilterbarTempConf';
 import { HideWatchedName, HideWatchedType } from '../configuration/constants/HideWatched';
+import useHomeLayout, { HOME_LAYOUTS } from '../functions/useHomeLayout';
+import { FilterChips } from '../components/ux/Controls';
+import loadRecentVideos from '../api/loader/loadRecentVideos';
+import ShelvesHome from '../components/home/ShelvesHome';
+import TimelineHome from '../components/home/TimelineHome';
+import WhatsNewHome from '../components/home/WhatsNewHome';
+import LoadingIndicator from '../components/LoadingIndicator';
 
 export type PlayerType = {
   watched: boolean;
@@ -106,7 +113,63 @@ export type ConfigType = {
   downloads: DownloadsType;
 };
 
+const RECENT_LIMIT = 200;
+
+const HomeLayoutPicker = () => {
+  const [layout, setLayout] = useHomeLayout();
+  return (
+    <div className="ux-home-layout">
+      <span className="ux-muted" id="home-layout-label">
+        Layout
+      </span>
+      <FilterChips
+        label="Home layout"
+        options={HOME_LAYOUTS}
+        value={layout}
+        onChange={value => setLayout(value)}
+      />
+    </div>
+  );
+};
+
+/** Home layouts A–C share one fetch of the newest downloads */
+const RecentHome = () => {
+  const [layout] = useHomeLayout();
+  const [videos, setVideos] = useState<VideoType[]>();
+
+  useEffect(() => {
+    (async () => {
+      setVideos(await loadRecentVideos({ limit: RECENT_LIMIT }));
+    })();
+  }, []);
+
+  return (
+    <>
+      <title>TubeArchivist</title>
+      <ScrollToTopOnNavigate />
+      <div className="boxed-content ux-wide">
+        <div className="title-split">
+          <div className="title-bar">
+            <h1>{HOME_LAYOUTS.find(item => item.value === layout)?.label}</h1>
+          </div>
+          <HomeLayoutPicker />
+        </div>
+        {videos === undefined && <LoadingIndicator />}
+        {videos !== undefined && layout === 'shelves' && <ShelvesHome videos={videos} />}
+        {videos !== undefined && layout === 'timeline' && <TimelineHome videos={videos} />}
+        {videos !== undefined && layout === 'whatsnew' && <WhatsNewHome videos={videos} />}
+      </div>
+    </>
+  );
+};
+
 const Home = () => {
+  const [layout] = useHomeLayout();
+  if (layout !== 'default') return <RecentHome />;
+  return <ClassicHome />;
+};
+
+const ClassicHome = () => {
   const { userConfig } = useUserConfigStore();
   const { currentPage, setCurrentPage } = useOutletContext() as OutletContextType;
   const [searchParams] = useSearchParams();
@@ -198,8 +261,11 @@ const Home = () => {
           </>
         )}
 
-        <div className="title-bar">
-          <h1>Recent Videos</h1>
+        <div className="title-split">
+          <div className="title-bar">
+            <h1>Recent Videos</h1>
+          </div>
+          <HomeLayoutPicker />
         </div>
 
         <Filterbar
