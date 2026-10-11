@@ -6,7 +6,7 @@ from common.src.index_generic import Pagination
 from common.views_base import AdminOnly, ApiBaseView
 from download.models import Download
 from drf_spectacular.utils import OpenApiResponse, extend_schema
-from jobs.models import CreatedBy, Job, Lane, Priority
+from jobs.models import PRIORITY_BY_NAME, CreatedBy, Job, Lane
 from jobs.serializers import (
     JobActionSerializer,
     JobBulkActionResponseSerializer,
@@ -48,11 +48,6 @@ from rest_framework.response import Response
 from task.models import CustomPeriodicTask
 from video.models import Video
 
-PRIORITIES = {
-    "high": Priority.HIGH,
-    "normal": Priority.NORMAL,
-    "low": Priority.LOW,
-}
 NOT_FOUND = OpenApiResponse(ErrorResponseSerializer(), description="not found")
 BAD_REQUEST = OpenApiResponse(
     ErrorResponseSerializer(), description="bad request"
@@ -162,7 +157,7 @@ class JobListView(ApiBaseView):
             data["type"],
             target_id if spec.target_kind != "none" else None,
             target_title=target_title(spec.target_kind, target_id),
-            priority=PRIORITIES[data["priority"]],
+            priority=PRIORITY_BY_NAME[data["priority"]],
             created_by=CreatedBy.USER,
         )
         return created_response(job, merged)

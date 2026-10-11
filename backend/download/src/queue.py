@@ -335,19 +335,11 @@ class PendingList(PendingIndex):
             if self.task and self.task.is_stopped():
                 break
 
-            if self.flat:
-                if not video_data.get("channel"):
-                    video_data["channel"] = playlist.youtube_meta["channel"]
-
-                if not video_data.get("channel_id"):
-                    channel_id = playlist.youtube_meta["channel_id"]
-                    video_data["channel_id"] = channel_id
-
-                to_add = self._parse_entry(video_id, video_data)
-            else:
-                to_add = self._parse_video(video_id, vid_type=None)
-
+            to_add = self._parse_playlist_video(video_data, playlist)
             if not to_add:
+                continue
+            # stored rules don't apply to playlists yet, a one-off rule does
+            if self.rule is not False and not self._apply_rules(to_add):
                 continue
 
             self.missing_videos.append(to_add)
@@ -358,6 +350,18 @@ class PendingList(PendingIndex):
                 idx=idx,
                 total=total,
             )
+
+    def _parse_playlist_video(self, video_data, playlist) -> dict | None:
+        """parse video of playlist"""
+        video_id = video_data["id"]
+        if not self.flat:
+            return self._parse_video(video_id, vid_type=None)
+
+        if not video_data.get("channel"):
+            video_data["channel"] = playlist.youtube_meta["channel"]
+        if not video_data.get("channel_id"):
+            video_data["channel_id"] = playlist.youtube_meta["channel_id"]
+        return self._parse_entry(video_id, video_data)
 
     def _parse_video(self, url: str, vid_type) -> dict | None:
         """parse video when not flat, fetch from YT"""

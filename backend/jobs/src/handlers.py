@@ -19,6 +19,7 @@ from django.utils import timezone
 from download.models import Download, DownloadRule
 from download.serializers import DownloadRuleSerializer
 from download.src.queue import PendingList
+from download.src.rules import set_rule
 from download.src.subscriptions import (
     ChannelSubscription,
     SubscriptionHandler,
@@ -31,6 +32,7 @@ from jobs.src.context import JobContext
 from jobs.src.engine import enqueue
 from jobs.src.registry import Defer, JobError, register
 from playlist.models import Playlist
+from playlist.src.index import YoutubePlaylist
 from video.models import Video
 from video.src.meta_embed import MetadataEmbed
 
@@ -54,6 +56,15 @@ def _child(ctx: JobContext, job_type: str, target_id=None, **kwargs):
     )
 
 
+def _rule_fields(data: dict | None) -> dict | None:
+    """validated rule fields from JSON params, None for 'no rule'"""
+    if not data:
+        return None
+    serializer = DownloadRuleSerializer(data=data)
+    serializer.is_valid(raise_exception=True)
+    return dict(serializer.validated_data)
+
+
 def rule_from_params(params: dict) -> DownloadRule | None | bool:
     """
     rule for a one-off add: False if params have none (use stored rules),
@@ -61,11 +72,24 @@ def rule_from_params(params: dict) -> DownloadRule | None | bool:
     """
     if "rule" not in params:
         return False
-    if not params["rule"]:
-        return None
-    serializer = DownloadRuleSerializer(data=params["rule"])
-    serializer.is_valid(raise_exception=True)
-    return DownloadRule(**serializer.validated_data)
+    fields = _rule_fields(params["rule"])
+    return DownloadRule(**fields) if fields else None
+
+
+def prepare_channel(ctx: JobContext) -> None:
+    """subscribe, store rule and numbering, as the add dialog asked"""
+    params, channel_id = ctx.params, ctx.job.target_id
+    if params.get("subscribe"):
+        ctx.send_progress(["Subscribing to the channel."])
+        YoutubeChannel(channel_id).change_subscribe(new_subscribe_state=True)
+    elif "save_rule" in params or params.get("numbering"):
+        YoutubeChannel(channel_id).build_json(upload=True)
+    if "save_rule" in params:
+        set_rule(channel_id, _rule_fields(params["save_rule"]))
+    if params.get("numbering"):
+        Channel.objects.filter(pk=channel_id).update(
+            emby_numbering=params["numbering"]
+        )
 
 
 def scan(
@@ -166,6 +190,7 @@ def check_channel(ctx: JobContext) -> dict:
     """find new videos of one channel"""
     channel_id = ctx.job.target_id
     newest_n = ctx.params.get("newest_n")
+    prepare_channel(ctx)
     doc = Channel.load_doc(channel_id)
     if ctx.params.get("entries"):
         entries = ctx.params["entries"]
@@ -206,7 +231,16 @@ def check_playlist(ctx: JobContext) -> dict:
         "vid_type": "unknown",
         "limit": limit,
     }
-    return scan(ctx, [entry], "playlist_check", playlist_id=playlist_id)
+    if ctx.params.get("subscribe"):
+        ctx.send_progress(["Subscribing to the playlist."])
+        YoutubePlaylist(playlist_id).change_subscribe(new_subscribe_state=True)
+    result = scan(ctx, [entry], "playlist_check", playlist_id=playlist_id)
+    if ctx.params.get("numbering"):
+        # the scan indexed the playlist
+        Playlist.objects.filter(pk=playlist_id).update(
+            emby_numbering=ctx.params["numbering"]
+        )
+    return result
 
 
 @register(
@@ -225,6 +259,9 @@ def fetch_video(ctx: JobContext) -> dict:
         "url": ctx.job.target_id,
         "vid_type": ctx.params.get("vid_type", "unknown"),
     }
+    if ctx.params.get("subscribe"):
+        ctx.send_progress(["Subscribing to the video's channel."])
+        SubscriptionHandler(ctx.job.target_id).subscribe()
     return scan(ctx, [entry], "user")
 
 

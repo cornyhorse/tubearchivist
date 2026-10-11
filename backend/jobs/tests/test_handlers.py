@@ -478,3 +478,77 @@ def test_filesystem_rescan(fake):
     assert scanner.calls[0][2]["ignore_error"] is True
     assert [c[0] for c in scanner.calls] == ["init", "scan", "apply"]
     assert children() == [("thumbnail_check", None, job.pk)]
+
+
+@pytest.mark.django_db
+def test_prepare_channel(fake, app_config):
+    # pylint: disable=unused-argument
+    channel = fake("YoutubeChannel")
+    Channel.save_doc(channel_doc())
+    _, ctx = running(
+        "check_channel",
+        CHANNEL_ID,
+        params={
+            "subscribe": True,
+            "save_rule": {"min_duration": 60},
+            "numbering": "absolute_frozen",
+        },
+    )
+
+    handlers.prepare_channel(ctx)
+
+    assert channel.calls[1] == (
+        "change_subscribe",
+        (),
+        {"new_subscribe_state": True},
+    )
+    assert DownloadRule.objects.get(channel_id=CHANNEL_ID).min_duration == 60
+    assert Channel.objects.get().emby_numbering == "absolute_frozen"
+
+    # without subscribing the channel is indexed first; null rule deletes
+    channel.calls.clear()
+    ctx.job.params = {"save_rule": None}
+    handlers.prepare_channel(ctx)
+    assert channel.calls[1] == ("build_json", (), {"upload": True})
+    assert not DownloadRule.objects.exists()
+
+    channel.calls.clear()
+    ctx.job.params = {}
+    handlers.prepare_channel(ctx)
+    assert not channel.calls
+
+
+@pytest.mark.django_db
+def test_playlist_subscribe_and_numbering(fake, app_config, monkeypatch):
+    # pylint: disable=unused-argument
+    playlist = fake("YoutubePlaylist")
+
+    def fake_scan(ctx, entries, kind, playlist_id=None):
+        Playlist.save_doc(playlist_doc("PL1", []))
+        return {"found": 0}
+
+    monkeypatch.setattr(handlers, "scan", fake_scan)
+    _, ctx = running(
+        "check_playlist",
+        "PL1",
+        params={"subscribe": True, "numbering": "playlist_position"},
+    )
+
+    assert handlers.check_playlist(ctx) == {"found": 0}
+    assert playlist.calls[1][0] == "change_subscribe"
+    assert Playlist.objects.get().emby_numbering == "playlist_position"
+
+
+@pytest.mark.django_db
+def test_fetch_video_subscribe(fake, monkeypatch, app_config):
+    # pylint: disable=unused-argument
+    subscriber = fake("SubscriptionHandler")
+    monkeypatch.setattr(handlers, "scan", lambda ctx, entries, kind: {})
+    _, ctx = running("fetch_video", "vid00000001", params={"subscribe": True})
+
+    handlers.fetch_video(ctx)
+
+    assert subscriber.calls == [
+        ("init", ("vid00000001",), {}),
+        ("subscribe", (), {}),
+    ]
