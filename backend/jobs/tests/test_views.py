@@ -317,4 +317,4 @@ def test_unknown_job_type_label():
     # pylint: disable=import-outside-toplevel
     from jobs.src.present import job_label
 
-    assert job_label("media_notify") == "Media notify"
+    assert job_label("old_type") == "Old type"

@@ -101,5 +101,6 @@ def get_spec(job_type: str) -> JobSpec:
     # handlers register on import, loaded late to avoid import cycles
     # pylint: disable=import-outside-toplevel,unused-import
     import jobs.src.handlers  # noqa: F401
+    import mediaserver.src.jobs  # noqa: F401
 
     return SPECS[job_type]

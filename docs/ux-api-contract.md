@@ -2,7 +2,7 @@
 
 Status: **draft for agreement with the frontend session**, 2026-10-10.
 Built so far: section 1 (queue), section 2 (found videos) and section 3
-(add dialog), see
+(add dialog) and section 6 (media server), see
 [`fork/jobs-engine.md`](fork/jobs-engine.md).
 Spec: MattsTools `docs/architecture/tubearchivist-fork-ux-proposal.md`.
 
@@ -260,9 +260,12 @@ The API key is never returned. On PUT: omit `api_key` to keep it, send
 `""`/`null` to clear it. If `TA_MEDIASERVER_API_KEY` is set, it wins and
 `api_key_source` is `env` (show the field as "set by the environment").
 
-After the Emby writer changes files, TA batches the changed paths for
-`debounce_seconds` and sends one `POST /Library/Media/Updated` with those
-paths mapped from `path_from` to `path_to`. Each call is a `media_notify`
+After the Emby writer changes files, TA collects the folders holding the
+changes (season and series folders, deduplicated), waits
+`debounce_seconds` so more changes join, and sends one
+`POST /Library/Media/Updated` (`UpdateType: Modified`, chunks of 500) with
+those folders mapped from `path_from` to `path_to`. The server rescans just
+those folders. A failed call keeps the folders for the retry. Each call is a `media_notify`
 job, so it shows in Queue → History with its status code.
 
 ## 7. MCP — `/api/mcp`

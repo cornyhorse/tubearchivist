@@ -31,6 +31,7 @@ from jobs.models import ACTIVE, Job, Priority
 from jobs.src.context import JobContext
 from jobs.src.engine import enqueue
 from jobs.src.registry import Defer, JobError, register
+from mediaserver.src.jobs import changed_folders, queue_notify
 from playlist.models import Playlist
 from playlist.src.index import YoutubePlaylist
 from video.models import Video
@@ -338,6 +339,8 @@ def emby_write(ctx: JobContext) -> dict:
     report = sync_all(paths)
     for warning in report.warnings[:20]:
         print(f"[emby] {warning}")
+    folders = changed_folders(report)
+    queue_notify(folders, created_by=ctx.job.created_by, parent=ctx.job)
     return {
         "created": len(report.created),
         "updated": len(report.updated),
