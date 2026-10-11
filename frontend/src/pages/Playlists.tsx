@@ -2,9 +2,6 @@ import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 
 import iconAdd from '/img/icon-add.svg';
-import iconGridView from '/img/icon-gridview.svg';
-import iconListView from '/img/icon-listview.svg';
-import iconFilter from '/img/icon-filter.svg';
 
 import { OutletContextType } from './Base';
 import loadPlaylistList, { PlaylistsResponseType } from '../api/loader/loadPlaylistList';
@@ -14,12 +11,13 @@ import updateBulkPlaylistSubscriptions from '../api/actions/updateBulkPlaylistSu
 import createCustomPlaylist from '../api/actions/createCustomPlaylist';
 import ScrollToTopOnNavigate from '../components/ScrollToTop';
 import Button from '../components/Button';
+import Modal from '../components/ux/Modal';
+import { FilterChips, ToolbarButton, ViewToggle } from '../components/ux/Controls';
 import useIsAdmin from '../functions/useIsAdmin';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import Notifications from '../components/Notifications';
 import updateUserConfig, { UserConfigType } from '../api/actions/updateUserConfig';
 import { ApiResponseType } from '../functions/APIClient';
-import { ViewStylesEnum, ViewStylesType } from '../configuration/constants/ViewStyle';
 
 const Playlists = () => {
   const { userConfig, setUserConfig } = useUserConfigStore();
@@ -29,7 +27,6 @@ const Playlists = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [refresh, setRefresh] = useState(false);
   const [showNotification, setShowNotification] = useState(false);
-  const [showFilterItems, setShowFilterItems] = useState(false);
   const [playlistsToAddText, setPlaylistsToAddText] = useState('');
   const [customPlaylistsToAddText, setCustomPlaylistsToAddText] = useState('');
 
@@ -76,70 +73,67 @@ const Playlists = () => {
             <h1>Playlists</h1>
           </div>
           {isAdmin && (
-            <div className="title-split-form">
-              <img
-                onClick={() => {
-                  setShowAddForm(!showAddForm);
-                }}
-                src={iconAdd}
-                alt="add-icon"
-                title="Subscribe to Playlists"
+            <div className="ux-toolbar">
+              <ToolbarButton
+                label="Add playlists…"
+                help="Subscribe to YouTube playlists by link, or make your own playlist."
+                icon={iconAdd}
+                primary
+                onClick={() => setShowAddForm(true)}
               />
-              {showAddForm && (
-                <div className="show-form">
-                  <div>
-                    <label>Subscribe to playlists:</label>
-                    <textarea
-                      value={playlistsToAddText}
-                      onChange={event => {
-                        setPlaylistsToAddText(event.target.value);
-                      }}
-                      rows={3}
-                      cols={40}
-                      placeholder="Input playlist IDs or URLs"
-                    />
-
-                    <Button
-                      label="Subscribe"
-                      type="submit"
-                      onClick={async () => {
-                        if (playlistsToAddText.trim()) {
-                          await updateBulkPlaylistSubscriptions(playlistsToAddText, true);
-                          setShowNotification(true);
-                          setShowAddForm(false);
-                        }
-                      }}
-                    />
-                  </div>
-                  <br />
-                  <div>
-                    <label>Or create custom playlist:</label>
-                    <textarea
-                      rows={1}
-                      cols={40}
-                      placeholder="Input playlist name"
-                      value={customPlaylistsToAddText}
-                      onChange={event => {
-                        setCustomPlaylistsToAddText(event.target.value);
-                      }}
-                    />
-
-                    <Button
-                      label="Create"
-                      type="submit"
-                      onClick={async () => {
-                        if (customPlaylistsToAddText.trim()) {
-                          await createCustomPlaylist(customPlaylistsToAddText);
-                          setRefresh(true);
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
+
+        {showAddForm && (
+          <Modal title="Add playlists" onClose={() => setShowAddForm(false)}>
+            <label htmlFor="subscribe-playlists">
+              Subscribe to YouTube playlists, one link or ID per line. Subscribed playlists are
+              checked for new videos on the schedule.
+            </label>
+            <textarea
+              id="subscribe-playlists"
+              value={playlistsToAddText}
+              onChange={event => setPlaylistsToAddText(event.target.value)}
+              rows={3}
+              placeholder="https://www.youtube.com/playlist?list=…"
+            />
+            <div className="button-box">
+              <Button
+                label="Subscribe"
+                type="submit"
+                onClick={async () => {
+                  if (playlistsToAddText.trim()) {
+                    await updateBulkPlaylistSubscriptions(playlistsToAddText, true);
+                    setShowNotification(true);
+                    setShowAddForm(false);
+                  }
+                }}
+              />
+            </div>
+            <label htmlFor="custom-playlist">Or make your own playlist, by name:</label>
+            <input
+              id="custom-playlist"
+              type="text"
+              placeholder="Playlist name"
+              value={customPlaylistsToAddText}
+              onChange={event => setCustomPlaylistsToAddText(event.target.value)}
+            />
+            <div className="button-box">
+              <Button
+                label="Create playlist"
+                type="submit"
+                onClick={async () => {
+                  if (customPlaylistsToAddText.trim()) {
+                    await createCustomPlaylist(customPlaylistsToAddText);
+                    setShowAddForm(false);
+                    setRefresh(true);
+                  }
+                }}
+              />
+            </div>
+          </Modal>
+        )}
 
         <Notifications
           pageName="all"
@@ -151,55 +145,31 @@ const Playlists = () => {
           }}
         />
 
-        <div className="view-controls">
-          <div className="view-icons">
-            {showFilterItems && (
-              <div>
-                <span>Filter:</span>
-                <select
-                  value={
-                    userConfig.show_subed_only_playlists === null
-                      ? ''
-                      : userConfig.show_subed_only_playlists.toString()
-                  }
-                  onChange={event => {
-                    handleUserConfigUpdate({
-                      show_subed_only_playlists:
-                        event.target.value === '' ? null : event.target.value === 'true',
-                    });
-                    setRefresh(true);
-                  }}
-                >
-                  <option value="">All subscribe state</option>
-                  <option value="true">Subscribed only</option>
-                  <option value="false">Unsubscribed only</option>
-                </select>
-              </div>
-            )}
-            <img
-              src={iconFilter}
-              alt="icon filter"
-              onClick={() => setShowFilterItems(!showFilterItems)}
-            />
-            <img
-              src={iconGridView}
-              onClick={() => {
-                handleUserConfigUpdate({
-                  view_style_playlist: ViewStylesEnum.Grid as ViewStylesType,
-                });
-              }}
-              alt="grid view"
-            />
-            <img
-              src={iconListView}
-              onClick={() => {
-                handleUserConfigUpdate({
-                  view_style_playlist: ViewStylesEnum.List as ViewStylesType,
-                });
-              }}
-              alt="list view"
-            />
-          </div>
+        <div className="ux-filterbar">
+          <FilterChips
+            label="Show"
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'true', label: 'Subscribed' },
+              { value: 'false', label: 'Not subscribed' },
+            ]}
+            value={
+              userConfig.show_subed_only_playlists === null
+                ? 'all'
+                : String(userConfig.show_subed_only_playlists)
+            }
+            onChange={value => {
+              handleUserConfigUpdate({
+                show_subed_only_playlists: value === 'all' ? null : value === 'true',
+              });
+              setRefresh(true);
+            }}
+          />
+          <ViewToggle
+            views={['grid', 'list']}
+            value={viewStyle}
+            onChange={view => handleUserConfigUpdate({ view_style_playlist: view })}
+          />
         </div>
 
         <div className={`playlist-list ${viewStyle}`}>

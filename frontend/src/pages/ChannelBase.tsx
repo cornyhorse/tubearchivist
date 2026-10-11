@@ -9,6 +9,9 @@ import loadChannelById, { ChannelResponseType } from '../api/loader/loadChannelB
 import useIsAdmin from '../functions/useIsAdmin';
 import { ApiResponseType } from '../functions/APIClient';
 import NotFound from './NotFound';
+import loadDefaultDownloadRule from '../api/loader/loadDownloadRule';
+import { DownloadRuleType } from '../api/actions/updateDownloadRule';
+import { NumberingBadge, RuleBadge } from '../components/ux/Badges';
 
 type ChannelParams = {
   channelId: string;
@@ -22,6 +25,8 @@ const ChannelBase = () => {
   const [channelResponse, setChannelResponse] = useState<ApiResponseType<ChannelResponseType>>();
   const [channelNav, setChannelNav] = useState<ApiResponseType<ChannelNavResponseType>>();
   const [startNotification, setStartNotification] = useState(false);
+  const [defaultRule, setDefaultRule] = useState<DownloadRuleType | null>(null);
+  const [refreshChannel, setRefreshChannel] = useState(0);
 
   const { data: channelResponseData, error: channelResponseError } = channelResponse ?? {};
   const { data: channelNavData } = channelNav ?? {};
@@ -38,6 +43,21 @@ const ChannelBase = () => {
       setChannelNav(channelNavResponse);
     })();
   }, [channelId]);
+
+  useEffect(() => {
+    if (refreshChannel === 0) return;
+    (async () => {
+      setChannelResponse(await loadChannelById(channelId));
+    })();
+  }, [channelId, refreshChannel]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    (async () => {
+      const { data } = await loadDefaultDownloadRule();
+      setDefaultRule(data ?? null);
+    })();
+  }, [isAdmin]);
 
   const errorMessage = channelResponseError?.error;
 
@@ -57,6 +77,30 @@ const ChannelBase = () => {
             <ChannelBanner channelId={channelId} channelBannerUrl={channel?.channel_banner_url} />
           </Link>
         </div>
+        {channel && (
+          <div className="ux-header-badges">
+            <span className="ux-header-name">{channel.channel_name}</span>
+            <span className="ux-badge-label">Rule</span>
+            <RuleBadge
+              channelId={channelId}
+              channelName={channel.channel_name}
+              rule={channel.download_rule}
+              defaultRule={defaultRule}
+              canEdit={isAdmin}
+              onSaved={() => setRefreshChannel(current => current + 1)}
+            />
+            <span className="ux-badge-label">Emby numbering</span>
+            <NumberingBadge
+              kind="channel"
+              id={channelId}
+              name={channel.channel_name}
+              value={channel.emby_numbering}
+              options={['date', 'year_frozen', 'absolute_frozen']}
+              canEdit={isAdmin}
+              onSaved={() => setRefreshChannel(current => current + 1)}
+            />
+          </div>
+        )}
         <div className="info-box-item child-page-nav">
           <Link to={Routes.ChannelVideo(channelId)}>
             <h3>Videos</h3>

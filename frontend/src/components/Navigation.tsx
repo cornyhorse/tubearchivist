@@ -35,19 +35,15 @@ const Navigation = () => {
         </div>
         <div className="nav-icons">
           <ThemePicker />
-          <Link to={Routes.Search}>
-            <img src={iconSearch} alt="search-icon" title="Search" />
+          <Link to={Routes.Search} title="Search videos, channels and playlists">
+            <img src={iconSearch} alt="Search" />
           </Link>
-          <Link to={Routes.SettingsDashboard}>
-            <img src={iconGear} alt="gear-icon" title="Settings" />
+          <Link to={Routes.SettingsDashboard} title="Settings">
+            <img src={iconGear} alt="Settings" />
           </Link>
-          <img
-            className="alert-hover"
-            src={iconExit}
-            alt="exit-icon"
-            title="Logout"
-            onClick={handleLogout}
-          />
+          <button type="button" className="ux-icon-only" title="Log out" onClick={handleLogout}>
+            <img className="alert-hover" src={iconExit} alt="Log out" />
+          </button>
         </div>
       </div>
     </div>

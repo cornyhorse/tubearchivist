@@ -1,0 +1,563 @@
+/*
+ * Fork UX components: tables, toolbars, chips, badges, dialogs.
+ * Colours come only from the theme tokens in themes.css.
+ */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+:root {
+  /* light accent text (white): invert the black icons */
+  --ux-on-accent-icon: brightness(0) invert(1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --ux-on-accent-icon: brightness(0);
+  }
+}
+
+:root[data-theme='dark'],
+:root[data-theme='contrast'] {
+  --ux-on-accent-icon: brightness(0);
+}
+
+.boxed-content.ux-wide {
+  max-width: 1400px;
+}
+
+:where(.ux-toolbar, .ux-filterbar, .ux-bulk-bar, .ux-modal, .ux-table) button:focus-visible,
+:where(.ux-toolbar, .ux-filterbar, .ux-bulk-bar, .ux-modal, .ux-table) input:focus-visible,
+:where(.ux-toolbar, .ux-filterbar, .ux-bulk-bar, .ux-modal, .ux-table) select:focus-visible,
+:where(.ux-toolbar, .ux-filterbar, .ux-bulk-bar, .ux-modal, .ux-table) a:focus-visible,
+.ux-badge:focus-visible,
+.ux-icon-only:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- toolbar of labelled actions --- */
+
+.ux-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.ux-toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  padding: 6px 12px;
+  font-family: Sen-Regular, sans-serif;
+}
+
+.ux-toolbar-button img {
+  width: 20px;
+  height: 20px;
+  filter: var(--img-filter);
+}
+
+.ux-toolbar-button.primary {
+  background-color: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.ux-toolbar-button.primary img {
+  /* the icons are black svgs; on the accent match the accent's text colour */
+  filter: var(--ux-on-accent-icon);
+}
+
+.ux-toolbar-button:hover,
+.ux-toolbar-button.primary:hover {
+  transform: none;
+  background-color: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.ux-toolbar-button.primary:hover img {
+  filter: var(--img-filter);
+}
+
+/* --- filter bar: search, chips, view toggle --- */
+
+.ux-filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.ux-search {
+  flex: 1 1 260px;
+}
+
+.ux-search input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  font-family: Sen-Regular, sans-serif;
+}
+
+.ux-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ux-chip,
+.ux-view-toggle button {
+  background-color: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-family: Sen-Regular, sans-serif;
+  font-size: 0.9em;
+}
+
+.ux-chip[aria-pressed='true'],
+.ux-view-toggle button[aria-pressed='true'] {
+  background-color: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.ux-chip:hover,
+.ux-view-toggle button:hover {
+  transform: none;
+  background-color: var(--accent-soft);
+  color: var(--accent);
+}
+
+.ux-chip[aria-pressed='true']::before,
+.ux-view-toggle button[aria-pressed='true']::before {
+  /* selected state isn't colour alone */
+  content: '✓ ';
+}
+
+.ux-view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.ux-view-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+}
+
+.ux-view-toggle img {
+  width: 16px;
+  height: 16px;
+  filter: var(--img-filter);
+}
+
+.ux-view-toggle button[aria-pressed='true'] img {
+  display: none;
+}
+
+.ux-count {
+  color: var(--muted);
+  margin: 4px 0 8px;
+}
+
+/* --- bulk bar --- */
+
+.ux-bulk-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background-color: var(--accent-soft);
+  border: 1px solid var(--accent);
+}
+
+.ux-bulk-bar strong {
+  color: var(--text);
+  font-family: Sen-Bold, sans-serif;
+}
+
+.ux-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ux-link-button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  text-decoration: underline;
+  padding: 4px;
+}
+
+.ux-link-button:hover {
+  background: none;
+  transform: none;
+}
+
+/* --- tables --- */
+
+.ux-table-wrap {
+  width: 100%;
+}
+
+.ux-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.92em;
+}
+
+.ux-table th,
+.ux-table td {
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.ux-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: var(--surface);
+  font-family: Sen-Bold, sans-serif;
+  font-weight: normal;
+  border-bottom: 2px solid var(--line);
+}
+
+.ux-table tbody tr:hover td {
+  background-color: var(--surface);
+}
+
+.ux-table tbody tr.selected td {
+  background-color: var(--accent-soft);
+}
+
+.ux-table td.ux-col-title {
+  white-space: normal;
+  min-width: 180px;
+}
+
+.ux-table .ux-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ux-table th.ux-num .ux-sort-button {
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.ux-table .ux-col-select {
+  width: 28px;
+}
+
+.ux-table .ux-col-select input {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.ux-table .ux-col-avatar {
+  width: 32px;
+  padding-right: 0;
+}
+
+.ux-table .ux-col-avatar img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: block;
+}
+
+.ux-table .ux-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 24px;
+}
+
+.ux-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  font: inherit;
+}
+
+.ux-sort-button:hover {
+  background: none;
+  transform: none;
+  color: var(--accent);
+}
+
+.ux-sort-mark {
+  color: var(--muted);
+  font-size: 0.75em;
+}
+
+th[aria-sort='ascending'] .ux-sort-mark,
+th[aria-sort='descending'] .ux-sort-mark {
+  color: var(--accent);
+}
+
+.ux-row-button {
+  background-color: var(--surface);
+  color: var(--accent);
+  border: 1px solid var(--line);
+  padding: 2px 8px;
+  font-size: 0.9em;
+}
+
+.ux-row-button:hover {
+  transform: none;
+}
+
+.ux-muted {
+  color: var(--muted);
+}
+
+@media screen and (max-width: 1000px) {
+  /* narrow screens scroll the table sideways; the header then sticks inside it */
+  .ux-table-wrap {
+    overflow-x: auto;
+    max-height: 80vh;
+  }
+}
+
+/* --- badges --- */
+
+.ux-badge {
+  display: inline-block;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-size: 0.85em;
+  font-family: Sen-Regular, sans-serif;
+  border: 1px solid var(--line);
+  background-color: var(--surface);
+  color: var(--text);
+}
+
+button.ux-badge {
+  cursor: pointer;
+}
+
+button.ux-badge:hover {
+  transform: none;
+  border-color: var(--accent);
+  color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
+.ux-badge.rule.own {
+  background-color: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.ux-badge.rule.default {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.ux-badge.rule.off {
+  background-color: var(--warn-soft);
+  color: var(--text);
+}
+
+.ux-badge.numbering {
+  border-style: solid;
+}
+
+.ux-header-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 8px 0;
+}
+
+.ux-header-name {
+  font-family: Sen-Bold, sans-serif;
+  color: var(--text);
+  margin-right: 8px;
+}
+
+.ux-badge-label {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.ux-badge-label:not(:first-child) {
+  margin-left: 8px;
+}
+
+/* --- dialogs --- */
+
+.ux-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 6vh 16px;
+  background-color: color-mix(in srgb, var(--bg) 60%, transparent);
+  backdrop-filter: blur(2px);
+  overflow-y: auto;
+}
+
+.ux-modal {
+  width: min(560px, 100%);
+  background-color: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.ux-modal.wide {
+  width: min(980px, 100%);
+}
+
+.ux-modal:focus {
+  outline: none;
+}
+
+.ux-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ux-modal-head h2 {
+  margin: 0;
+}
+
+.ux-modal-body {
+  padding: 12px 16px 16px;
+}
+
+.ux-modal-body label {
+  display: block;
+  margin: 8px 0 4px;
+}
+
+.ux-modal-body textarea,
+.ux-modal-body input[type='text'] {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 6px;
+  font-family: inherit;
+  background-color: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
+.ux-modal-body .settings-box-wrapper {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.ux-modal-body .settings-box-wrapper p {
+  margin: 0;
+}
+
+.ux-help {
+  color: var(--muted);
+  font-size: 0.92em;
+}
+
+.ux-icon-button {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 1.6em;
+  line-height: 1;
+  padding: 0 6px;
+}
+
+.ux-icon-button:hover {
+  background: none;
+  transform: none;
+  color: var(--accent);
+}
+
+.ux-icon-only {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.ux-icon-only:hover {
+  background: none;
+  transform: none;
+}
+
+.ux-options {
+  border: 1px solid var(--line);
+  padding: 4px 12px 8px;
+  margin: 8px 0;
+}
+
+.ux-options legend {
+  padding: 0 4px;
+  color: var(--muted);
+}
+
+.ux-options label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0;
+}
+
+.ux-options input {
+  margin: 0;
+}
+
+/* style.css colours every span and label with --text; inside controls follow the control */
+:where(.ux-toolbar-button, .ux-chip, .ux-view-toggle button, .ux-badge, .ux-sort-button) span {
+  color: inherit;
+}
