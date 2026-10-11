@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from django.db.models import Q, QuerySet
 from django.utils import timezone
 from download.models import Download, DownloadStatus
-from download.src.rules import RuleSet, check_rule, rule_ref
+from download.src.rules import RuleSet
 from jobs.models import CreatedBy, Job, JobStatus, Priority
 from jobs.src.engine import active_jobs, cancel_waiting, enqueue, pump
 from video.models import Video
@@ -33,10 +33,6 @@ FOUND_BY_LABELS = {
     "import": "Imported {date}",
     "unknown": "Found {date}",
 }
-
-
-class NotBuiltYet(Exception):
-    """the action needs a later step of the build-out"""
 
 
 def _split(value: str | None) -> list[str]:
@@ -150,35 +146,22 @@ def _found_by(item: Download) -> dict:
     }
 
 
-def verdict(rules: RuleSet, entry: dict, stored: dict | None = None) -> dict:
+def verdict(
+    rules: RuleSet,
+    entry: dict,
+    stored: dict | None = None,
+    playlist_id: str | None = None,
+) -> dict:
     """what the rules do with a video; stored: reason a rule recorded"""
-    rule = rules.for_channel(entry["channel_id"])
-    if stored and stored.get("ignore_reason"):
-        key, reason, action = (
-            stored.get("ignore_reason_key"),
-            stored["ignore_reason"],
-            "ignore",
+    result = rules.verdict(entry, playlist_id)
+    if stored and stored.get("ignore_reason") and not result["override"]:
+        result.update(
+            allowed=False,
+            action="ignore",
+            reason_key=stored.get("ignore_reason_key"),
+            reason=stored["ignore_reason"],
         )
-    else:
-        failed = check_rule(rule, entry)
-        if not failed:
-            return {
-                "allowed": True,
-                "action": "download",
-                "reason_key": None,
-                "reason": None,
-                "rule": rule_ref(rule),
-                "override": None,
-            }
-        action, reason, key = failed
-    return {
-        "allowed": False,
-        "action": action,
-        "reason_key": key,
-        "reason": reason,
-        "rule": rule_ref(rule),
-        "override": None,
-    }
+    return result
 
 
 def _state(item: Download, job: Job | None) -> str:
@@ -242,6 +225,7 @@ def found_dicts(items: list) -> list[dict]:
                         "ignore_reason": item.ignore_reason,
                         "ignore_reason_key": item.ignore_reason_key,
                     },
+                    item.found_playlist_id,
                 ),
                 "state": _state(item, job),
                 "job": _job_ref(job, positions),
@@ -299,9 +283,7 @@ def found_action(
     filters: dict | None = None,
     created_by: str = CreatedBy.USER,
 ) -> dict:
-    """apply a bulk action; ValueError, NotBuiltYet"""
-    if action in ("download_anyway", "always_ignore"):
-        raise NotBuiltYet("rules API extensions")
+    """apply a bulk action; ValueError"""
     if ids is not None:
         queryset = Download.objects.filter(youtube_id__in=ids)
     elif filters and filters.get("tab") == "downloaded":
@@ -315,7 +297,14 @@ def found_action(
     queryset = Download.objects.filter(youtube_id__in=target_ids)
     job_ids: list[int] = []
 
-    if action in ("download_now", "download"):
+    if action in ("download_anyway", "always_ignore"):
+        # pylint: disable=import-outside-toplevel
+        from download.src.rules_api import set_override
+
+        override = "download" if action == "download_anyway" else "ignore"
+        job_ids = set_override(target_ids, override, created_by=created_by)
+        changed = matched
+    elif action in ("download_now", "download"):
         changed = queryset.update(
             status=DownloadStatus.PENDING,
             ignore_reason=None,

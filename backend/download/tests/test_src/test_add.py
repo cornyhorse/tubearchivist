@@ -268,7 +268,7 @@ def test_add_subscribe(youtube):
         (
             "check_playlist",
             "PL1",
-            {**base, "rule": rule_json, "numbering": "year_frozen"},
+            {**base, "save_rule": rule_json, "numbering": "year_frozen"},
         ),
         (
             "fetch_video",

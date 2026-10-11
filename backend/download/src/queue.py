@@ -24,7 +24,7 @@ from django.db import transaction
 from download.models import Download, DownloadRule
 from download.serializers import DownloadItemSerializer
 from download.src.queue_interact import PendingInteract
-from download.src.rules import RuleSet, check_rule
+from download.src.rules import RuleSet
 from download.src.thumbnails import ThumbManager
 from playlist.src.index import YoutubePlaylist
 from video.models import Video
@@ -291,15 +291,12 @@ class PendingList(PendingIndex):
         self.added += self.add_to_pending(self.status)
         self.missing_videos = []
 
-    def _apply_rules(self, to_add: dict) -> bool:
+    def _apply_rules(self, to_add: dict, playlist_id: str | None = None):
         """
-        check the channel's download rule; False if the video is skipped,
-        True if it goes into the queue (possibly as ignored)
+        check the download rules; False if the video is skipped, True if
+        it goes into the queue (possibly as ignored)
         """
-        if self.rule is False:
-            failed = self.rules.check(to_add)
-        else:
-            failed = check_rule(self.rule, to_add)
+        failed = self.rules.check(to_add, playlist_id, self.rule)
         if not failed:
             return True
 
@@ -338,8 +335,7 @@ class PendingList(PendingIndex):
             to_add = self._parse_playlist_video(video_data, playlist)
             if not to_add:
                 continue
-            # stored rules don't apply to playlists yet, a one-off rule does
-            if self.rule is not False and not self._apply_rules(to_add):
+            if not self._apply_rules(to_add, playlist_id=url):
                 continue
 
             self.missing_videos.append(to_add)

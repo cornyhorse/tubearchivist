@@ -177,6 +177,41 @@ class SeriesNumbers:
     warnings: list[str]
 
 
+# numbers set by hand are stored under this scheme; every scheme keeps them
+MANUAL = "manual"
+
+
+def manual_numbers(kind: str, series_id: str) -> dict[str, tuple[int, int]]:
+    """numbers set by hand in a series"""
+    rows = EpisodeNumber.objects.filter(
+        series_kind=kind, series_id=series_id, scheme=MANUAL
+    )
+    return {n.youtube_id: (n.season, n.episode) for n in rows}
+
+
+def _around_manual(
+    computed: dict[str, tuple[int, int]],
+    manual: dict[str, tuple[int, int]],
+    warnings: list[str],
+) -> dict[str, tuple[int, int]]:
+    """recomputed numbers that collide with a manual one move up"""
+    slots = set(manual.values())
+    placed = {}
+    for youtube_id, (season, episode) in sorted(
+        computed.items(), key=lambda i: i[1]
+    ):
+        if (season, episode) in slots:
+            moved = max(e for s, e in slots if s == season) + 1
+            warnings.append(
+                f"{youtube_id}: E{episode} is set by hand on another video, "
+                f"numbered E{moved}"
+            )
+            episode = moved
+        slots.add((season, episode))
+        placed[youtube_id] = (season, episode)
+    return placed
+
+
 def _frozen_names(rows: list[EpisodeNumber]) -> tuple[dict[str, str], str]:
     """names already frozen in any scheme of the series, oldest first"""
     names: dict[str, str] = {}
@@ -214,16 +249,41 @@ def ensure_numbers(
         for youtube_id, title in titles.items():
             names.setdefault(youtube_id, safe_name(title, youtube_id))
 
+        manual = {
+            r.youtube_id: (r.season, r.episode)
+            for r in rows
+            if r.scheme == MANUAL
+        }
+        slots = set(manual.values())
+        automatic = [i for i in items if i.youtube_id not in manual]
         stored = [row for row in rows if row.scheme == scheme]
         if scheme in FROZEN_SCHEMES:
+            # a stored number set aside for a manual one is replaced
+            dropped = [
+                r
+                for r in stored
+                if r.youtube_id in manual or (r.season, r.episode) in slots
+            ]
+            stored = [r for r in stored if r not in dropped]
             existing = {n.youtube_id: (n.season, n.episode) for n in stored}
-            numbers, warnings = assign_numbers(scheme, items, existing)
-            new = {k: v for k, v in numbers.items() if k not in existing}
+            numbers, warnings = assign_numbers(
+                scheme, automatic, {**existing, **manual}
+            )
+            new = {
+                k: v
+                for k, v in numbers.items()
+                if k not in existing and k not in manual
+            }
         else:
-            numbers, warnings = assign_numbers(scheme, items)
-            new = numbers
+            dropped = []
+            computed, warnings = assign_numbers(scheme, automatic)
+            new = _around_manual(computed, manual, warnings)
+            numbers = {**manual, **new}
 
         if not dry_run:
+            EpisodeNumber.objects.filter(
+                pk__in=[r.pk for r in dropped]
+            ).delete()
             _store(
                 kind, series.series_id, scheme, stored, new, names, series_name
             )
@@ -311,11 +371,13 @@ def _episodes(
     return episodes
 
 
-def channel_series(
-    channel: Channel, paths: EmbyPaths, dry_run: bool = False
-) -> tuple[SeriesSource, list[EpisodeSource], list[str]]:
-    """series and numbered episodes of a channel"""
-    tz = ZoneInfo(paths.timezone)
+def channel_numbers(
+    channel: Channel,
+    tz: ZoneInfo,
+    scheme: str | None = None,
+    dry_run: bool = False,
+) -> tuple[list[Video], SeriesInfo, SeriesNumbers]:
+    """videos, series info and numbers of a channel, oldest first"""
     videos = list(
         Video.objects.select_related("channel")
         .filter(channel=channel, active=True)
@@ -334,11 +396,20 @@ def channel_series(
     found = ensure_numbers(
         SeriesKind.CHANNEL,
         info,
-        channel.emby_numbering,
+        scheme or channel.emby_numbering,
         items,
         {v.youtube_id: v.title for v in videos},
         dry_run,
     )
+    return videos, info, found
+
+
+def channel_series(
+    channel: Channel, paths: EmbyPaths, dry_run: bool = False
+) -> tuple[SeriesSource, list[EpisodeSource], list[str]]:
+    """series and numbered episodes of a channel"""
+    tz = ZoneInfo(paths.timezone)
+    videos, info, found = channel_numbers(channel, tz, dry_run=dry_run)
     series = SeriesSource(
         kind="channels",
         info=info,
@@ -350,11 +421,13 @@ def channel_series(
     return series, _episodes(videos, found, paths, tz), found.warnings
 
 
-def playlist_series(
-    playlist: Playlist, paths: EmbyPaths, dry_run: bool = False
-) -> tuple[SeriesSource, list[EpisodeSource], list[str]]:
-    """series and numbered episodes of a playlist, downloaded entries only"""
-    tz = ZoneInfo(paths.timezone)
+def playlist_numbers(
+    playlist: Playlist,
+    tz: ZoneInfo,
+    scheme: str | None = None,
+    dry_run: bool = False,
+) -> tuple[list[Video], SeriesInfo, SeriesNumbers]:
+    """videos, series info and numbers of a playlist, in playlist order"""
     entries = {
         e.youtube_id: e.idx for e in playlist.entries.all().order_by("idx")
     }
@@ -379,11 +452,20 @@ def playlist_series(
     found = ensure_numbers(
         SeriesKind.PLAYLIST,
         info,
-        playlist.emby_numbering,
+        scheme or playlist.emby_numbering,
         items,
         {v.youtube_id: v.title for v in videos},
         dry_run,
     )
+    return videos, info, found
+
+
+def playlist_series(
+    playlist: Playlist, paths: EmbyPaths, dry_run: bool = False
+) -> tuple[SeriesSource, list[EpisodeSource], list[str]]:
+    """series and numbered episodes of a playlist, downloaded entries only"""
+    tz = ZoneInfo(paths.timezone)
+    videos, info, found = playlist_numbers(playlist, tz, dry_run=dry_run)
     series = SeriesSource(
         kind="playlists",
         info=info,

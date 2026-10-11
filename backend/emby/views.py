@@ -1,7 +1,8 @@
 """numbering API views, /api/numbering/"""
 
 from common.serializers import ErrorResponseSerializer
-from common.views_base import AdminOnly, ApiBaseView, not_built
+from common.views_base import AdminOnly, ApiBaseView
+from django.core.exceptions import ObjectDoesNotExist
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiResponse,
@@ -17,9 +18,25 @@ from emby.serializers import (
     VideoNumberListSerializer,
     VideoNumberSerializer,
 )
+from emby.src.numbering_api import (
+    NumberConflict,
+    delete_manual,
+    preview_scheme,
+    schemes,
+    series_numbering,
+    set_manual,
+    set_scheme,
+    video_numbers,
+)
+from rest_framework.response import Response
 
-STEP = "rules API extensions"
 NOT_FOUND = OpenApiResponse(ErrorResponseSerializer(), description="not found")
+
+
+def _not_found() -> Response:
+    return Response({"error": "not found"}, status=404)
+
+
 KIND = OpenApiParameter(
     "kind", str, OpenApiParameter.PATH, enum=["channel", "playlist"]
 )
@@ -33,7 +50,7 @@ class SchemeListView(ApiBaseView):
     @extend_schema(responses=SchemeSerializer(many=True))
     def get(self, request):
         """list schemes"""
-        return not_built(STEP)
+        return Response(schemes())
 
 
 class SeriesNumberingView(ApiBaseView):
@@ -50,7 +67,10 @@ class SeriesNumberingView(ApiBaseView):
     )
     def get(self, request, kind, series_id):
         """numbering of a channel or playlist"""
-        return not_built(STEP)
+        try:
+            return Response(series_numbering(kind, series_id))
+        except (KeyError, ObjectDoesNotExist):
+            return _not_found()
 
     @extend_schema(
         parameters=[KIND],
@@ -67,7 +87,15 @@ class SeriesNumberingView(ApiBaseView):
     )
     def put(self, request, kind, series_id):
         """set the scheme; queues an Emby write"""
-        return not_built(STEP)
+        serializer = SchemeChangeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        scheme = serializer.validated_data["scheme"]
+        try:
+            return Response(set_scheme(kind, series_id, scheme))
+        except (KeyError, ObjectDoesNotExist):
+            return _not_found()
+        except ValueError as err:
+            return Response({"error": str(err)}, status=400)
 
 
 class SeriesNumberingPreviewView(ApiBaseView):
@@ -84,7 +112,15 @@ class SeriesNumberingPreviewView(ApiBaseView):
     )
     def post(self, request, kind, series_id):
         """count and sample of renumbered episodes"""
-        return not_built(STEP)
+        serializer = SchemeChangeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        scheme = serializer.validated_data["scheme"]
+        try:
+            return Response(preview_scheme(kind, series_id, scheme))
+        except (KeyError, ObjectDoesNotExist):
+            return _not_found()
+        except ValueError as err:
+            return Response({"error": str(err)}, status=400)
 
 
 class VideoNumberView(ApiBaseView):
@@ -101,7 +137,10 @@ class VideoNumberView(ApiBaseView):
     )
     def get(self, request, youtube_id):
         """numbers of a video"""
-        return not_built(STEP)
+        try:
+            return Response({"data": video_numbers(youtube_id)})
+        except ObjectDoesNotExist:
+            return _not_found()
 
     @extend_schema(
         request=VideoNumberSerializer(),
@@ -116,7 +155,22 @@ class VideoNumberView(ApiBaseView):
     )
     def put(self, request, youtube_id):
         """manual season and episode, kept by every scheme"""
-        return not_built(STEP)
+        serializer = VideoNumberSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            item = set_manual(
+                youtube_id,
+                data["series_kind"],
+                data["series_id"],
+                data["season"],
+                data["episode"],
+            )
+        except (LookupError, ObjectDoesNotExist):
+            return _not_found()
+        except NumberConflict as err:
+            return Response({"error": str(err)}, status=409)
+        return Response(item)
 
     @extend_schema(
         parameters=[VideoNumberDeleteQuerySerializer()],
@@ -124,4 +178,13 @@ class VideoNumberView(ApiBaseView):
     )
     def delete(self, request, youtube_id):
         """remove the manual number"""
-        return not_built(STEP)
+        serializer = VideoNumberDeleteQuerySerializer(
+            data=request.query_params
+        )
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        if not delete_manual(
+            youtube_id, data["series_kind"], data["series_id"]
+        ):
+            return _not_found()
+        return Response(status=204)

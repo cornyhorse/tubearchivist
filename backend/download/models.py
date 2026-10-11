@@ -221,13 +221,20 @@ class RuleAction(models.TextChoices):
 
 class DownloadRule(models.Model):
     """
-    which videos of a channel to download; a rule with no channel is the
-    default for channels without their own rule
+    which videos to download; a rule belongs to a channel, to a playlist
+    (for videos found by checking it), or to neither: the default
     every condition left empty matches everything
     """
 
     channel = models.OneToOneField(
         "channel.Channel",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="download_rule",
+    )
+    playlist = models.OneToOneField(
+        "playlist.Playlist",
         on_delete=models.CASCADE,
         null=True,
         blank=True,
@@ -248,12 +255,34 @@ class DownloadRule(models.Model):
 
     class Meta:
         constraints = [
-            # one rule per channel, and only one default (channel null)
+            # one rule per channel, per playlist, and only one default
             models.UniqueConstraint(
                 Coalesce("channel", models.Value("")),
-                name="download_rule_one_per_channel",
+                Coalesce("playlist", models.Value("")),
+                name="download_rule_one_per_target",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(channel__isnull=True)
+                | models.Q(playlist__isnull=True),
+                name="download_rule_one_target",
             ),
         ]
 
     def __str__(self):
-        return f"rule for {self.channel_id or 'all channels'}"
+        target = self.channel_id or self.playlist_id or "all channels"
+        return f"rule for {target}"
+
+
+class VideoOverride(models.Model):
+    """per-video 'download anyway' or 'always ignore', beats every rule"""
+
+    youtube_id = models.CharField(primary_key=True, max_length=32)
+    override = models.CharField(
+        max_length=16,
+        choices=[("download", "download"), ("ignore", "ignore")],
+    )
+    note = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.youtube_id}: {self.override}"

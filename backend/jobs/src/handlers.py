@@ -235,6 +235,14 @@ def check_playlist(ctx: JobContext) -> dict:
     if ctx.params.get("subscribe"):
         ctx.send_progress(["Subscribing to the playlist."])
         YoutubePlaylist(playlist_id).change_subscribe(new_subscribe_state=True)
+    elif "save_rule" in ctx.params:
+        YoutubePlaylist(playlist_id).update_playlist()
+    if "save_rule" in ctx.params:
+        set_rule(
+            None,
+            _rule_fields(ctx.params["save_rule"]),
+            playlist_id=playlist_id,
+        )
     result = scan(ctx, [entry], "playlist_check", playlist_id=playlist_id)
     if ctx.params.get("numbering"):
         # the scan indexed the playlist

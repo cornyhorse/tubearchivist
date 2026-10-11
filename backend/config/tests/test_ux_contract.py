@@ -1,7 +1,4 @@
-"""
-the endpoints of docs/ux-api-contract.md: routed, admin only where the
-contract says so, and 501 until the PR that builds them
-"""
+"""the schema of docs/ux-api-contract.md and its validation rules"""
 
 from pathlib import Path
 
@@ -11,50 +8,9 @@ from download.serializers_found import AddSerializer, FoundActionSerializer
 from download.serializers_rules import EffectiveRuleQuerySerializer
 from mediaserver.serializers import NotifyQuerySerializer
 
-# pylint: disable=unused-import
-from task.tests.helpers import (  # noqa: F401
-    fixture_admin_client,
-    fixture_no_broker,
-    fixture_user_client,
-)
-
 pytestmark = pytest.mark.django_db
 
 SCHEMA = Path(__file__).resolve().parents[3] / "docs" / "ux-api-schema.yaml"
-
-# (method, url, open to any signed in user)
-NOT_BUILT = [
-    ("get", "/api/rules/", False),
-    ("get", "/api/rules/presets/", True),
-    ("get", "/api/rules/default/", False),
-    ("put", "/api/rules/default/", False),
-    ("delete", "/api/rules/default/", False),
-    ("post", "/api/rules/preview/", False),
-    ("get", "/api/rules/effective/", False),
-    ("get", "/api/rules/videos/", False),
-    ("put", "/api/rules/videos/vid00000001/", False),
-    ("delete", "/api/rules/videos/vid00000001/", False),
-    ("get", "/api/rules/channel/UC1/", False),
-    ("put", "/api/rules/channel/UC1/", False),
-    ("delete", "/api/rules/channel/UC1/", False),
-    ("get", "/api/numbering/schemes/", True),
-    ("get", "/api/numbering/channel/UC1/", False),
-    ("put", "/api/numbering/channel/UC1/", False),
-    ("post", "/api/numbering/channel/UC1/preview/", False),
-    ("get", "/api/numbering/video/vid00000001/", False),
-    ("put", "/api/numbering/video/vid00000001/", False),
-    ("delete", "/api/numbering/video/vid00000001/", False),
-]
-
-
-@pytest.mark.parametrize("method,url,open_to_users", NOT_BUILT)
-def test_not_built_yet(admin_client, user_client, method, url, open_to_users):
-    response = getattr(admin_client, method)(url, {}, format="json")
-    assert response.status_code == 501
-    assert response.json()["error"].startswith("not built yet: ")
-
-    as_user = getattr(user_client, method)(url, {}, format="json")
-    assert as_user.status_code == (501 if open_to_users else 403)
 
 
 def test_schema_is_current(tmp_path):

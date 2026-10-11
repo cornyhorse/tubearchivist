@@ -11,6 +11,7 @@ NUMBERING_SCHEMES = [
     "date",
     "year_frozen",
     "absolute_frozen",
+    "playlist_frozen",
     "playlist_position",
 ]
 SERIES_KINDS = ["channel", "playlist"]

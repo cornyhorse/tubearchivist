@@ -12,11 +12,8 @@ backend). A test fails if the schema file and the code drift apart, so the
 schema in `main` is always what the backend serves. Browse it live at
 `/api/docs/`.
 
-Every endpoint below exists now. Until the PR that builds it is merged, it
-answers **501** with `{"error": "not built yet: <step>"}`, where `<step>` is
-one of `jobs engine`, `scoped scan and add`, `media server integration`,
-`rules API extensions`. The frontend can wire against the routes today and
-show a "coming soon" state on 501.
+Every endpoint below is built. Each step landed as its own PR (#8 jobs,
+#13 add, #14 media server, the rules and numbering PR), stacked on #5.
 
 ## Conventions
 
@@ -26,7 +23,7 @@ show a "coming soon" state on 501.
   signed in user may read (403 otherwise).
 - Errors: `{"error": "plain words"}` with 400 (bad input; DRF field errors
   keep DRF's `{"field": ["msg"]}` shape), 404, 409 (not allowed in the
-  current state), 501 (not built yet), 502 (media server failed).
+  current state), 502 (media server failed).
 - Times are ISO 8601 with offset. Durations are seconds.
 - Lists that page use the existing `paginate` object and `?page=`; new lists
   also accept `?page_size=` (1–500, default the user's page size).
@@ -179,9 +176,8 @@ download_now (default true), priority (default high)}`:
   `save_rule` defaults false (the rule applies to this add only).
 - `mode=newest_n`: like `once`, limited to the `newest_n` newest videos.
 - `numbering` sets the channel's/playlist's scheme.
-- For playlists a rule is always one-off for now (stored playlist rules
-  arrive with the rules API step); stored channel and default rules don't
-  apply to playlist checks yet, as before.
+- `save_rule` stores the rule on the channel or the playlist; for a single
+  video it is always one-off.
 
 Response 201 `{jobs: Job[], errors[]}` (400 with the same shape when no
 link could be read) — one high priority scan job per link (`check_channel`, `check_playlist` or `fetch_video`); follow them in
@@ -191,7 +187,8 @@ the queue.
 
 Precedence, first match wins: **per-video override** → **playlist rule**
 (for videos found by checking that playlist) → **channel rule** →
-**default rule** → no rule (download everything). A disabled channel or
+**default rule** → no rule (download everything). Stored rules now apply
+to playlist checks too (before, playlist videos skipped every rule). A disabled channel or
 playlist rule means "no rule here", not "fall back to the default".
 
 The rule body is today's `DownloadRule`: `enabled, min_duration,
@@ -235,7 +232,10 @@ The existing `GET/POST /api/download/rule/` and the `download_rule` field on
 
 Names look like `S2025E6200 - Southern California Trains 2025`. Show the
 preview's "this renumbers N episodes in Emby" before calling PUT. Manual
-numbers survive scheme changes. PUT queues an `emby_write` job.
+numbers survive scheme changes: frozen schemes keep them and give a
+colliding automatic number a new one; `playlist_position` moves a
+colliding automatic number to the next free episode. PUT (scheme or
+manual number) queues an `emby_write` job when the Emby writer is on.
 
 The existing `emby_numbering` field on channel and playlist keeps working.
 

@@ -2,7 +2,7 @@
 
 from common.serializers import ErrorResponseSerializer
 from common.src.index_generic import Pagination
-from common.views_base import AdminOnly, ApiBaseView, not_built
+from common.views_base import AdminOnly, ApiBaseView
 from download.models import DownloadRule
 from download.serializers_found import (
     AddResultSerializer,
@@ -16,7 +16,6 @@ from download.serializers_found import (
 )
 from download.src.add import add, preview
 from download.src.found import (
-    NotBuiltYet,
     found_action,
     found_dicts,
     found_queryset,
@@ -83,8 +82,6 @@ class FoundActionView(ApiBaseView):
             result = found_action(
                 data["action"], ids=data.get("ids"), filters=data.get("filter")
             )
-        except NotBuiltYet as err:
-            return not_built(str(err))
         except ValueError as err:
             return Response({"error": str(err)}, status=400)
         return Response(result)

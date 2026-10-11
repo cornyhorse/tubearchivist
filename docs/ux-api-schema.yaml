@@ -4257,7 +4257,7 @@ components:
           items:
             $ref: '#/components/schemas/ChannelTabsEnum'
         emby_numbering:
-          $ref: '#/components/schemas/EmbyNumbering4c7Enum'
+          $ref: '#/components/schemas/NumberingSchemeEnum'
         download_rule:
           allOf:
           - $ref: '#/components/schemas/DownloadRule'
@@ -4777,20 +4777,6 @@ components:
       - override
       - rule
       - source
-    EmbyNumbering4c7Enum:
-      enum:
-      - date
-      - year_frozen
-      - absolute_frozen
-      - playlist_frozen
-      - playlist_position
-      type: string
-      description: |-
-        * `date` - date
-        * `year_frozen` - year_frozen
-        * `absolute_frozen` - absolute_frozen
-        * `playlist_frozen` - playlist_frozen
-        * `playlist_position` - playlist_position
     EpisodeName:
       type: object
       description: a video's place in a series and its Emby name
@@ -5882,12 +5868,14 @@ components:
       - date
       - year_frozen
       - absolute_frozen
+      - playlist_frozen
       - playlist_position
       type: string
       description: |-
         * `date` - date
         * `year_frozen` - year_frozen
         * `absolute_frozen` - absolute_frozen
+        * `playlist_frozen` - playlist_frozen
         * `playlist_position` - playlist_position
     Pagination:
       type: object
@@ -6037,7 +6025,7 @@ components:
         playlist_type:
           $ref: '#/components/schemas/PlaylistTypeEnum'
         emby_numbering:
-          $ref: '#/components/schemas/EmbyNumbering4c7Enum'
+          $ref: '#/components/schemas/NumberingSchemeEnum'
         _index:
           type: string
           title: ' index'
@@ -6213,7 +6201,7 @@ components:
         playlist_sort_order:
           $ref: '#/components/schemas/PlaylistSortOrderEnum'
         emby_numbering:
-          $ref: '#/components/schemas/EmbyNumbering4c7Enum'
+          $ref: '#/components/schemas/NumberingSchemeEnum'
     PlaylistSortOrderEnum:
       enum:
       - top
