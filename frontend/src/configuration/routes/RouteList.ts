@@ -15,6 +15,13 @@ const Routes = {
   Search: '/search/',
   SettingsDashboard: '/settings/',
   SettingsUser: '/settings/user/',
+  SettingsDownload: '/settings/download/',
+  SettingsWhen: '/settings/when/',
+  SettingsMediaServer: '/settings/media-server/',
+  SettingsYouTube: '/settings/youtube/',
+  SettingsNotifications: '/settings/notifications/',
+  SettingsMaintenance: '/settings/maintenance/',
+  // old addresses, redirected to the groups above
   SettingsApplication: '/settings/application/',
   SettingsScheduling: '/settings/scheduling/',
   SettingsActions: '/settings/actions/',
