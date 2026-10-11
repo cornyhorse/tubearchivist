@@ -16,6 +16,8 @@ import updateTaskByName from '../api/actions/updateTaskByName';
 import Notifications from '../components/Notifications';
 import ScrollToTopOnNavigate from '../components/ScrollToTop';
 import Button from '../components/Button';
+import Modal from '../components/ux/Modal';
+import { ToolbarButton } from '../components/ux/Controls';
 import DownloadListItem from '../components/DownloadListItem';
 import loadDownloadAggs, { DownloadAggsType } from '../api/loader/loadDownloadAggs';
 import { useUserConfigStore } from '../stores/UserConfigStore';
@@ -189,138 +191,101 @@ const Download = () => {
           }}
         />
         <div id="downloadControl"></div>
-        <div className="info-box info-box-3">
-          <div className="icon-text">
-            <img
-              id="rescan-icon"
-              className={rescanPending ? 'rotate-img' : ''}
-              onClick={async () => {
-                setRescanPending(!rescanPending);
-                await updateTaskByName('update_subscribed');
-              }}
-              src={iconRescan}
-              alt="rescan-icon"
-            />
-            <p>Rescan subscriptions</p>
-          </div>
-          <div className="icon-text">
-            <img
-              id="download-icon"
-              className={downloadPending ? 'bounce-img' : ''}
-              onClick={async () => {
-                setDownloadPending(!downloadPending);
-                await updateTaskByName('download_pending');
-              }}
-              src={iconDownload}
-              alt="download-icon"
-            />
-            <p>Start download</p>
-          </div>
-          <div className="icon-text">
-            <img
-              className={showHiddenForm ? 'pulse-img' : ''}
-              onClick={() => {
-                setShowHiddenForm(!showHiddenForm);
-              }}
-              src={iconAdd}
-              alt="add-icon"
-            />
-            <p>Add to download queue</p>
-
-            {showHiddenForm && (
-              <div className="show-form">
-                <div>
-                  <div className="toggle">
-                    <div className="toggleBox">
-                      <input
-                        id="hide_watched"
-                        type="checkbox"
-                        checked={addAsFlat}
-                        onChange={() => setAddAsFlat(!addAsFlat)}
-                      />
-                      {addAsFlat ? (
-                        <label htmlFor="" className="onbtn">
-                          On
-                        </label>
-                      ) : (
-                        <label htmlFor="" className="ofbtn">
-                          Off
-                        </label>
-                      )}
-                    </div>
-                    <span>Fast add</span>
-                  </div>
-                  <div className="toggle">
-                    <div className="toggleBox">
-                      <input
-                        id="add_force"
-                        type="checkbox"
-                        checked={addAsForce}
-                        onChange={() => setAddAsForce(!addAsForce)}
-                      />
-                      {addAsForce ? (
-                        <label htmlFor="" className="onbtn">
-                          On
-                        </label>
-                      ) : (
-                        <label htmlFor="" className="ofbtn">
-                          Off
-                        </label>
-                      )}
-                    </div>
-                    <span>Re-Download</span>
-                  </div>
-                  <div className="toggle">
-                    <div className="toggleBox">
-                      <input
-                        id="hide_watched"
-                        type="checkbox"
-                        checked={addAsAutoStart}
-                        onChange={() => setAddAsAutoStart(!addAsAutoStart)}
-                      />
-                      {addAsAutoStart ? (
-                        <label htmlFor="" className="onbtn">
-                          On
-                        </label>
-                      ) : (
-                        <label htmlFor="" className="ofbtn">
-                          Off
-                        </label>
-                      )}
-                    </div>
-                    <span>Auto Download</span>
-                  </div>
-                  <textarea
-                    value={downloadQueueText}
-                    onChange={e => setDownloadQueueText(e.target.value)}
-                    cols={40}
-                    rows={4}
-                    placeholder="Enter at least one video, channel or playlist id/URL here..."
-                  />
-                  <Button
-                    label="Add to queue"
-                    onClick={async () => {
-                      if (downloadQueueText.trim()) {
-                        await updateDownloadQueue({
-                          youtubeIdStrings: downloadQueueText,
-                          autostart: addAsAutoStart,
-                          flat: addAsFlat,
-                          force: addAsForce,
-                        });
-                        setDownloadQueueText('');
-                        refreshDownloadQueue();
-                        setShowHiddenForm(false);
-                      }
-                    }}
-                  />{' '}
-                </div>
-              </div>
-            )}
-          </div>
+        <div className="ux-toolbar" role="toolbar" aria-label="Download actions">
+          <ToolbarButton
+            label="Check channels for new videos"
+            help="Queues a check of every subscribed channel and playlist. Found videos appear here, and the ones your rules allow start downloading as they're found."
+            icon={iconRescan}
+            busy={rescanPending}
+            onClick={async () => {
+              setRescanPending(true);
+              await updateTaskByName('update_subscribed');
+            }}
+          />
+          <ToolbarButton
+            label="Download all allowed"
+            help="Queues downloads for every found video that isn't ignored."
+            icon={iconDownload}
+            busy={downloadPending}
+            primary
+            onClick={async () => {
+              setDownloadPending(true);
+              await updateTaskByName('download_pending');
+            }}
+          />
+          <ToolbarButton
+            label="Add…"
+            help="Paste a video, channel or playlist link."
+            icon={iconAdd}
+            onClick={() => setShowHiddenForm(true)}
+          />
         </div>
+
+        {showHiddenForm && (
+          <Modal title="Add videos" onClose={() => setShowHiddenForm(false)}>
+            <label htmlFor="add-to-queue">
+              One link or ID per line: a video, a channel or a playlist. A channel or playlist adds
+              all of its videos.
+            </label>
+            <textarea
+              id="add-to-queue"
+              value={downloadQueueText}
+              onChange={e => setDownloadQueueText(e.target.value)}
+              rows={4}
+              placeholder="https://www.youtube.com/watch?v=…"
+            />
+            <fieldset className="ux-options">
+              <legend>Options</legend>
+              <label title="Adds the videos without fetching their details first. Details are fetched when they download.">
+                <input
+                  type="checkbox"
+                  checked={addAsFlat}
+                  onChange={() => setAddAsFlat(!addAsFlat)}
+                />{' '}
+                Add quickly (fetch details later)
+              </label>
+              <label title="Downloads the videos again even if they are already in the archive.">
+                <input
+                  type="checkbox"
+                  checked={addAsForce}
+                  onChange={() => setAddAsForce(!addAsForce)}
+                />{' '}
+                Download again if already downloaded
+              </label>
+              <label title="Starts downloading these straight away, ahead of other found videos.">
+                <input
+                  type="checkbox"
+                  checked={addAsAutoStart}
+                  onChange={() => setAddAsAutoStart(!addAsAutoStart)}
+                />{' '}
+                Start downloading now
+              </label>
+            </fieldset>
+            <div className="button-box">
+              <Button
+                label="Add"
+                onClick={async () => {
+                  if (downloadQueueText.trim()) {
+                    await updateDownloadQueue({
+                      youtubeIdStrings: downloadQueueText,
+                      autostart: addAsAutoStart,
+                      flat: addAsFlat,
+                      force: addAsForce,
+                    });
+                    setDownloadQueueText('');
+                    refreshDownloadQueue();
+                    setShowHiddenForm(false);
+                  }
+                }}
+              />
+            </div>
+          </Modal>
+        )}
         <div className="view-controls three">
           <div className="toggle">
-            <span>Show only ignored videos:</span>
+            <span title="Ignored videos were set aside by a rule or by you. They don't download.">
+              Show only ignored videos:
+            </span>
             <div className="toggleBox">
               <input
                 id="showIgnored"
@@ -348,7 +313,7 @@ const Download = () => {
           </div>
           <div className="view-icons">
             <Button onClick={() => setShowQueueActions(!showQueueActions)}>
-              {showQueueActions ? 'Hide Advanced' : 'Show Advanced'}
+              {showQueueActions ? 'Hide search and bulk actions' : 'Search and bulk actions'}
             </Button>
 
             {isGridView && (
@@ -516,14 +481,32 @@ const Download = () => {
             <div>
               {showIgnored ? (
                 <div className="button-box">
-                  <Button onClick={() => handleBulkStatusUpdate('pending')}>Add to Queue</Button>
+                  <Button
+                    title="Move every video matching the filters back to waiting, so it downloads"
+                    onClick={() => handleBulkStatusUpdate('pending')}
+                  >
+                    Stop ignoring all
+                  </Button>
                 </div>
               ) : (
                 <div className="button-box">
-                  <Button onClick={() => handleBulkStatusUpdate('ignore')}>Ignore</Button>
-                  <Button onClick={() => handleBulkStatusUpdate('priority')}>Download Now</Button>
-                  <Button onClick={() => handleBulkStatusUpdate('clear_error')}>
-                    Clear Errors
+                  <Button
+                    title="Set aside every video matching the filters; they won't download"
+                    onClick={() => handleBulkStatusUpdate('ignore')}
+                  >
+                    Ignore all
+                  </Button>
+                  <Button
+                    title="Move every video matching the filters to the front and start downloading"
+                    onClick={() => handleBulkStatusUpdate('priority')}
+                  >
+                    Download all now
+                  </Button>
+                  <Button
+                    title="Clear the error on every video matching the filters so it is tried again"
+                    onClick={() => handleBulkStatusUpdate('clear_error')}
+                  >
+                    Retry failed
                   </Button>
                 </div>
               )}
@@ -548,7 +531,12 @@ const Download = () => {
                   <Button onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
                 </>
               ) : (
-                <Button onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}>Forget</Button>
+                <Button
+                  title="Remove every video matching the filters from this list. Nothing on disk is deleted."
+                  onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
+                >
+                  Forget all
+                </Button>
               )}
             </div>
           </div>
