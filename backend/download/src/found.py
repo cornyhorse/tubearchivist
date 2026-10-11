@@ -8,7 +8,7 @@ Functionality:
 
 from datetime import datetime, timedelta
 
-from django.db.models import Q, QuerySet
+from django.db.models import Count, F, Q, QuerySet
 from django.utils import timezone
 from download.models import Download, DownloadStatus
 from download.src.rules import RuleSet
@@ -113,6 +113,30 @@ def tab_counts(filters: dict) -> dict:
     }
     counts["downloaded"] = video_queryset(filters).count()
     return counts
+
+
+def channel_facets(filters: dict, limit: int = 200) -> list[dict]:
+    """channels of the current tab with counts, other filters applied"""
+    filters = {**filters, "channel": None}
+    if filters.get("tab") == "downloaded":
+        rows = video_queryset(filters).values(
+            "channel_id", name=F("channel__name")
+        )
+    else:
+        rows = download_queryset(filters).values(
+            "channel_id", name=F("channel_name")
+        )
+    rows = rows.annotate(count=Count("youtube_id")).order_by("-count", "name")[
+        :limit
+    ]
+    return [
+        {
+            "channel_id": row["channel_id"],
+            "channel_name": row["name"],
+            "count": row["count"],
+        }
+        for row in rows
+    ]
 
 
 def found_queryset(filters: dict) -> QuerySet:

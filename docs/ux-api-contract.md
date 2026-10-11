@@ -74,6 +74,8 @@ it.
 | `resume` | paused | back to queued, same priority |
 | `retry` | failed, cancelled | a fresh queued run, `attempts` reset |
 | `move_to_top` | queued, paused | priority = highest queued in its lane + 1 |
+| `move_up`, `move_down` | queued, paused | trade places with the waiting job before/after it in its lane |
+| `move_to_bottom` | queued, paused | after every waiting job of its lane |
 
 Endpoints:
 
@@ -88,7 +90,7 @@ Endpoints:
 | GET | `/api/queue/lanes/` | | `Lane[]` |
 | PATCH | `/api/queue/lanes/<lane>/` | `{paused?, concurrency?, min_interval_seconds?}` | `Lane` |
 | GET | `/api/queue/scheduled/` | | `ScheduledJob[]` with `next_run` |
-| PATCH | `/api/queue/scheduled/<name>/` | `{enabled}` | `ScheduledJob` |
+| PATCH | `/api/queue/scheduled/<name>/` | `{enabled?, schedule?}` (cron `minute hour weekday` or `auto`; creates a missing schedule) | `ScheduledJob` |
 | POST | `/api/queue/scheduled/<name>/run/` | | 201/200 `{job, merged}`; for `download_pending` the last download job queued, `job: null` if nothing was waiting |
 
 `status` accepts a comma list, or `active` (queued,running,paused; sorted
@@ -96,6 +98,15 @@ in run order: running first, then by priority and age) or `history`
 (done,failed,cancelled; newest finished first). The Queue page sections map
 to: Running now = `status=running`, Up next = `status=queued,paused`,
 History = `status=history`, Scheduled = `/scheduled/`.
+
+`Job.label` is the type and target in plain words ("Download video:
+Riding the coaster"); `Job.target.url` is the YouTube page of the target,
+or null.
+
+`/api/queue/scheduled/` lists update_subscribed, download_pending,
+check_reindex, thumbnail_check, run_backup, version_check,
+rescan_filesystem, resync_metadata, manual_import and emby_sync, where a
+schedule exists.
 
 `Job.progress` (running jobs only): `{fraction, message, speed, eta_seconds,
 current, total}`. Poll `GET /api/queue/jobs/?status=running` every 1–2 s
@@ -124,7 +135,9 @@ Videos TA knows about but hasn't downloaded, each with a rule verdict.
 descending), `page`, `page_size`.
 
 Response `{data: FoundVideo[], paginate, counts: {waiting, ignored, failed,
-downloaded}}`; `counts` apply the current filters except `tab`.
+downloaded}, facets: {channels: [{channel_id, channel_name, count}]}}`;
+`counts` apply the current filters except `tab`, `facets.channels` the
+current tab and filters except `channel` (up to 200, most videos first).
 
 `FoundVideo`: `youtube_id, title, channel_id, channel_name,
 channel_indexed, vid_type, duration, duration_seconds, published,

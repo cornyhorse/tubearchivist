@@ -608,3 +608,48 @@ def test_celery_entry_points(monkeypatch):
     assert tasks.run_job.run(5) == "ran 5"
     assert tasks.jobs_pump.run() == [1]
     assert cleared == [1]
+
+
+def order(lane="scan"):
+    """targets of waiting jobs, in run order"""
+    return list(
+        Job.objects.filter(lane=lane, status__in=["queued", "paused"])
+        .run_order()
+        .values_list("target_id", flat=True)
+    )
+
+
+def test_move_up_down_bottom(handlers):
+    # pylint: disable=unused-argument
+    a = make(target="a", priority=Priority.HIGH)
+    make(target="b")
+    c = make(target="c")
+    d = make(target="d", priority=Priority.LOW)
+    Job.objects.filter(pk=c.pk).update(status=JobStatus.PAUSED)
+    assert order() == ["a", "b", "c", "d"]
+
+    apply_action(c.pk, "move_up")
+    assert order() == ["a", "c", "b", "d"]
+    apply_action(c.pk, "move_up")
+    assert order() == ["c", "a", "b", "d"]
+    apply_action(c.pk, "move_up")  # already first
+    assert order() == ["c", "a", "b", "d"]
+
+    apply_action(a.pk, "move_down")
+    assert order() == ["c", "b", "a", "d"]
+    apply_action(d.pk, "move_down")  # already last
+    assert order() == ["c", "b", "a", "d"]
+
+    apply_action(c.pk, "move_to_bottom")
+    assert order() == ["b", "a", "d", "c"]
+    alone = make("t_dl", "only")
+    assert apply_action(alone.pk, "move_to_bottom").pk == alone.pk
+
+
+def test_swap_equal_ranks(handlers):
+    # pylint: disable=unused-argument
+    make(target="x")
+    second = make(target="y")
+    Job.objects.update(rank=5.0)
+    apply_action(second.pk, "move_up")
+    assert order() == ["y", "x"]

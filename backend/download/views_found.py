@@ -16,6 +16,7 @@ from download.serializers_found import (
 )
 from download.src.add import add, preview
 from download.src.found import (
+    channel_facets,
     found_action,
     found_dicts,
     found_queryset,
@@ -58,6 +59,7 @@ class FoundListView(ApiBaseView):
                 "data": found_dicts(items),
                 "paginate": page,
                 "counts": tab_counts(filters),
+                "facets": {"channels": channel_facets(filters)},
             }
         )
 

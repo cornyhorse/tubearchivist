@@ -41,7 +41,7 @@ from jobs.src.schedules import (
     SCHEDULED,
     run_now,
     schedule_dicts,
-    set_enabled,
+    update,
 )
 from playlist.models import Playlist
 from rest_framework.response import Response
@@ -290,7 +290,7 @@ class ScheduledListView(ApiBaseView):
 
 class ScheduledView(ApiBaseView):
     """resolves to /api/queue/scheduled/<name>/
-    PATCH: pause or resume the schedule
+    PATCH: pause or resume the schedule, or change when it runs
     """
 
     permission_classes = [AdminOnly]
@@ -303,10 +303,13 @@ class ScheduledView(ApiBaseView):
         """enable or disable"""
         serializer = ScheduledJobUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
         try:
-            item = set_enabled(name, serializer.validated_data["enabled"])
-        except CustomPeriodicTask.DoesNotExist:
+            item = update(name, data.get("enabled"), data.get("schedule"))
+        except (KeyError, CustomPeriodicTask.DoesNotExist):
             return Response({"error": "schedule not found"}, status=404)
+        except ValueError as err:
+            return Response({"error": str(err)}, status=400)
         return Response(item)
 
 

@@ -67,7 +67,9 @@ def test_list_run_order_and_positions(admin_client):
         "kind": "channel",
         "id": "high",
         "title": None,
+        "url": "https://www.youtube.com/channel/high",
     }
+    assert data[1]["label"] == "Check channel for new videos: high"
     assert response.json()["paginate"]["total_hits"] == 4
 
 
@@ -172,7 +174,14 @@ def test_create_target_titles(admin_client, job_type, setup, expected):
 def test_job_detail_and_action(admin_client):
     job = make()
     detail = admin_client.get(f"/api/queue/jobs/{job.pk}/").json()
-    assert detail["actions"] == ["cancel", "pause", "move_to_top"]
+    assert detail["actions"] == [
+        "cancel",
+        "pause",
+        "move_to_top",
+        "move_up",
+        "move_down",
+        "move_to_bottom",
+    ]
     assert detail["position"] == 1
     assert admin_client.get("/api/queue/jobs/999/").status_code == 404
 
@@ -318,3 +327,59 @@ def test_unknown_job_type_label():
     from jobs.src.present import job_label
 
     assert job_label("old_type") == "Old type"
+
+
+def test_label_and_url_without_target():
+    # pylint: disable=import-outside-toplevel
+    from jobs.src.present import job_dict
+
+    data = job_dict(make("check_subscriptions", None))
+    assert data["label"] == "Check channels for new videos"
+    assert data["target"]["url"] is None
+
+
+def test_schedule_patch(admin_client, schedules):
+    # pylint: disable=unused-argument
+    url = "/api/queue/scheduled/run_backup/"
+    changed = admin_client.patch(url, {"schedule": "0 */6 *"}, format="json")
+    assert changed.json()["schedule"] == "0 */6 *"
+    assert changed.json()["enabled"] is True
+
+    back = admin_client.patch(url, {"schedule": "auto"}, format="json")
+    assert back.json()["schedule"] == "0 18 0"
+
+    created = admin_client.patch(
+        "/api/queue/scheduled/emby_sync/",
+        {"schedule": "30 3 *", "enabled": False},
+        format="json",
+    ).json()
+    assert (created["label"], created["enabled"]) == (
+        "Write the Emby library",
+        False,
+    )
+    listed = admin_client.get("/api/queue/scheduled/").json()
+    assert "emby_sync" in [i["name"] for i in listed]
+
+    bad = admin_client.patch(url, {"schedule": "61 * *"}, format="json")
+    assert bad.status_code == 400
+    no_default = admin_client.patch(
+        "/api/queue/scheduled/emby_sync/", {"schedule": "auto"}, format="json"
+    )
+    assert no_default.status_code == 400
+    unknown = admin_client.patch(
+        "/api/queue/scheduled/nope/", {"schedule": "0 1 *"}, format="json"
+    )
+    assert unknown.status_code == 404
+    not_yet = admin_client.patch(
+        "/api/queue/scheduled/manual_import/", {"enabled": True}, format="json"
+    )
+    assert not_yet.status_code == 404
+
+
+def test_run_now_new_schedules(admin_client, schedules):
+    # pylint: disable=unused-argument
+    response = admin_client.post("/api/queue/scheduled/emby_sync/run/")
+    assert response.json()["job"]["type"] == "emby_write"
+    backup = admin_client.post("/api/queue/scheduled/run_backup/run/")
+    job = Job.objects.get(pk=backup.json()["job"]["id"])
+    assert job.params == {"reason": "auto"}

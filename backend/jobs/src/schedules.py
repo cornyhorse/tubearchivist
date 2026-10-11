@@ -10,6 +10,7 @@ from jobs.models import CreatedBy, Job, Priority
 from jobs.src.engine import enqueue
 from jobs.src.registry import get_spec
 from task.models import CustomPeriodicTask
+from task.src.config_schedule import CrontabValidator, ScheduleBuilder
 
 # schedule name: (job type, plain words)
 SCHEDULED = {
@@ -22,7 +23,18 @@ SCHEDULED = {
     "thumbnail_check": ("thumbnail_check", "Check thumbnails"),
     "run_backup": ("backup", "Back up the database"),
     "version_check": ("version_check", "Look for a new version"),
+    "rescan_filesystem": (
+        "filesystem_rescan",
+        "Compare the media folder with the archive",
+    ),
+    "resync_metadata": ("resync_metadata", "Write metadata into media files"),
+    "manual_import": ("manual_import", "Import videos from the import folder"),
+    "emby_sync": ("emby_write", "Write the Emby library"),
 }
+
+
+# run now: the scheduled kind of run
+RUN_NOW_PARAMS = {"run_backup": {"reason": "auto"}}
 
 
 def next_run(task: CustomPeriodicTask):
@@ -66,11 +78,25 @@ def schedule_dicts() -> list[dict]:
     return sorted(items, key=lambda i: i["next_run"] or never)
 
 
-def set_enabled(name: str, enabled: bool) -> dict:
-    """pause or resume a schedule; DoesNotExist"""
-    task = CustomPeriodicTask.objects.get(name=name, name__in=SCHEDULED)
-    task.enabled = enabled
-    task.save()
+def update(
+    name: str, enabled: bool | None = None, schedule: str | None = None
+) -> dict:
+    """
+    pause or resume a schedule, or change when it runs (cron 'minute
+    hour weekday', or 'auto' for the default); creates it if needed
+    KeyError for an unknown name, ValueError for a bad schedule
+    """
+    if name not in SCHEDULED:
+        raise KeyError(name)
+    if schedule:
+        if schedule == "auto" and name not in ScheduleBuilder.SCHEDULES:
+            raise ValueError(f"{name} has no default schedule")
+        CrontabValidator().validate_cron(schedule)
+        ScheduleBuilder().update_schedule(name, schedule, None)
+    task = CustomPeriodicTask.objects.get(name=name)
+    if enabled is not None:
+        task.enabled = enabled
+        task.save()
     return schedule_dict(task)
 
 
@@ -93,4 +119,9 @@ def run_now(name: str) -> tuple[Job | None, bool]:
             .first()
         )
         return job, False
-    return enqueue(job_type, created_by=CreatedBy.USER, priority=Priority.HIGH)
+    return enqueue(
+        job_type,
+        created_by=CreatedBy.USER,
+        priority=Priority.HIGH,
+        params=RUN_NOW_PARAMS.get(name, {}),
+    )
