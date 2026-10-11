@@ -327,6 +327,45 @@ def test_zip_to_export(tmp_path):
     assert hit == {"_id": "v1", "_source": {"title": "t"}}
 
 
+@pytest.mark.parametrize(
+    "index", ["../../x", "ta_video/../../x", "/tmp/x", "ta_unknown"]
+)
+def test_zip_to_export_rejects_unknown_index(tmp_path, index):
+    zip_path = tmp_path / "backup.zip"
+    action = {"index": {"_index": index, "_id": "v1"}}
+    with zipfile.ZipFile(zip_path, "w") as zip_f:
+        zip_f.writestr(
+            "es_video-1-0.json",
+            json.dumps(action) + "\n" + json.dumps({"title": "t"}) + "\n",
+        )
+    export_dir = tmp_path / "a" / "b" / "export"
+    export_dir.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="unknown index"):
+        DatabaseBackup.zip_to_export(str(zip_path), export_dir)
+
+    assert not list(export_dir.iterdir())
+    assert not list(tmp_path.glob("**/x*"))
+
+
+def test_restore_rejects_path_in_index(library, backup_dir):
+    # pylint: disable=unused-argument
+    before = table_state()
+    backup_dir.mkdir()
+    action = {"index": {"_index": "../../x", "_id": "v1"}}
+    zip_path = backup_dir / "ta_backup-20260101-manual.zip"
+    with zipfile.ZipFile(zip_path, "w") as zip_f:
+        zip_f.writestr(
+            "es_video-1-0.json",
+            json.dumps(action) + "\n" + json.dumps({"title": "t"}) + "\n",
+        )
+
+    with pytest.raises(ValueError, match="unknown index"):
+        DatabaseBackup().restore("ta_backup-20260101-manual.zip")
+
+    assert table_state() == before
+
+
 def make_auto_backups(backup_dir, count):
     """fake auto backup zips, oldest first"""
     backup_dir.mkdir(exist_ok=True)

@@ -36,6 +36,7 @@ INDEXES = [
     "download_rule",
     "emby_episode",
 ]
+RESTORE_INDEXES = frozenset(f"ta_{index}" for index in INDEXES)
 CHUNK_SIZE = 500
 
 
@@ -298,6 +299,10 @@ class DatabaseBackup:
                     ):
                         action = json.loads(action_line)["index"]
                         index = re.sub(r"_v\d+$", "", action["_index"])
+                        if index not in RESTORE_INDEXES:
+                            raise ValueError(
+                                f"unknown index in backup: {index!r}"
+                            )
                         if index not in handles:
                             handles[index] = open(
                                 export_dir / f"{index}.ndjson",
