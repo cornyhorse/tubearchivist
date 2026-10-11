@@ -3,7 +3,7 @@ import { DownloadRuleType } from '../../api/actions/updateDownloadRule';
 import { EmbyNumberingType } from '../../api/actions/updateEmbyNumbering';
 import { NUMBERING_SHORT, summarizeRule } from '../../functions/describeRule';
 import DownloadRuleForm from '../DownloadRuleForm';
-import EmbyNumberingSelect from '../EmbyNumberingSelect';
+import NumberingEditor from '../rules/NumberingEditor';
 import Modal from './Modal';
 
 type RuleBadgeProps = {
@@ -126,7 +126,7 @@ export const NumberingBadge = ({
             How this {kind}'s videos are numbered as episodes in the Emby library. Numbers that are
             already assigned are kept when you add older videos.
           </p>
-          <EmbyNumberingSelect
+          <NumberingEditor
             kind={kind}
             id={id}
             value={scheme}

@@ -8,6 +8,7 @@ import loadApiToken from '../api/loader/loadApiToken';
 import deleteApiToken from '../api/actions/deleteApiToken';
 import useAppSettings from '../functions/useAppSettings';
 import { PLAYER_FIELDS } from '../configuration/settingsFields';
+import MediaServerSettings from '../components/settings/MediaServerSettings';
 
 const SettingsMediaServer = () => {
   const { config, save } = useAppSettings();
@@ -39,6 +40,8 @@ const SettingsMediaServer = () => {
             and playlist.
           </p>
         </div>
+
+        <MediaServerSettings />
 
         <SettingsSection id="apps" title="Other apps">
           <SettingRow
