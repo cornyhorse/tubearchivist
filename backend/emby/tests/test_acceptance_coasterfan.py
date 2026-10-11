@@ -128,7 +128,7 @@ def test_coasterfan_date_numbers(tmp_path):
     # 2025-06-20 16:01 UTC = 12:01 in New York
     assert (nfo.findtext("season"), nfo.findtext("episode")) == (
         "2025",
-        "6200",
+        "62000",
     )
     assert nfo.findtext("aired") == "2025-06-20"
 

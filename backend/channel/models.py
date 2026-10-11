@@ -21,10 +21,11 @@ OVERWRITE_FIELDS = [
 class EmbyNumbering(models.TextChoices):
     """how the Emby writer numbers episodes of a series"""
 
-    DATE = "date", "Date: season = year, episode = MMDD*10+n"
+    DATE = "date", "Date: season = year, episode = MMDD*100+n"
     YEAR_FROZEN = "year_frozen", "Year: season = year, frozen order"
     ABSOLUTE_FROZEN = "absolute_frozen", "Absolute: season 1, frozen order"
-    PLAYLIST_POSITION = "playlist_position", "Playlist position"
+    PLAYLIST_FROZEN = "playlist_frozen", "Playlist order, frozen"
+    PLAYLIST_POSITION = "playlist_position", "Playlist position (renumbers)"
 
 
 class Channel(models.Model):

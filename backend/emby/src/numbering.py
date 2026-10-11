@@ -9,7 +9,7 @@ Functionality:
 from dataclasses import dataclass
 from datetime import date
 
-DATE_SLOTS_PER_DAY = 10
+DATE_SLOTS_PER_DAY = 100
 
 
 @dataclass(frozen=True)
@@ -18,7 +18,7 @@ class NumberingItem:
 
     youtube_id: str
     published: date
-    # position in the source playlist, playlist_position scheme only
+    # position in the source playlist, playlist schemes only
     playlist_idx: int | None = None
 
 
@@ -41,12 +41,17 @@ def _taken(existing: dict[str, Assignment]) -> set[Assignment]:
     return taken
 
 
+def date_block(day: date) -> int:
+    """first episode number of a day in the date scheme"""
+    return (day.month * 100 + day.day) * DATE_SLOTS_PER_DAY
+
+
 def number_date(
     items: list[NumberingItem], existing: dict[str, Assignment]
 ) -> tuple[dict[str, Assignment], list[str]]:
     """
-    season = upload year, episode = MMDD * 10 + n
-    n is the next free slot of that day; an 11th upload on one day takes the
+    season = upload year, episode = MMDD * 100 + n
+    n is the next free slot of that day; a 101st upload on one day takes the
     next free number after the day's block, which is reported as a warning
     """
     result = dict(existing)
@@ -56,7 +61,7 @@ def number_date(
         if item.youtube_id in result:
             continue
         season = item.published.year
-        base = (item.published.month * 100 + item.published.day) * 10
+        base = date_block(item.published)
         episode = next(
             (
                 base + n
@@ -115,6 +120,32 @@ def number_absolute_frozen(
     return result, []
 
 
+def number_playlist_frozen(
+    items: list[NumberingItem], existing: dict[str, Assignment]
+) -> tuple[dict[str, Assignment], list[str]]:
+    """
+    season 1, episode = next number in playlist order: the first sync
+    numbers the playlist as it is, later additions are appended, and a
+    reorder never renumbers
+    """
+    result = dict(existing)
+    _taken(existing)
+    highest = max((e for s, e in existing.values() if s == 1), default=0)
+    for item in sorted(items, key=_playlist_order):
+        if item.youtube_id in result:
+            continue
+        highest += 1
+        result[item.youtube_id] = (1, highest)
+
+    return result, []
+
+
+def _playlist_order(item: NumberingItem) -> tuple[int, str]:
+    if item.playlist_idx is None:
+        raise NumberingError(f"{item.youtube_id}: no playlist position")
+    return item.playlist_idx, item.youtube_id
+
+
 def number_playlist_position(
     items: list[NumberingItem], existing: dict[str, Assignment]
 ) -> tuple[dict[str, Assignment], list[str]]:
@@ -140,9 +171,15 @@ SCHEMES = {
     "date": number_date,
     "year_frozen": number_year_frozen,
     "absolute_frozen": number_absolute_frozen,
+    "playlist_frozen": number_playlist_frozen,
     "playlist_position": number_playlist_position,
 }
-FROZEN_SCHEMES = {"date", "year_frozen", "absolute_frozen"}
+FROZEN_SCHEMES = {
+    "date",
+    "year_frozen",
+    "absolute_frozen",
+    "playlist_frozen",
+}
 
 
 def assign_numbers(

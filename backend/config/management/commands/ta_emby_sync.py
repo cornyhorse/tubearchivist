@@ -5,12 +5,14 @@ from pathlib import Path
 from common.src.env_settings import EnvironmentSettings
 from django.core.management.base import BaseCommand, CommandError
 from emby.src.sync import (
+    EmbyLayoutOutdated,
     EmbyPaths,
     sync_all,
     sync_channel,
     sync_playlist,
     validate_output_root,
 )
+from emby.src.writer import EmbyRootError
 
 
 class Command(BaseCommand):
@@ -51,16 +53,16 @@ class Command(BaseCommand):
             timezone=EnvironmentSettings.TZ,
         )
         dry_run = options["dry_run"]
-        if options["channel"]:
-            report = sync_channel(options["channel"], paths, dry_run)
-        elif options["playlist"]:
-            report = sync_playlist(options["playlist"], paths, dry_run)
-        else:
-            report = sync_all(paths, dry_run)
+        try:
+            report = self._sync(paths, options)
+        except (EmbyLayoutOutdated, EmbyRootError) as err:
+            raise CommandError(str(err)) from err
 
         prefix = "[dry-run] " if dry_run else ""
         if options["verbose_changes"]:
             self._write_changes(report, prefix)
+        for line in report.errors:
+            self.stdout.write(f"error: {line}")
         for line in report.conflicts + report.warnings[:50]:
             self.stdout.write(f"warning: {line}")
 
@@ -69,5 +71,16 @@ class Command(BaseCommand):
             f"updated {len(report.updated)}, renamed {len(report.renamed)}, "
             f"deleted {len(report.deleted)}, unchanged {report.unchanged}, "
             f"conflicts {len(report.conflicts)}, "
-            f"warnings {len(report.warnings)}"
+            f"warnings {len(report.warnings)}, errors {len(report.errors)}"
         )
+        if report.errors:
+            raise CommandError(f"{len(report.errors)} series failed")
+
+    @staticmethod
+    def _sync(paths, options):
+        dry_run = options["dry_run"]
+        if options["channel"]:
+            return sync_channel(options["channel"], paths, dry_run)
+        if options["playlist"]:
+            return sync_playlist(options["playlist"], paths, dry_run)
+        return sync_all(paths, dry_run)

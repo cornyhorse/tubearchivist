@@ -5,6 +5,11 @@ Functionality:
 - naming: <kind>/<Name> [<id>]/Season <s>/<Name> - S<s>E<e> - <Title>.ext
   the SxxEyy in the filename always equals the NFO, so Emby's filename
   parser and the NFO agree and two videos can never share a number
+- <Name> and <Title> are frozen names (stored with the episode number),
+  so renaming a channel or video changes the NFO title, never a path;
+  without a frozen name the current title is used
+- an episode file name stays under MAX_BASENAME_BYTES, well inside the
+  255 byte limit of a name even with "-thumb.jpg" appended
 """
 
 import re
@@ -17,6 +22,10 @@ from emby.src.writer import DesiredFile
 # characters Windows/SMB clients and Emby can't handle in names
 _UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f\x7f]+')
 MAX_TITLE_BYTES = 120
+# episode file name without extension; the show part gets at most
+# MAX_SHOW_BYTES of it, the title gets the rest
+MAX_BASENAME_BYTES = 200
+MAX_SHOW_BYTES = 80
 
 
 @dataclass(frozen=True)
@@ -26,6 +35,8 @@ class EpisodeSource:
     info: EpisodeInfo
     media: Path
     thumb: Path | None = None
+    # frozen title part of the file name, "" for the current title
+    name: str = ""
 
 
 @dataclass(frozen=True)
@@ -37,28 +48,46 @@ class SeriesSource:
     poster: Path | None = None
     fanart: Path | None = None
     banner: Path | None = None
+    # frozen folder name, "" for the current title
+    name: str = ""
 
 
-def safe_name(value: str, fallback: str) -> str:
-    """filesystem safe, single spaced, trimmed to MAX_TITLE_BYTES"""
+def _truncate(value: str, max_bytes: int) -> str:
+    """at most max_bytes of utf-8, never splitting a character"""
+    encoded = value.encode("utf-8")[:max_bytes]
+    return encoded.decode("utf-8", errors="ignore").strip(" .")
+
+
+def safe_name(
+    value: str, fallback: str, max_bytes: int = MAX_TITLE_BYTES
+) -> str:
+    """filesystem safe, single spaced, trimmed to max_bytes"""
     value = _UNSAFE.sub(" ", value or "")
     value = re.sub(r"\s+", " ", value).strip(" .")
-    encoded = value.encode("utf-8")[:MAX_TITLE_BYTES]
-    value = encoded.decode("utf-8", errors="ignore").strip(" .")
-    return value or fallback
+    return _truncate(value, max_bytes) or fallback
+
+
+def series_name(series: SeriesSource) -> str:
+    """frozen folder name, else the current title"""
+    return series.name or safe_name(series.info.title, series.info.series_id)
 
 
 def series_dir(series: SeriesSource) -> str:
     """relpath of the series folder, stable across renames of the title"""
-    name = safe_name(series.info.title, series.info.series_id)
-    return f"{series.kind}/{name} [{series.info.series_id}]"
+    return f"{series.kind}/{series_name(series)} [{series.info.series_id}]"
 
 
-def episode_basename(series: SeriesSource, info: EpisodeInfo) -> str:
-    """file name without extension"""
-    show = safe_name(series.info.title, series.info.series_id)
-    title = safe_name(info.title, info.youtube_id)
-    return f"{show} - S{info.season:02d}E{info.episode:02d} - {title}"
+def episode_basename(
+    series: SeriesSource, info: EpisodeInfo, name: str = ""
+) -> str:
+    """file name without extension, at most MAX_BASENAME_BYTES"""
+    show = safe_name(
+        series_name(series), series.info.series_id, MAX_SHOW_BYTES
+    )
+    prefix = f"{show} - S{info.season:02d}E{info.episode:02d} - "
+    room = MAX_BASENAME_BYTES - len(prefix.encode("utf-8"))
+    title = safe_name(name or info.title, info.youtube_id, room)
+    return prefix + title
 
 
 def _read(path: Path | None) -> bytes | None:
@@ -108,7 +137,8 @@ def plan_series(
 
     for episode in available:
         info = replace(episode.info, show_title=series.info.title)
-        stem = f"{base}/Season {info.season}/{episode_basename(series, info)}"
+        basename = episode_basename(series, info, episode.name)
+        stem = f"{base}/Season {info.season}/{basename}"
         owner = f"{sid}/{info.youtube_id}"
         desired.append(
             DesiredFile(

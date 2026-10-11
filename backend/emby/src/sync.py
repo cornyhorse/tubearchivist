@@ -1,7 +1,11 @@
 """
 Functionality:
 - build the Emby tree for channels and playlists from the database
-- persist episode numbers so frozen schemes never renumber
+- persist episode numbers so frozen schemes never renumber, and the file
+  names of a series and its episodes so renamed titles never move files
+- a dry run computes everything and stores nothing
+- refuse to sync a database numbered by the first layout until
+  `manage.py ta_emby_migrate_layout` converted it (see migrate_layout.py)
 """
 
 from dataclasses import dataclass
@@ -9,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from appsettings.models import ConfigDocument
 from channel.models import Channel
 from django.db import transaction
 from emby.models import EpisodeNumber, SeriesKind
@@ -16,6 +21,7 @@ from emby.src.layout import (
     EpisodeSource,
     SeriesSource,
     plan_series,
+    safe_name,
     series_dir,
 )
 from emby.src.nfo import EpisodeInfo, SeriesInfo
@@ -23,6 +29,16 @@ from emby.src.numbering import FROZEN_SCHEMES, NumberingItem, assign_numbers
 from emby.src.writer import EmbyWriter, SyncReport
 from playlist.models import Playlist
 from video.models import Video
+
+# ConfigDocument key recording which Emby layout the stored numbers use:
+# 1 (no document) MMDD*10+n numbers and live names, 2 frozen names,
+# MMDD*100+n numbers and frozen playlists
+LAYOUT_KEY = "emby_layout"
+LAYOUT_VERSION = 2
+
+
+class EmbyLayoutOutdated(RuntimeError):
+    """the stored numbers need `manage.py ta_emby_migrate_layout` first"""
 
 
 @dataclass(frozen=True)
@@ -60,6 +76,7 @@ def validate_output_root(media_root: Path, output_root: Path) -> None:
     """
     media = Path(media_root).resolve()
     output = Path(output_root).resolve()
+    _check_same_device(media, output)
     if output == media or output in media.parents:
         raise ValueError(f"Emby root {output} contains the media dir")
     if media in output.parents:
@@ -69,6 +86,20 @@ def validate_output_root(media_root: Path, output_root: Path) -> None:
                 f"Emby root {output} is inside the media dir; "
                 f"use a dot folder such as {media / '.emby'}"
             )
+
+
+def _check_same_device(media: Path, output: Path) -> None:
+    """
+    hardlinks can't cross mounts; compares the closest existing parent
+    of the output root, so a root that is still to be created is checked
+    too (the writer repeats this with a real link before writing)
+    """
+    existing = next(p for p in (output, *output.parents) if p.exists())
+    if media.exists() and media.stat().st_dev != existing.stat().st_dev:
+        raise ValueError(
+            f"Emby root {output} is on another filesystem than {media}; "
+            "media can't be hardlinked"
+        )
 
 
 def paths_from_env() -> EmbyPaths | None:
@@ -90,80 +121,193 @@ def paths_from_env() -> EmbyPaths | None:
     )
 
 
+def layout_version() -> int:
+    """layout of the stored numbers and names"""
+    document = ConfigDocument.objects.filter(key=LAYOUT_KEY).first()
+    return (document.value or {}).get("version", 1) if document else 1
+
+
+def set_layout_version(version: int = LAYOUT_VERSION) -> None:
+    """record the layout of the stored numbers and names"""
+    ConfigDocument.objects.update_or_create(
+        key=LAYOUT_KEY, defaults={"value": {"version": version}}
+    )
+
+
+def check_layout(dry_run: bool = False) -> None:
+    """
+    refuse numbers of an older layout; a database without any numbers
+    starts on the current layout
+    """
+    if layout_version() >= LAYOUT_VERSION:
+        return
+    if EpisodeNumber.objects.exists():
+        raise EmbyLayoutOutdated(
+            "the Emby numbers use the old layout; run "
+            "`manage.py ta_emby_migrate_layout --dry-run`, then without "
+            "--dry-run, before syncing (docs/fork/emby-layout-migration.md)"
+        )
+    if not dry_run:
+        set_layout_version()
+
+
 def _local_date(value: datetime | None, tz: ZoneInfo):
     if value is None:
         return None
     return value.astimezone(tz).date()
 
 
-def _number_date(video: Video, tz: ZoneInfo):
+def numbering_date(video: Video, tz: ZoneInfo):
     """date used for numbering: upload date, else download date"""
     return _local_date(video.published or video.date_downloaded, tz)
 
 
+@dataclass
+class SeriesNumbers:
+    """numbers and frozen names of a series"""
+
+    numbers: dict[str, tuple[int, int]]
+    names: dict[str, str]
+    series_name: str
+    warnings: list[str]
+
+
+def _frozen_names(rows: list[EpisodeNumber]) -> tuple[dict[str, str], str]:
+    """names already frozen in any scheme of the series, oldest first"""
+    names: dict[str, str] = {}
+    series_name = ""
+    for row in rows:
+        if row.name:
+            names.setdefault(row.youtube_id, row.name)
+        series_name = series_name or row.series_name
+    return names, series_name
+
+
 def ensure_numbers(
     kind: str,
-    series_id: str,
+    series: SeriesInfo,
     scheme: str,
     items: list[NumberingItem],
-) -> tuple[dict[str, tuple[int, int]], list[str]]:
+    titles: dict[str, str],
+    dry_run: bool = False,
+) -> SeriesNumbers:
     """
     numbers for items: frozen schemes keep every stored number and store
     the new ones; other schemes are recomputed and replace what is stored
+    names are frozen the first time a number is stored, from titles
+    (youtube_id: current title) and the current series title
+    a dry run stores nothing
     """
     with transaction.atomic():
-        stored = EpisodeNumber.objects.select_for_update().filter(
-            series_kind=kind, series_id=series_id, scheme=scheme
+        rows = list(
+            EpisodeNumber.objects.select_for_update()
+            .filter(series_kind=kind, series_id=series.series_id)
+            .order_by("pk")
         )
+        names, series_name = _frozen_names(rows)
+        series_name = series_name or safe_name(series.title, series.series_id)
+        for youtube_id, title in titles.items():
+            names.setdefault(youtube_id, safe_name(title, youtube_id))
+
+        stored = [row for row in rows if row.scheme == scheme]
         if scheme in FROZEN_SCHEMES:
             existing = {n.youtube_id: (n.season, n.episode) for n in stored}
             numbers, warnings = assign_numbers(scheme, items, existing)
             new = {k: v for k, v in numbers.items() if k not in existing}
         else:
             numbers, warnings = assign_numbers(scheme, items)
-            stored.delete()
             new = numbers
 
-        EpisodeNumber.objects.bulk_create(
-            EpisodeNumber(
-                series_kind=kind,
-                series_id=series_id,
-                scheme=scheme,
-                youtube_id=youtube_id,
-                season=season,
-                episode=episode,
+        if not dry_run:
+            _store(
+                kind, series.series_id, scheme, stored, new, names, series_name
             )
-            for youtube_id, (season, episode) in new.items()
-        )
 
     current = {i.youtube_id for i in items}
-    return {k: v for k, v in numbers.items() if k in current}, warnings
+    return SeriesNumbers(
+        numbers={k: v for k, v in numbers.items() if k in current},
+        names=names,
+        series_name=series_name,
+        warnings=warnings,
+    )
 
 
-def _episode(
-    video: Video, number: tuple[int, int], paths: EmbyPaths, tz: ZoneInfo
-) -> EpisodeSource:
-    season, episode = number
-    info = EpisodeInfo(
-        youtube_id=video.youtube_id,
-        title=video.title,
-        show_title="",
-        season=season,
-        episode=episode,
-        aired=_local_date(video.published, tz),
-        plot=video.description or "",
-        runtime_seconds=video.duration,
-        studio=video.channel.name,
+def _store(kind, series_id, scheme, stored, new, names, series_name):
+    """write new numbers, freezing names on rows that have none yet"""
+    if scheme not in FROZEN_SCHEMES:
+        EpisodeNumber.objects.filter(pk__in=[r.pk for r in stored]).delete()
+        stored = []
+    unnamed = []
+    for row in stored:
+        name = row.name or names.get(row.youtube_id, "")
+        if (row.name, row.series_name) != (name, series_name):
+            row.name, row.series_name = name, series_name
+            unnamed.append(row)
+    EpisodeNumber.objects.bulk_update(unnamed, ["name", "series_name"])
+    EpisodeNumber.objects.bulk_create(
+        EpisodeNumber(
+            series_kind=kind,
+            series_id=series_id,
+            scheme=scheme,
+            youtube_id=youtube_id,
+            season=season,
+            episode=episode,
+            name=names.get(youtube_id, ""),
+            series_name=series_name,
+        )
+        for youtube_id, (season, episode) in new.items()
     )
-    return EpisodeSource(
-        info=info,
-        media=paths.media_root / video.media_url,
-        thumb=paths.video_thumb(video.youtube_id),
-    )
+
+
+def _media_path(video: Video, paths: EmbyPaths) -> Path | None:
+    """media file of a video, None if media_url leaves the media root"""
+    root = paths.media_root.resolve()
+    media = (root / video.media_url).resolve()
+    if root not in media.parents:
+        return None
+    return media
+
+
+def _episodes(
+    videos: list[Video],
+    found: SeriesNumbers,
+    paths: EmbyPaths,
+    tz: ZoneInfo,
+) -> list[EpisodeSource]:
+    episodes = []
+    for video in videos:
+        media = _media_path(video, paths)
+        if media is None:
+            found.warnings.append(
+                f"{video.youtube_id}: media_url outside the media dir, "
+                f"skipped: {video.media_url}"
+            )
+            continue
+        season, episode = found.numbers[video.youtube_id]
+        info = EpisodeInfo(
+            youtube_id=video.youtube_id,
+            title=video.title,
+            show_title="",
+            season=season,
+            episode=episode,
+            aired=_local_date(video.published, tz),
+            plot=video.description or "",
+            runtime_seconds=video.duration,
+            studio=video.channel.name,
+        )
+        episodes.append(
+            EpisodeSource(
+                info=info,
+                media=media,
+                thumb=paths.video_thumb(video.youtube_id),
+                name=found.names.get(video.youtube_id, ""),
+            )
+        )
+    return episodes
 
 
 def channel_series(
-    channel: Channel, paths: EmbyPaths
+    channel: Channel, paths: EmbyPaths, dry_run: bool = False
 ) -> tuple[SeriesSource, list[EpisodeSource], list[str]]:
     """series and numbered episodes of a channel"""
     tz = ZoneInfo(paths.timezone)
@@ -172,29 +316,37 @@ def channel_series(
         .filter(channel=channel, active=True)
         .order_by("published", "youtube_id")
     )
-    items = [NumberingItem(v.youtube_id, _number_date(v, tz)) for v in videos]
-    numbers, warnings = ensure_numbers(
-        SeriesKind.CHANNEL, channel.channel_id, channel.emby_numbering, items
+    items = [
+        NumberingItem(v.youtube_id, numbering_date(v, tz)) for v in videos
+    ]
+    info = SeriesInfo(
+        series_id=channel.channel_id,
+        title=channel.name,
+        plot=channel.description or "",
+        premiered=items[0].published if items else None,
+        studio=channel.name,
+    )
+    found = ensure_numbers(
+        SeriesKind.CHANNEL,
+        info,
+        channel.emby_numbering,
+        items,
+        {v.youtube_id: v.title for v in videos},
+        dry_run,
     )
     series = SeriesSource(
         kind="channels",
-        info=SeriesInfo(
-            series_id=channel.channel_id,
-            title=channel.name,
-            plot=channel.description or "",
-            premiered=items[0].published if items else None,
-            studio=channel.name,
-        ),
+        info=info,
         poster=paths.channel_art(channel.channel_id, "thumb"),
         fanart=paths.channel_art(channel.channel_id, "tvart"),
         banner=paths.channel_art(channel.channel_id, "banner"),
+        name=found.series_name,
     )
-    episodes = [_episode(v, numbers[v.youtube_id], paths, tz) for v in videos]
-    return series, episodes, warnings
+    return series, _episodes(videos, found, paths, tz), found.warnings
 
 
 def playlist_series(
-    playlist: Playlist, paths: EmbyPaths
+    playlist: Playlist, paths: EmbyPaths, dry_run: bool = False
 ) -> tuple[SeriesSource, list[EpisodeSource], list[str]]:
     """series and numbered episodes of a playlist, downloaded entries only"""
     tz = ZoneInfo(paths.timezone)
@@ -208,27 +360,32 @@ def playlist_series(
     )
     videos.sort(key=lambda v: entries[v.youtube_id])
     items = [
-        NumberingItem(v.youtube_id, _number_date(v, tz), entries[v.youtube_id])
+        NumberingItem(
+            v.youtube_id, numbering_date(v, tz), entries[v.youtube_id]
+        )
         for v in videos
     ]
-    numbers, warnings = ensure_numbers(
+    info = SeriesInfo(
+        series_id=playlist.playlist_id,
+        title=playlist.name,
+        plot=playlist.description or "",
+        studio=playlist.channel_name,
+    )
+    found = ensure_numbers(
         SeriesKind.PLAYLIST,
-        playlist.playlist_id,
+        info,
         playlist.emby_numbering,
         items,
+        {v.youtube_id: v.title for v in videos},
+        dry_run,
     )
     series = SeriesSource(
         kind="playlists",
-        info=SeriesInfo(
-            series_id=playlist.playlist_id,
-            title=playlist.name,
-            plot=playlist.description or "",
-            studio=playlist.channel_name,
-        ),
+        info=info,
         poster=paths.playlist_thumb(playlist.playlist_id),
+        name=found.series_name,
     )
-    episodes = [_episode(v, numbers[v.youtube_id], paths, tz) for v in videos]
-    return series, episodes, warnings
+    return series, _episodes(videos, found, paths, tz), found.warnings
 
 
 def sync_series(
@@ -248,8 +405,9 @@ def sync_channel(
     channel_id: str, paths: EmbyPaths, dry_run: bool = False
 ) -> SyncReport:
     """write the series of one channel"""
+    check_layout(dry_run)
     channel = Channel.objects.get(channel_id=channel_id)
-    series, episodes, warnings = channel_series(channel, paths)
+    series, episodes, warnings = channel_series(channel, paths, dry_run)
     writer = EmbyWriter(paths.output_root, dry_run=dry_run)
     return sync_series(series, episodes, writer, warnings)
 
@@ -258,27 +416,53 @@ def sync_playlist(
     playlist_id: str, paths: EmbyPaths, dry_run: bool = False
 ) -> SyncReport:
     """write the series of one playlist"""
+    check_layout(dry_run)
     playlist = Playlist.objects.get(playlist_id=playlist_id)
-    series, episodes, warnings = playlist_series(playlist, paths)
+    series, episodes, warnings = playlist_series(playlist, paths, dry_run)
     writer = EmbyWriter(paths.output_root, dry_run=dry_run)
     return sync_series(series, episodes, writer, warnings)
+
+
+def _folders_of(writer: EmbyWriter, kind: str, series_id: str) -> set[str]:
+    """series folders the manifest knows for a series, whatever the name"""
+    return {
+        d
+        for d in writer.manifest.dirs
+        if d.startswith(f"{kind}/")
+        and d.count("/") == 1
+        and d.endswith(f" [{series_id}]")
+    }
 
 
 def sync_all(paths: EmbyPaths, dry_run: bool = False) -> SyncReport:
     """
     write every channel and playlist in one pass over the whole root, so
     series that no longer exist (or were renamed) are cleaned up too
+    a series that can't be planned is reported in errors and left as it
+    is on disk, the others still sync
     """
-    desired, warnings = [], []
+    check_layout(dry_run)
+    writer = EmbyWriter(paths.output_root, dry_run=dry_run)
+    desired, warnings, errors, keep = [], [], [], set()
     sources = [
-        channel_series(c, paths) for c in Channel.objects.order_by("pk")
-    ] + [playlist_series(p, paths) for p in Playlist.objects.order_by("pk")]
-    for series, episodes, series_warnings in sources:
-        files, plan_warnings = plan_series(series, episodes)
+        ("channels", c.channel_id, channel_series, c)
+        for c in Channel.objects.order_by("pk")
+    ] + [
+        ("playlists", p.playlist_id, playlist_series, p)
+        for p in Playlist.objects.order_by("pk")
+    ]
+    for kind, series_id, build, model in sources:
+        try:
+            series, episodes, series_warnings = build(model, paths, dry_run)
+            files, plan_warnings = plan_series(series, episodes)
+        except (ValueError, OSError) as err:
+            errors.append(f"{kind}/{series_id}: {err}")
+            keep |= _folders_of(writer, kind, series_id)
+            continue
         desired.extend(files)
         warnings.extend(series_warnings + plan_warnings)
 
-    writer = EmbyWriter(paths.output_root, dry_run=dry_run)
-    report = writer.sync(desired, scope=None)
+    report = writer.sync(desired, scope=None, keep=keep)
     report.warnings[:0] = warnings
+    report.errors[:0] = errors
     return report

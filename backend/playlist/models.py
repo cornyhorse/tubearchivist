@@ -25,7 +25,7 @@ class Playlist(models.Model):
     emby_numbering = models.CharField(
         max_length=32,
         choices=EmbyNumbering.choices,
-        default=EmbyNumbering.PLAYLIST_POSITION,
+        default=EmbyNumbering.PLAYLIST_FROZEN,
     )
 
     search = models.GeneratedField(

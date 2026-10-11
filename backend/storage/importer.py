@@ -43,6 +43,8 @@ EPISODE_DOC_FIELDS = [
     "season",
     "episode",
 ]
+# frozen Emby file names, missing in backups made before they existed
+EPISODE_NAME_FIELDS = ["name", "series_name"]
 # list values with set semantics, rebuilt in sorted order
 UNORDERED_KEYS = {"playlist"}
 
@@ -288,6 +290,7 @@ class EsImporter:
         numbers = [
             EpisodeNumber(
                 **{k: doc[k] for k in EPISODE_DOC_FIELDS},
+                **{k: doc.get(k, "") for k in EPISODE_NAME_FIELDS},
             )
             for _, doc in self.docs("ta_emby_episode")
         ]
@@ -432,4 +435,5 @@ def rule_to_doc(rule) -> dict:
 
 def episode_to_doc(number) -> dict:
     """EpisodeNumber as a backup document"""
-    return {key: getattr(number, key) for key in EPISODE_DOC_FIELDS}
+    fields = EPISODE_DOC_FIELDS + EPISODE_NAME_FIELDS
+    return {key: getattr(number, key) for key in fields}
