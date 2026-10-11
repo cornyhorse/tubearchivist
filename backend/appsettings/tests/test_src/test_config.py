@@ -7,6 +7,8 @@ from appsettings.models import ConfigDocument
 from appsettings.src import config as config_module
 from appsettings.src.config import AppConfig, ReleaseVersion
 from common.src.ta_redis import RedisArchivist
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 pytestmark = pytest.mark.django_db
 
@@ -35,6 +37,30 @@ def test_update_config_merges_nested_and_replaces_plain(app_config):
     assert updated["downloads"]["sleep_interval"] == 10
     assert updated["new_flat"] == 3
     assert stored() == updated
+
+
+def test_update_config_keeps_a_concurrent_change(app_config):
+    """the update merges into the stored config, read under a row lock"""
+    del app_config
+    stale = AppConfig()
+    AppConfig().update_config({"downloads": {"limit_speed": 500}})
+
+    with CaptureQueriesContext(connection) as context:
+        updated = stale.update_config({"downloads": {"sleep_interval": 3}})
+
+    assert stored()["downloads"]["limit_speed"] == 500
+    assert stored()["downloads"]["sleep_interval"] == 3
+    assert updated == stored() == stale.config
+    assert any("FOR UPDATE" in q["sql"] for q in context.captured_queries)
+
+
+def test_update_config_recreates_a_deleted_document(app_config):
+    ConfigDocument.objects.all().delete()
+
+    app_config.update_config({"downloads": {"limit_speed": 7}})
+
+    assert stored()["downloads"]["limit_speed"] == 7
+    assert stored()["application"] == app_config.config["application"]
 
 
 def test_update_config_keeps_defaults_untouched(app_config):

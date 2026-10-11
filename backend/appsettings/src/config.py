@@ -14,6 +14,7 @@ from appsettings.models import ConfigDocument
 from appsettings.src.snapshot import DbSnapshot
 from common.src.ta_redis import RedisArchivist
 from django.conf import settings
+from django.db import transaction
 
 
 class SubscriptionsConfigType(TypedDict):
@@ -119,21 +120,31 @@ class AppConfig:
         )
 
     def update_config(self, data: dict) -> AppConfigType:
-        """update single config value"""
-        new_config = copy.deepcopy(self.config)
-        for key, value in copy.deepcopy(data).items():
-            if (
-                isinstance(value, dict)
-                and key in new_config
-                and isinstance(new_config[key], dict)
-            ):
-                new_config[key].update(value)
-            else:
-                new_config[key] = value
+        """
+        update config values: merged into the stored config, read under a
+        row lock, so concurrent updates of other keys are not lost
+        """
+        with transaction.atomic():
+            document = (
+                ConfigDocument.objects.select_for_update()
+                .filter(key=self.KEY)
+                .first()
+            )
+            stored = document.value if document else self.config
+            new_config = copy.deepcopy(stored)
+            for key, value in copy.deepcopy(data).items():
+                if (
+                    isinstance(value, dict)
+                    and key in new_config
+                    and isinstance(new_config[key], dict)
+                ):
+                    new_config[key].update(value)
+                else:
+                    new_config[key] = value
 
-        self._save(new_config)
+            self._save(new_config)
+
         self.config = new_config
-
         return new_config
 
     def post_process_updated(self, data: dict) -> None:
