@@ -47,48 +47,70 @@ def next_run(task: CustomPeriodicTask):
     return now + remaining
 
 
-def schedule_dict(task: CustomPeriodicTask) -> dict:
-    """a schedule as the API returns it"""
-    job_type, label = SCHEDULED.get(task.name, (task.name, task.name))
+def schedule_dict(task: CustomPeriodicTask | str) -> dict:
+    """a schedule as the API returns it; a name alone: no schedule (off)"""
+    name = task if isinstance(task, str) else task.name
+    job_type, label = SCHEDULED[name]
     last_job = (
         Job.objects.filter(type=job_type, created_by=CreatedBy.SCHEDULE)
         .order_by("-created_at")
         .values_list("id", flat=True)
         .first()
     )
-    return {
-        "name": task.name,
+    item = {
+        "name": name,
         "label": label,
         "job_type": job_type,
         "lane": get_spec(job_type).lane,
+        "schedule": None,
+        "schedule_human": None,
+        "enabled": False,
+        "next_run": None,
+        "last_run": None,
+        "last_job": last_job,
+    }
+    if isinstance(task, str):
+        return item
+    return {
+        **item,
         "schedule": task.schedule_parsed,
         "schedule_human": task.crontab.human_readable,
         "enabled": task.enabled,
         "next_run": next_run(task),
         "last_run": task.last_run_at,
-        "last_job": last_job,
     }
 
 
 def schedule_dicts() -> list[dict]:
-    """every schedule, next to run first"""
-    tasks = CustomPeriodicTask.objects.filter(name__in=SCHEDULED)
-    items = [schedule_dict(task) for task in tasks.select_related("crontab")]
+    """every schedulable task, next to run first, those off last"""
+    tasks = {
+        task.name: task
+        for task in CustomPeriodicTask.objects.filter(
+            name__in=SCHEDULED
+        ).select_related("crontab")
+    }
+    items = [schedule_dict(tasks.get(name, name)) for name in SCHEDULED]
     never = timezone.now().replace(year=9999)
     return sorted(items, key=lambda i: i["next_run"] or never)
 
 
-def update(
-    name: str, enabled: bool | None = None, schedule: str | None = None
-) -> dict:
+NO_CHANGE = object()
+
+
+def update(name: str, enabled: bool | None = None, schedule=NO_CHANGE) -> dict:
     """
     pause or resume a schedule, or change when it runs (cron 'minute
-    hour weekday', or 'auto' for the default); creates it if needed
-    KeyError for an unknown name, ValueError for a bad schedule
+    hour weekday', 'auto' for the default, None to remove it: off);
+    creates it if needed
+    KeyError for an unknown name, ValueError for a bad schedule,
+    CustomPeriodicTask.DoesNotExist to pause a task without schedule
     """
     if name not in SCHEDULED:
         raise KeyError(name)
-    if schedule:
+    if schedule is None:
+        CustomPeriodicTask.objects.filter(name=name).delete()
+        return schedule_dict(name)
+    if schedule is not NO_CHANGE:
         if schedule == "auto" and name not in ScheduleBuilder.SCHEDULES:
             raise ValueError(f"{name} has no default schedule")
         CrontabValidator().validate_cron(schedule)

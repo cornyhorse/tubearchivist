@@ -5988,7 +5988,9 @@ components:
           type: boolean
         schedule:
           type: string
-          description: cron 'minute hour weekday', e.g. '0 */6 *', or 'auto'
+          nullable: true
+          description: cron 'minute hour weekday', e.g. '0 */6 *', 'auto' for the
+            default, or null to turn the schedule off
     Ping:
       type: object
       description: serialize ping response
@@ -6760,9 +6762,7 @@ components:
       - description
       - key
       - label
-      - needs_value
       - patch
-      - value_field
     RulePreview:
       type: object
       description: '''38 download / 12 skipped'', with the reasons'
@@ -6904,9 +6904,11 @@ components:
           $ref: '#/components/schemas/LaneEnum'
         schedule:
           type: string
-          description: 'cron: minute hour weekday'
+          nullable: true
+          description: 'cron: minute hour weekday; null: no schedule (off)'
         schedule_human:
           type: string
+          nullable: true
           description: e.g. 'At 18:00'
         enabled:
           type: boolean

@@ -278,8 +278,13 @@ class ScheduledJobSerializer(serializers.Serializer):
     )
     job_type = serializers.ChoiceField(choices=JOB_TYPES)
     lane = serializers.ChoiceField(choices=LANES)
-    schedule = serializers.CharField(help_text="cron: minute hour weekday")
-    schedule_human = serializers.CharField(help_text="e.g. 'At 18:00'")
+    schedule = serializers.CharField(
+        allow_null=True,
+        help_text="cron: minute hour weekday; null: no schedule (off)",
+    )
+    schedule_human = serializers.CharField(
+        allow_null=True, help_text="e.g. 'At 18:00'"
+    )
     enabled = serializers.BooleanField()
     next_run = serializers.DateTimeField(allow_null=True)
     last_run = serializers.DateTimeField(allow_null=True)
@@ -297,5 +302,9 @@ class ScheduledJobUpdateSerializer(serializers.Serializer):
     enabled = serializers.BooleanField(required=False)
     schedule = serializers.CharField(
         required=False,
-        help_text="cron 'minute hour weekday', e.g. '0 */6 *', or 'auto'",
+        allow_null=True,
+        help_text=(
+            "cron 'minute hour weekday', e.g. '0 */6 *', 'auto' for the "
+            "default, or null to turn the schedule off"
+        ),
     )

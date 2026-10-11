@@ -262,7 +262,9 @@ def test_scheduled_list(admin_client, schedules):
     data = admin_client.get("/api/queue/scheduled/").json()
 
     names = [i["name"] for i in data]
-    assert names[-1] == "version_check"
+    assert set(names[:2]) == {"update_subscribed", "run_backup"}
+    version = next(i for i in data if i["name"] == "version_check")
+    assert (version["enabled"], version["schedule"]) == (False, "0 11 *")
     subs = next(i for i in data if i["name"] == "update_subscribed")
     assert subs["label"] == "Check channels for new videos"
     assert subs["job_type"] == "check_subscriptions"
@@ -383,3 +385,27 @@ def test_run_now_new_schedules(admin_client, schedules):
     backup = admin_client.post("/api/queue/scheduled/run_backup/run/")
     job = Job.objects.get(pk=backup.json()["job"]["id"])
     assert job.params == {"reason": "auto"}
+
+
+def test_scheduled_lists_off_tasks(admin_client, schedules):
+    # pylint: disable=unused-argument
+    data = admin_client.get("/api/queue/scheduled/").json()
+    names = [i["name"] for i in data]
+    assert len(names) == 10
+    off = next(i for i in data if i["name"] == "manual_import")
+    assert (off["schedule"], off["enabled"], off["next_run"]) == (
+        None,
+        False,
+        None,
+    )
+
+    url = "/api/queue/scheduled/run_backup/"
+    removed = admin_client.patch(url, {"schedule": None}, format="json")
+    assert removed.status_code == 200
+    assert (removed.json()["schedule"], removed.json()["enabled"]) == (
+        None,
+        False,
+    )
+    assert not CustomPeriodicTask.objects.filter(name="run_backup").exists()
+    again = admin_client.patch(url, {"schedule": "0 4 *"}, format="json")
+    assert again.json()["schedule"] == "0 4 *"

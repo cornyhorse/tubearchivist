@@ -38,6 +38,7 @@ from jobs.src.present import (
 )
 from jobs.src.registry import LANES, get_spec
 from jobs.src.schedules import (
+    NO_CHANGE,
     SCHEDULED,
     run_now,
     schedule_dicts,
@@ -305,7 +306,9 @@ class ScheduledView(ApiBaseView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         try:
-            item = update(name, data.get("enabled"), data.get("schedule"))
+            item = update(
+                name, data.get("enabled"), data.get("schedule", NO_CHANGE)
+            )
         except (KeyError, CustomPeriodicTask.DoesNotExist):
             return Response({"error": "schedule not found"}, status=404)
         except ValueError as err:
