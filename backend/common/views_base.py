@@ -9,7 +9,6 @@ from rest_framework.authentication import (
     SessionAuthentication,
     TokenAuthentication,
 )
-from rest_framework.response import Response
 from rest_framework.views import APIView
 
 
@@ -97,11 +96,3 @@ class ApiBaseView(APIView):
         if pagination:
             self.pagination_handler.validate(total)
             self.response["paginate"] = self.pagination_handler.pagination
-
-
-def not_built(step: str) -> Response:
-    """
-    501 for an endpoint of docs/ux-api-contract.md that a later PR builds;
-    step names the PR, so the frontend can tell what to wait for
-    """
-    return Response({"error": f"not built yet: {step}"}, status=501)

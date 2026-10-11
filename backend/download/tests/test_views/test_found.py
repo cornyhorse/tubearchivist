@@ -314,7 +314,3 @@ def test_action_errors(admin_client):
         status=400,
     )
     assert "downloaded" in downloaded["error"]
-    later = action(
-        admin_client, {"action": "download_anyway", "ids": ["a"]}, status=501
-    )
-    assert later["error"] == "not built yet: rules API extensions"

@@ -14,6 +14,8 @@ class EpisodeNumber(models.Model):
     """
     the season and episode assigned to a video within a series and scheme
     assigned once, never changed except by an explicit renumber
+    numbers set by hand are stored with scheme "manual"; every scheme of
+    the series keeps them
     """
 
     series_kind = models.CharField(max_length=16, choices=SeriesKind.choices)

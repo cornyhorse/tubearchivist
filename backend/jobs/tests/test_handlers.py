@@ -538,6 +538,16 @@ def test_playlist_subscribe_and_numbering(fake, app_config, monkeypatch):
     assert playlist.calls[1][0] == "change_subscribe"
     assert Playlist.objects.get().emby_numbering == "playlist_position"
 
+    # storing a rule without subscribing indexes the playlist first
+    Job.objects.update(status=JobStatus.DONE)
+    playlist.calls.clear()
+    _, ctx = running(
+        "check_playlist", "PL1", params={"save_rule": {"max_duration": 60}}
+    )
+    handlers.check_playlist(ctx)
+    assert playlist.calls[1][0] == "update_playlist"
+    assert DownloadRule.objects.get(playlist_id="PL1").max_duration == 60
+
 
 @pytest.mark.django_db
 def test_fetch_video_subscribe(fake, monkeypatch, app_config):

@@ -15,9 +15,7 @@ from common.src.ta_redis import RedisArchivist
 from common.src.urlparser import Parser
 from download.models import Download, DownloadRule
 from download.serializers import DownloadRuleSerializer
-from download.src.rules import RuleSet, check_rule, reason_label
-from download.src.rules import rule_ref as stored_rule_ref
-from download.src.rules import rule_summary
+from download.src.rules import RuleSet, reason_label, rule_ref, rule_summary
 from jobs.models import CreatedBy, Job, Priority
 from jobs.src.engine import enqueue
 from playlist.models import Playlist
@@ -165,28 +163,6 @@ def _published(value) -> datetime | None:
     return datetime.fromtimestamp(int(value), tz=timezone.utc)
 
 
-def _verdict(rule: DownloadRule | None, entry: dict, ref: dict | None):
-    failed = check_rule(rule, entry)
-    if not failed:
-        return {
-            "allowed": True,
-            "action": "download",
-            "reason_key": None,
-            "reason": None,
-            "rule": ref,
-            "override": None,
-        }
-    action, reason, key = failed
-    return {
-        "allowed": False,
-        "action": action,
-        "reason_key": key,
-        "reason": reason,
-        "rule": ref,
-        "override": None,
-    }
-
-
 def _numbering(kind: str, item_id: str, channel_id: str | None) -> dict:
     if kind == "playlist":
         model, pk, source = Playlist, item_id, "playlist"
@@ -199,7 +175,8 @@ def _numbering(kind: str, item_id: str, channel_id: str | None) -> dict:
     )
     if scheme:
         return {"scheme": scheme, "source": source}
-    return {"scheme": "date", "source": "default"}
+    default = "playlist_frozen" if kind == "playlist" else "date"
+    return {"scheme": default, "source": "default"}
 
 
 def _subscribed(kind: str, item_id: str, channel_id: str | None) -> bool:
@@ -223,15 +200,16 @@ def preview_item(
     if newest_n:
         entries = entries[:newest_n]
     channel_id = listing["channel_id"]
+    rules = RuleSet()
+    playlist_id = item_id if kind == "playlist" else None
     if rule is False:
-        rule = RuleSet().for_channel(channel_id)
-        ref = stored_rule_ref(rule)
+        ref = rule_ref(rules.for_entry(channel_id, playlist_id))
     elif rule is None:
         ref = None
     else:
         ref = {
-            "scope": "playlist" if kind == "playlist" else "channel",
-            "target_id": item_id if kind == "playlist" else channel_id,
+            "scope": "playlist" if playlist_id else "channel",
+            "target_id": playlist_id or channel_id,
             "summary": rule_summary(rule),
         }
 
@@ -239,7 +217,9 @@ def preview_item(
     sample, reasons = [], {}
     counts = {"download": 0, "skipped": 0, "already_have": 0}
     for entry in entries:
-        verdict = _verdict(rule, entry, ref)
+        verdict = rules.verdict(
+            entry, playlist_id, rule, ref if rule is not False else False
+        )
         state = known.get(entry["youtube_id"])
         if state:
             counts["already_have"] += 1
@@ -247,7 +227,10 @@ def preview_item(
             counts["download"] += 1
         else:
             counts["skipped"] += 1
-            label = reason_label(verdict["reason_key"], rule, entry)
+            used = rule
+            if rule is False:
+                used = rules.for_entry(entry["channel_id"], playlist_id)
+            label = reason_label(verdict["reason_key"], used, entry)
             group = (verdict["reason_key"], label)
             reasons[group] = reasons.get(group, 0) + 1
         if len(sample) < SAMPLE_SIZE:
@@ -351,8 +334,7 @@ def add(
             vid_type = getattr(item["vid_type"], "value", item["vid_type"])
             params["vid_type"] = str(vid_type)
         if rule is not False:
-            # playlists get their own stored rules in a later step
-            stored = save_rule and kind == "channel"
+            stored = save_rule and kind != "video"
             params["save_rule" if stored else "rule"] = _rule_data(rule)
         if numbering and kind != "video":
             params["numbering"] = numbering
