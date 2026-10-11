@@ -13,7 +13,7 @@ This note covers *how* the fork is built.
 |---|---|
 | Storage design | **Relational Django models**, normalized. No ES-DSL translator and no JSONB document store: every ES call site gets rewritten to model/queryset code. Done right rather than fast. |
 | Redis | Kept as the Celery broker and for ephemeral keys. Not questioned in review, so it stays as proposed. |
-| Default Emby numbering | **Date-derived** (`season = year`, `episode = MMDD*10+n`). |
+| Default Emby numbering | **Date-derived** (`season = year`, `episode = MMDD*100+n`). |
 | Series folder names | `<Name> [<channel_id>]`. |
 | Visibility | The fork stays a public GitHub fork, which also covers the GPL-3.0 requirement to publish source. |
 
@@ -164,14 +164,19 @@ fetches thumbnails from ytimg.
 <root>/channels/<Name> [<channel_id>]/
     tvshow.nfo  poster.jpg  fanart.jpg  banner.jpg       # TA cache art
     Season 2025/
-        <Name> - S2025E6200 - <Title>.mp4                # hardlink
-        <Name> - S2025E6200 - <Title>.nfo                # <episodedetails>
-        <Name> - S2025E6200 - <Title>-thumb.jpg          # TA cache thumb
+        <Name> - S2025E62000 - <Title>.mp4               # hardlink
+        <Name> - S2025E62000 - <Title>.nfo               # <episodedetails>
+        <Name> - S2025E62000 - <Title>-thumb.jpg         # TA cache thumb
 <root>/playlists/<Name> [<playlist_id>]/...
 ```
 
 The filename always carries the same SxxEyy as the NFO, so Emby's filename
-parser can never fold two videos together.
+parser can never fold two videos together. `<Name>` and `<Title>` are
+frozen when a video is first numbered (`EpisodeNumber.series_name` and
+`.name`): renaming a channel, playlist or video changes the NFO titles only,
+never a path. An episode file name is capped at 200 bytes.
+Layout 2 (frozen names, `MMDD*100+n`, frozen playlists) was introduced
+with a one-time migration, see [emby-layout-migration.md](emby-layout-migration.md).
 
 ### 2.3 Numbering (`numbering.py`, pure functions)
 
@@ -179,10 +184,11 @@ The scheme is set per channel or playlist (`emby_numbering`).
 
 | Scheme | Season | Episode | Notes |
 |---|---|---|---|
-| `date` (default) | upload year | `MMDD*10 + n`, where n is the next free slot that day | frozen once assigned. An 11th upload on one day takes the next free number and logs a warning. |
+| `date` (default) | upload year | `MMDD*100 + n`, where n is the next free slot that day | frozen once assigned. A 101st upload on one day takes the next free number and logs a warning. |
 | `year_frozen` | upload year | next number in that year | backfills get the next number, and nothing renumbers |
 | `absolute_frozen` | 1 | next number overall | |
-| `playlist_position` (playlist default) | 1 | `idx + 1` | follows the playlist on purpose, so it renumbers on reorder |
+| `playlist_frozen` (playlist default) | 1 | next number in playlist order | first sync follows the playlist, later additions are appended, never renumbered |
+| `playlist_position` | 1 | `idx + 1` | follows the playlist on purpose, so it renumbers on reorder |
 
 Frozen numbers live in `EpisodeNumber`. They are never reused, even after a
 video is deleted. Unique constraints make collisions impossible.
@@ -215,8 +221,29 @@ by name. Output is deterministic and strips XML-invalid control characters.
   name first, then into place. Swaps and cycles (a reordered playlist) are
   therefore safe and keep inodes.
 - An identical existing file is adopted, so a lost manifest rebuilds with
-  zero writes.
-- Dry-run simulates moves and removals, so its report matches a real run.
+  zero writes. An unreadable manifest is moved to `.corrupt-<ts>` and
+  rebuilt that way; entries with unsafe paths are dropped on load.
+- Links are recorded by `st_ino` and size, not `st_dev`, which a CIFS mount
+  changes on every remount. Before linking, a preflight hardlink checks the
+  root is on the media's mount and keeps inodes.
+- The manifest is saved after the first rename phase; temp names are
+  random, and leftovers in owned dirs are swept at the start of a run.
+- A failure in one series is reported in `errors` and leaves that series
+  as it was; the other series still sync.
+- Dry-run simulates moves and removals, so its report matches a real run,
+  and stores no numbers or names.
+
+Health check (`health.py`, `manage.py ta_emby_health [--no-repair]`): every
+real `sync_all` records its outcome in the `emby_sync_state` config
+document (last run, last success, last error, and per series how many runs
+in a row it failed). The check reports a sync with no success for 6 hours,
+the last run's error, a series failing 3 runs in a row, the old layout, a
+manifest from a newer writer and stale temp files. It repairs what is safe:
+names that hit ENAMETOOLONG are frozen shorter (60 bytes), stale temp files
+are removed, a corrupt manifest is set aside for the next sync to rebuild,
+and an interrupted rename is finished by the next sync (`rerun_sync`). The
+caller holds the emby_sync lock, notifies `message()` when not `healthy`,
+and queues a sync when `rerun_sync` is set.
 
 `manage.py ta_emby_sync <root> [--channel ID | --playlist ID] [--dry-run]
 [--verbose-changes]` refuses an output root inside the media dir.

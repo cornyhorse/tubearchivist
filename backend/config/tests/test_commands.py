@@ -101,6 +101,12 @@ def test_emby_sync_verbose_dry_run(library):
 
     output = run("ta_emby_sync", str(out), "--dry-run", "--verbose-changes")
 
+    # names are frozen: a new title only updates the NFOs
+    assert "[dry-run] rename " not in output
+
+    Channel.objects.update(emby_numbering="year_frozen")
+    output = run("ta_emby_sync", str(out), "--dry-run", "--verbose-changes")
+
     assert "[dry-run] rename " in output
     assert "[dry-run] update " in output
     assert "[dry-run] delete " in output

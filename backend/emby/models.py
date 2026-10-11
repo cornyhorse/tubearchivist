@@ -23,6 +23,12 @@ class EpisodeNumber(models.Model):
     season = models.IntegerField()
     episode = models.IntegerField()
     assigned = models.DateTimeField(auto_now_add=True)
+    # file names are frozen when first written, so a renamed video or
+    # series doesn't move files in Emby; titles live in the NFOs only
+    # episode part of the file name, filesystem safe
+    name = models.CharField(max_length=255, blank=True, default="")
+    # series folder name, the same on every row of the series
+    series_name = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
         constraints = [

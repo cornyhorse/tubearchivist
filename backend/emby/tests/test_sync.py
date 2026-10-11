@@ -3,12 +3,10 @@
 import xml.etree.ElementTree as ET
 
 import pytest
-from channel.models import Channel
 from common.src.env_settings import EnvironmentSettings
-from common.tests.docs import channel_doc, playlist_doc, video_doc
+from common.tests.docs import channel_doc
 from emby.models import EpisodeNumber
 from emby.src.sync import (
-    EmbyPaths,
     paths_from_env,
     sync_all,
     sync_channel,
@@ -19,51 +17,6 @@ from playlist.models import Playlist
 from video.models import Video
 
 pytestmark = pytest.mark.django_db
-
-
-@pytest.fixture(name="paths")
-def fixture_paths(tmp_path):
-    """scratch roots with art for channel and playlist in the cache"""
-    paths = EmbyPaths(
-        tmp_path / "media", tmp_path / "cache", tmp_path / "emby"
-    )
-    channel_id = channel_doc()["channel_id"]
-    for kind in ("thumb", "tvart", "banner"):
-        art = paths.channel_art(channel_id, kind)
-        art.parent.mkdir(parents=True, exist_ok=True)
-        art.write_bytes(kind.encode())
-    thumb = paths.playlist_thumb("PL1")
-    thumb.parent.mkdir(parents=True)
-    thumb.write_bytes(b"playlist")
-    return paths
-
-
-def add_video(paths, youtube_id, published):
-    """video with placeholder media and thumb"""
-    video = Video.from_doc(
-        video_doc(youtube_id=youtube_id, published=published)
-    )
-    video.save()
-    media = paths.media_root / video.media_url
-    media.parent.mkdir(parents=True, exist_ok=True)
-    media.write_bytes(youtube_id.encode())
-    thumb = paths.video_thumb(youtube_id)
-    thumb.parent.mkdir(parents=True, exist_ok=True)
-    thumb.write_bytes(b"jpg")
-    return video
-
-
-@pytest.fixture(name="library")
-def fixture_library(paths):
-    """channel with three videos, playlist with two of them reversed"""
-    Channel.objects.create(**Channel.fields_from_doc(channel_doc()))
-    for n, youtube_id in enumerate(["v1", "v2", "v3"]):
-        add_video(paths, youtube_id, 1700000000 + n * 86400)
-    doc = playlist_doc("PL1", ["v3", "notdl", "v1"])
-    Playlist.objects.create(**Playlist.fields_from_doc(doc))
-    for entry in Playlist.entries_from_doc(doc):
-        entry.save()
-    return paths
 
 
 def numbers(root):

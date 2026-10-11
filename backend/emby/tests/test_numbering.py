@@ -21,9 +21,9 @@ def test_date_scheme():
     numbers, warnings = assign_numbers("date", items)
 
     assert numbers == {
-        "a": (2025, 3140),
-        "b": (2025, 3141),
-        "c": (2024, 12310),
+        "a": (2025, 31400),
+        "b": (2025, 31401),
+        "c": (2024, 123100),
     }
     assert not warnings
 
@@ -35,17 +35,30 @@ def test_date_scheme_frozen_on_backfill():
         "date", [item("a", "2025-03-14"), item("b", "2025-03-14")], first
     )
 
-    assert numbers == {"b": (2025, 3140), "a": (2025, 3141)}
+    assert numbers == {"b": (2025, 31400), "a": (2025, 31401)}
 
 
-def test_date_scheme_overflow_stays_unique():
-    items = [item(f"v{i:02d}", "2025-03-14") for i in range(12)]
+def test_date_scheme_has_100_slots_per_day():
+    """E8: an 11th upload stays in its own day"""
+    items = [item(f"v{i:03d}", "2025-03-14") for i in range(100)]
+    items.append(item("next", "2025-03-15"))
 
     numbers, warnings = assign_numbers("date", items)
 
-    assert len(set(numbers.values())) == 12
-    assert numbers["v09"] == (2025, 3149)
-    assert numbers["v10"] == (2025, 3150)
+    assert numbers["v010"] == (2025, 31410)
+    assert numbers["v099"] == (2025, 31499)
+    assert numbers["next"] == (2025, 31500)
+    assert not warnings
+
+
+def test_date_scheme_overflow_stays_unique():
+    items = [item(f"v{i:03d}", "2025-03-14") for i in range(102)]
+
+    numbers, warnings = assign_numbers("date", items)
+
+    assert len(set(numbers.values())) == 102
+    assert numbers["v099"] == (2025, 31499)
+    assert numbers["v100"] == (2025, 31500)
     assert len(warnings) == 2
 
 
@@ -124,3 +137,27 @@ def test_playlist_position_duplicates():
             "playlist_position",
             [item("a", "2025-01-01", 0), item("b", "2025-01-01", 0)],
         )
+
+
+def test_playlist_frozen_appends_and_never_renumbers():
+    """E7: the playlist default numbers in playlist order, then freezes"""
+    first, _ = assign_numbers(
+        "playlist_frozen",
+        [item("b", "2025-01-01", 1), item("a", "2025-06-01", 0)],
+    )
+    assert first == {"a": (1, 1), "b": (1, 2)}
+
+    # reordered, with a new video at the front and "a" removed
+    numbers, warnings = assign_numbers(
+        "playlist_frozen",
+        [item("new", "2024-01-01", 0), item("b", "2025-01-01", 1)],
+        first,
+    )
+
+    assert numbers == {"a": (1, 1), "b": (1, 2), "new": (1, 3)}
+    assert not warnings
+
+
+def test_playlist_frozen_needs_positions():
+    with pytest.raises(NumberingError, match="no playlist position"):
+        assign_numbers("playlist_frozen", [item("a", "2025-01-01")])
