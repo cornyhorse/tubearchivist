@@ -22,6 +22,7 @@ const EmbyNumberingSelect = ({ kind, id, value, options, onSaved }: EmbyNumberin
       </div>
       <select
         name="emby_numbering"
+        aria-label="Emby episode numbering"
         value={value}
         disabled={saving}
         onChange={async event => {

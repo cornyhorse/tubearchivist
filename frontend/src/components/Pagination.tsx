@@ -42,6 +42,10 @@ const Pagination = ({ pagination, setPage }: Props) => {
     (event: KeyboardEvent) => {
       const { code } = event;
 
+      // arrow keys inside a text field move the cursor, not the page
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+
       if (code === 'ArrowRight' && videoId === null) {
         if (currentPage === 0 && totalHits > 1) {
           setPage(2);

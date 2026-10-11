@@ -133,6 +133,12 @@ def test_schedule_list_and_get(admin_client):
     assert single.json()["schedule"] == "0 3 *"
     assert single.json()["config"] == {"days": 9}
     assert single.json()["schedule_human"]
+    assert single.json()["next_run_at"] is not None
+    task = CustomPeriodicTask.objects.get(name="check_reindex")
+    task.enabled = False
+    task.save()
+    off = admin_client.get("/api/task/schedule/check_reindex/").json()
+    assert off["next_run_at"] is None
     missing = admin_client.get("/api/task/schedule/run_backup/")
     assert missing.status_code == 404
 

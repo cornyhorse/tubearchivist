@@ -34,6 +34,7 @@ import { ApiResponseType } from '../functions/APIClient';
 import NotFound from './NotFound';
 import updatePlaylistSortOrder from '../api/actions/updatePlaylistSortOrder';
 import EmbyNumberingSelect from '../components/EmbyNumberingSelect';
+import { NumberingBadge, RuleBadge } from '../components/ux/Badges';
 import { useFilterBarTempConf } from '../stores/FilterbarTempConf';
 import { HideWatchedType, HideWatchedName } from '../configuration/constants/HideWatched';
 
@@ -138,6 +139,40 @@ const Playlist = () => {
         <div className="title-bar">
           <h1>{playlist.playlist_name}</h1>
         </div>
+        {!isCustomPlaylist && (
+          <div className="ux-header-badges">
+            <span className="ux-badge-label">Emby numbering</span>
+            <NumberingBadge
+              kind="playlist"
+              id={playlist.playlist_id}
+              name={playlist.playlist_name}
+              value={playlist.emby_numbering}
+              options={[
+                'playlist_frozen',
+                'playlist_position',
+                'date',
+                'year_frozen',
+                'absolute_frozen',
+              ]}
+              canEdit={isAdmin}
+              onSaved={() => setRefresh(true)}
+            />
+            {channel && (
+              <>
+                <span className="ux-badge-label" title="Playlists use their channel's rule">
+                  Channel rule
+                </span>
+                <RuleBadge
+                  channelId={channel.channel_id}
+                  channelName={channel.channel_name}
+                  rule={channel.download_rule}
+                  canEdit={isAdmin}
+                  onSaved={() => setRefresh(true)}
+                />
+              </>
+            )}
+          </div>
+        )}
         <div className="info-box info-box-3">
           {!isCustomPlaylist && channel && (
             <ChannelOverview
@@ -332,7 +367,13 @@ const Playlist = () => {
                   kind="playlist"
                   id={playlist.playlist_id}
                   value={playlist.emby_numbering ?? 'playlist_position'}
-                  options={['playlist_position', 'date', 'year_frozen', 'absolute_frozen']}
+                  options={[
+                    'playlist_frozen',
+                    'playlist_position',
+                    'date',
+                    'year_frozen',
+                    'absolute_frozen',
+                  ]}
                   onSaved={() => setRefresh(true)}
                 />
               )}

@@ -191,3 +191,21 @@ def test_admin_registration():
 
     assert isinstance(admin.site._registry[Account], HomeAdmin)
     assert PeriodicTask not in admin.site._registry
+
+
+@pytest.mark.django_db
+def test_table_views_and_home_layout(user_client):
+    url = "/api/user/me/"
+    defaults = user_client.get(url).json()
+    assert defaults["view_style_channel"] == "table"
+    assert defaults["home_layout"] == "default"
+
+    changed = user_client.post(
+        url,
+        {"view_style_downloads": "table", "home_layout": "shelves"},
+        format="json",
+    )
+    assert changed.json()["view_style_downloads"] == "table"
+    assert changed.json()["home_layout"] == "shelves"
+    bad = user_client.post(url, {"home_layout": "magic"}, format="json")
+    assert bad.status_code == 400

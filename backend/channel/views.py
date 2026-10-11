@@ -11,13 +11,13 @@ from channel.serializers import (
     ChannelUpdateSerializer,
 )
 from channel.src.index import YoutubeChannel, channel_overwrites
+from channel.src.listing import channel_list, table_doc
 from channel.src.nav import ChannelNav
 from common.serializers import ErrorResponseSerializer
 from common.src.helper import get_duration_str
 from common.src.urlparser import Parser
 from common.views_base import AdminWriteOnly, ApiBaseView
 from django.db.models import Count, Sum
-from django.db.models.functions import Lower
 from download.src.rules import get_rule, set_rule
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -51,12 +51,13 @@ class ChannelApiListView(ApiBaseView):
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
 
-        channels = Channel.objects.order_by(Lower("name"), "channel_id")
-        query_filter = validated_data.get("filter")
-        if query_filter is not None:
-            channels = channels.filter(subscribed=query_filter == "subscribed")
-
-        self.get_document_list(request, "ta_channel", channels)
+        self.get_document_list(
+            request,
+            "ta_channel",
+            channel_list(validated_data),
+            to_doc=table_doc,
+            page_size=validated_data.get("page_size"),
+        )
         serializer = ChannelListSerializer(self.response)
 
         return Response(serializer.data)

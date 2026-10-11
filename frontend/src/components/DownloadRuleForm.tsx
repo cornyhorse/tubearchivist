@@ -24,6 +24,10 @@ type DownloadRuleFormProps = {
   channelId?: string;
   rule: DownloadRuleType | null;
   onSaved: () => void;
+  /** save somewhere else instead, e.g. to several channels at once */
+  saveRule?: (rule: DownloadRuleType | null) => Promise<{ status: number; error?: unknown }>;
+  /** label of the save button */
+  saveLabel?: string;
 };
 
 const toMinutes = (seconds: number | null) => (seconds === null ? '' : String(seconds / 60));
@@ -33,7 +37,13 @@ const fromMinutes = (minutes: string) => {
   return Math.round(Number(minutes) * 60);
 };
 
-const DownloadRuleForm = ({ channelId, rule, onSaved }: DownloadRuleFormProps) => {
+const DownloadRuleForm = ({
+  channelId,
+  rule,
+  onSaved,
+  saveRule,
+  saveLabel = 'Save rule',
+}: DownloadRuleFormProps) => {
   const [draft, setDraft] = useState<DownloadRuleType>(rule ?? EMPTY_RULE);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,9 +58,11 @@ const DownloadRuleForm = ({ channelId, rule, onSaved }: DownloadRuleFormProps) =
 
   const save = async (toSave: DownloadRuleType | null) => {
     setError(null);
-    const response = await updateDownloadRule(channelId, toSave);
+    const response = saveRule
+      ? await saveRule(toSave)
+      : await updateDownloadRule(channelId, toSave);
     if (response.status >= 400) {
-      setError(JSON.stringify(response.error ?? response.data));
+      setError(JSON.stringify(response.error ?? ('data' in response ? response.data : '')));
       return;
     }
     onSaved();
@@ -63,6 +75,7 @@ const DownloadRuleForm = ({ channelId, rule, onSaved }: DownloadRuleFormProps) =
           <p>Rule enabled</p>
         </div>
         <input
+          aria-label="Rule enabled"
           type="checkbox"
           checked={draft.enabled}
           onChange={event => update({ enabled: event.target.checked })}
@@ -73,6 +86,7 @@ const DownloadRuleForm = ({ channelId, rule, onSaved }: DownloadRuleFormProps) =
           <p>Minimum length (minutes)</p>
         </div>
         <input
+          aria-label="Minimum length (minutes)"
           type="number"
           min="0"
           step="0.5"
@@ -85,6 +99,7 @@ const DownloadRuleForm = ({ channelId, rule, onSaved }: DownloadRuleFormProps) =
           <p>Maximum length (minutes)</p>
         </div>
         <input
+          aria-label="Maximum length (minutes)"
           type="number"
           min="0"
           step="0.5"
@@ -114,6 +129,7 @@ const DownloadRuleForm = ({ channelId, rule, onSaved }: DownloadRuleFormProps) =
           <p>Title must match (regex)</p>
         </div>
         <input
+          aria-label="Title must match (regex)"
           type="text"
           value={draft.title_include}
           placeholder="e.g. coaster|train"
@@ -125,6 +141,7 @@ const DownloadRuleForm = ({ channelId, rule, onSaved }: DownloadRuleFormProps) =
           <p>Title must not match (regex)</p>
         </div>
         <input
+          aria-label="Title must not match (regex)"
           type="text"
           value={draft.title_exclude}
           placeholder="e.g. #shorts|livestream"
@@ -136,6 +153,7 @@ const DownloadRuleForm = ({ channelId, rule, onSaved }: DownloadRuleFormProps) =
           <p>Uploaded on or after</p>
         </div>
         <input
+          aria-label="Uploaded on or after"
           type="date"
           value={draft.published_after ?? ''}
           onChange={event => update({ published_after: event.target.value || null })}
@@ -146,6 +164,7 @@ const DownloadRuleForm = ({ channelId, rule, onSaved }: DownloadRuleFormProps) =
           <p>Videos that don't match</p>
         </div>
         <select
+          aria-label="Videos that don't match"
           value={draft.action}
           onChange={event => update({ action: event.target.value as 'ignore' | 'skip' })}
         >
@@ -155,7 +174,7 @@ const DownloadRuleForm = ({ channelId, rule, onSaved }: DownloadRuleFormProps) =
       </div>
       {error && <p className="danger-zone">{error}</p>}
       <div className="button-box">
-        <Button label="Save rule" onClick={() => save(draft)} />{' '}
+        <Button label={saveLabel} onClick={() => save(draft)} />{' '}
         {rule && <Button label="Remove rule" onClick={() => save(null)} />}
       </div>
     </div>

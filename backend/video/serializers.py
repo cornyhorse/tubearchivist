@@ -141,6 +141,12 @@ class VideoListQuerySerializer(serializers.Serializer):
         choices=VideoTypeEnum.values_known(), required=False
     )
     page = serializers.IntegerField(required=False)
+    page_size = serializers.IntegerField(
+        required=False, min_value=1, max_value=500
+    )
+    q = serializers.CharField(
+        required=False, help_text="search title and channel name"
+    )
     height = serializers.IntegerField(required=False)
 
 

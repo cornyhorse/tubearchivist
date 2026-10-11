@@ -26,7 +26,7 @@ export const useUserConfigStore = create<UserConfigState>(set => ({
     sort_by: 'published',
     sort_order: SortOrderEnum.Desc as SortOrderType,
     view_style_home: ViewStylesEnum.Grid as ViewStylesType,
-    view_style_channel: ViewStylesEnum.List as ViewStylesType,
+    view_style_channel: ViewStylesEnum.Table as ViewStylesType,
     view_style_downloads: ViewStylesEnum.List as ViewStylesType,
     view_style_playlist: ViewStylesEnum.Grid as ViewStylesType,
     vid_type_filter: null,

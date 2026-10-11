@@ -4,6 +4,7 @@ import { createBrowserRouter, redirect, RouterProvider } from 'react-router-dom'
 import Routes from './configuration/routes/RouteList';
 import './themes.css';
 import './style.css';
+import './ux.css';
 import Base from './pages/Base';
 import About from './pages/About';
 import Channels from './pages/Channels';
@@ -15,9 +16,12 @@ import Search from './pages/Search';
 import SettingsDashboard from './pages/SettingsDashboard';
 import Video from './pages/Video';
 import Login from './pages/Login';
-import SettingsActions from './pages/SettingsActions';
-import SettingsApplication from './pages/SettingsApplication';
-import SettingsScheduling from './pages/SettingsScheduling';
+import SettingsMaintenance from './pages/SettingsMaintenance';
+import SettingsDownload from './pages/SettingsDownload';
+import SettingsWhen from './pages/SettingsWhen';
+import SettingsMediaServer from './pages/SettingsMediaServer';
+import SettingsYouTube from './pages/SettingsYouTube';
+import SettingsNotifications from './pages/SettingsNotifications';
 import SettingsUser from './pages/SettingsUser';
 import loadUserMeConfig from './api/loader/loadUserConfig';
 import loadAuth from './api/loader/loadAuth';
@@ -25,7 +29,9 @@ import ChannelBase from './pages/ChannelBase';
 import ChannelVideo from './pages/ChannelVideo';
 import ChannelPlaylist from './pages/ChannelPlaylist';
 import ChannelAbout from './pages/ChannelAbout';
-import Download from './pages/Download';
+import FoundVideos from './pages/FoundVideos';
+import Queue from './pages/Queue';
+import Rules from './pages/Rules';
 import loadUserAccount from './api/loader/loadUserAccount';
 import loadAppsettingsConfig from './api/loader/loadAppsettingsConfig';
 import NotFound from './pages/NotFound';
@@ -110,7 +116,15 @@ const router = createBrowserRouter(
         },
         {
           path: Routes.Downloads,
-          element: <Download />,
+          element: <FoundVideos />,
+        },
+        {
+          path: Routes.Queue,
+          element: <Queue />,
+        },
+        {
+          path: Routes.Rules,
+          element: <Rules />,
         },
         {
           path: Routes.Search,
@@ -121,16 +135,40 @@ const router = createBrowserRouter(
           element: <SettingsDashboard />,
         },
         {
-          path: Routes.SettingsActions,
-          element: <SettingsActions />,
+          path: Routes.SettingsDownload,
+          element: <SettingsDownload />,
+        },
+        {
+          path: Routes.SettingsWhen,
+          element: <SettingsWhen />,
+        },
+        {
+          path: Routes.SettingsMediaServer,
+          element: <SettingsMediaServer />,
+        },
+        {
+          path: Routes.SettingsYouTube,
+          element: <SettingsYouTube />,
+        },
+        {
+          path: Routes.SettingsNotifications,
+          element: <SettingsNotifications />,
+        },
+        {
+          path: Routes.SettingsMaintenance,
+          element: <SettingsMaintenance />,
         },
         {
           path: Routes.SettingsApplication,
-          element: <SettingsApplication />,
+          loader: () => redirect(Routes.SettingsDownload),
         },
         {
           path: Routes.SettingsScheduling,
-          element: <SettingsScheduling />,
+          loader: () => redirect(Routes.SettingsWhen),
+        },
+        {
+          path: Routes.SettingsActions,
+          loader: () => redirect(Routes.SettingsMaintenance),
         },
         {
           path: Routes.SettingsUser,

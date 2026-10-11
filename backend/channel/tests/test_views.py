@@ -378,3 +378,85 @@ def test_delete_and_numbering_queue_emby_write(client, monkeypatch):
 
     assert client.delete(URL).status_code == 204
     assert Job.objects.filter(type="emby_write", status="queued").exists()
+
+
+def _table_data():
+    """channels with videos, found items and a rule"""
+    add_channels()
+    Channel.save_doc(channel_doc(channel_id="UCthird", channel_name="Third"))
+    Video.save_doc(video_doc(youtube_id="v1", published=1700000000))
+    Video.save_doc(video_doc(youtube_id="v2", published=1600000000))
+    Download.upsert_doc(download_doc(youtube_id="q1", channel_id=OTHER))
+    Download.upsert_doc(download_doc(youtube_id="q2", channel_id=OTHER))
+    Download.upsert_doc(
+        download_doc(youtube_id="e1", channel_id=CH, message="HTTP 410")
+    )
+    Download.upsert_doc(
+        download_doc(youtube_id="i1", channel_id=CH, status="ignore")
+    )
+    set_rule(CH, {"min_duration": 600})
+
+
+def table(client, **params):
+    """GET /api/channel/ rows"""
+    response = client.get("/api/channel/", params)
+    assert response.status_code == 200, response.data
+    return response.json()["data"]
+
+
+def test_table_row(client):
+    _table_data()
+
+    row = next(r for r in table(client) if r["channel_id"] == CH)
+
+    assert row["counts"] == {
+        "downloaded": 2,
+        "queued": 0,
+        "ignored": 1,
+        "errors": 1,
+    }
+    assert row["latest_upload"].startswith("2023-11-14")
+    assert row["download_rule"]["min_duration"] == 600
+    assert row["rule_summary"] == ">10 min"
+    assert row["emby_numbering"] == "date"
+    other = next(r for r in table(client) if r["channel_id"] == OTHER)
+    assert other["counts"]["queued"] == 2
+    assert other["latest_upload"] is None
+    assert other["download_rule"] is None
+    assert other["rule_summary"] is None
+
+
+@pytest.mark.parametrize(
+    "params, expected",
+    [
+        ({"q": "anoth"}, [OTHER]),
+        ({"q": "@third"}, ["UCthird"]),
+        ({"q": "UCchannel"}, [CH]),
+        ({"has_queued": "true"}, [OTHER]),
+        ({"has_queued": "false"}, [CH, "UCthird"]),
+        ({"has_errors": "true"}, [CH]),
+        ({"has_rule": "true"}, [CH]),
+        ({"has_rule": "false", "filter": "subscribed"}, ["UCthird"]),
+        ({"sort": "queued", "order": "desc"}, [OTHER, CH, "UCthird"]),
+        ({"sort": "downloaded", "order": "desc"}, [CH, OTHER, "UCthird"]),
+        ({"sort": "latest_upload", "order": "desc"}, [CH, OTHER, "UCthird"]),
+        ({"sort": "latest_upload"}, [CH, OTHER, "UCthird"]),
+        ({"sort": "name", "order": "desc"}, ["UCthird", CH, OTHER]),
+        ({"sort": "subscribed"}, [OTHER, CH, "UCthird"]),
+        ({"sort": "ignored", "order": "desc"}, [CH, OTHER, "UCthird"]),
+        ({"sort": "last_checked"}, [OTHER, CH, "UCthird"]),
+    ],
+)
+def test_table_filters_and_sort(client, params, expected):
+    _table_data()
+    assert [r["channel_id"] for r in table(client, **params)] == expected
+
+
+def test_table_page_size(client):
+    _table_data()
+    response = client.get("/api/channel/", {"page_size": 2, "page": 2})
+    data = response.json()
+    assert [r["channel_id"] for r in data["data"]] == ["UCthird"]
+    assert data["paginate"]["page_size"] == 2
+    too_big = client.get("/api/channel/", {"page_size": 101})
+    assert too_big.status_code == 400

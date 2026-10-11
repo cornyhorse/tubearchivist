@@ -13,6 +13,7 @@ class CustomPeriodicTaskSerializer(serializers.ModelSerializer):
     schedule = serializers.CharField(source="schedule_parsed")
     schedule_human = serializers.CharField(source="crontab.human_readable")
     last_run_at = serializers.DateTimeField()
+    next_run_at = serializers.DateTimeField(allow_null=True, read_only=True)
     config = serializers.DictField(source="task_config")
 
     class Meta:
@@ -22,6 +23,7 @@ class CustomPeriodicTaskSerializer(serializers.ModelSerializer):
             "schedule",
             "schedule_human",
             "last_run_at",
+            "next_run_at",
             "config",
         ]
 
