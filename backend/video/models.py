@@ -338,6 +338,20 @@ class Comment(models.Model):
         ]
         ordering = ["video", "position"]
 
+    @staticmethod
+    def unique_docs(comments: list[dict]) -> list[dict]:
+        """
+        comment_comments without repeated comment ids, first one wins;
+        yt-dlp can return a comment twice when its pages overlap
+        """
+        seen: set[str] = set()
+        unique = []
+        for comment in comments:
+            if comment["comment_id"] not in seen:
+                seen.add(comment["comment_id"])
+                unique.append(comment)
+        return unique
+
     @classmethod
     def fields_from_doc(cls, comment: dict, position: int) -> dict:
         """map one entry of legacy comment_comments to model fields"""

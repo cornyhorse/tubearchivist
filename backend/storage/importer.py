@@ -218,7 +218,7 @@ class EsImporter:
                 continue
             video_ids.append(youtube_id)
             for position, comment in enumerate(
-                doc.get("comment_comments") or []
+                Comment.unique_docs(doc.get("comment_comments") or [])
             ):
                 comments.append(
                     Comment(

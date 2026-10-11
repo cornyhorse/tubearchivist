@@ -253,3 +253,30 @@ def test_rule_of_missing_channel_is_skipped(tmp_path):
     report = EsImporter(tmp_path).run()
 
     assert report.skipped["ta_download_rule"] == ["1: channel gone"]
+
+
+def test_duplicate_comment_ids_are_dropped(tmp_path):
+    doc = {
+        **COMMENTS_DOC,
+        "comment_comments": COMMENTS_DOC["comment_comments"]
+        + [
+            {"comment_id": "c1", "comment_parent": "root", "comment_text": "z"}
+        ],
+    }
+    write_export(
+        tmp_path,
+        {
+            "ta_channel": [(channel_doc()["channel_id"], channel_doc())],
+            "ta_video": [("vid00000001", video_doc())],
+            "ta_comment": [("vid00000001", doc)],
+        },
+    )
+
+    report = EsImporter(tmp_path).run()
+
+    assert report.ok, report.lines()
+    assert report.counts["comment"] == 2
+    assert list(Comment.objects.values_list("comment_id", "text")) == [
+        ("c1", "a"),
+        ("c2", "b"),
+    ]

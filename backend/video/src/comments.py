@@ -150,7 +150,7 @@ class Comments:
         from video.models import Comment, CommentRefresh, Video
 
         print(f"{self.youtube_id}: upload comments")
-        comments = self.json_data["comment_comments"]
+        comments = Comment.unique_docs(self.json_data["comment_comments"])
         with transaction.atomic():
             Comment.objects.filter(video_id=self.youtube_id).delete()
             Comment.objects.bulk_create(
