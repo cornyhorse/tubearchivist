@@ -17,6 +17,7 @@ from common.src.helper import get_duration_str
 from common.src.urlparser import Parser
 from common.views_base import AdminWriteOnly, ApiBaseView
 from django.db.models import Count, Sum
+from django.db.models.functions import Lower
 from download.src.rules import get_rule, set_rule
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -49,7 +50,7 @@ class ChannelApiListView(ApiBaseView):
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
 
-        channels = Channel.objects.order_by("name", "channel_id")
+        channels = Channel.objects.order_by(Lower("name"), "channel_id")
         query_filter = validated_data.get("filter")
         if query_filter is not None:
             channels = channels.filter(subscribed=query_filter == "subscribed")

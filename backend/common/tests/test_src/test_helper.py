@@ -402,3 +402,29 @@ def test_get_playlists(indexed):
         subscribed_only=True, source=["playlist_id"]
     )
     assert subscribed == [{"playlist_id": "PLz"}]
+
+
+@pytest.mark.django_db
+def test_name_sorts_are_case_insensitive(indexed):
+    """like the ES to_lower keyword sorts"""
+    del indexed
+    # pylint: disable=import-outside-toplevel
+    from channel.models import Channel
+    from common.tests.docs import channel_doc, playlist_doc
+    from playlist.models import Playlist
+
+    Channel.save_doc(channel_doc(channel_id="UClower", channel_name="beta"))
+    Playlist.save_doc(playlist_doc("PLb", [], playlist_channel="beta"))
+
+    channels = helper.get_channels(subscribed_only=False)
+    assert [c["channel_name"] for c in channels] == [
+        "Alpha Trains",
+        "beta",
+        "Zebra Rides",
+    ]
+    playlists = helper.get_playlists(subscribed_only=False)
+    assert [p["playlist_channel"] for p in playlists] == [
+        "Zebra Rides",
+        "beta",
+        "Alpha Trains",
+    ]

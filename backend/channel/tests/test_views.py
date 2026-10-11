@@ -61,6 +61,18 @@ def test_list(client):
     assert response.data["paginate"]["total_hits"] == 2
 
 
+def test_list_sorts_names_case_insensitive(client):
+    add_channels()
+    Channel.save_doc(
+        channel_doc(channel_id="UClower", channel_name="beta lowercase")
+    )
+
+    response = client.get("/api/channel/")
+
+    names = [i["channel_name"] for i in response.data["data"]]
+    assert names == ["Another", "beta lowercase", "Test Channel"]
+
+
 @pytest.mark.parametrize(
     "query_filter, expected",
     [("subscribed", [CH]), ("unsubscribed", [OTHER])],
