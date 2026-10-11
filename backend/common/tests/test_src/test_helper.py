@@ -428,3 +428,21 @@ def test_name_sorts_are_case_insensitive(indexed):
         "beta",
         "Alpha Trains",
     ]
+
+
+@pytest.mark.django_db
+def test_get_playlists_source_skips_entries(
+    indexed, django_assert_num_queries
+):
+    """a source without playlist_entries does not load any entry list"""
+    del indexed
+    with django_assert_num_queries(1):
+        found = helper.get_playlists(
+            subscribed_only=False, source=["playlist_id"]
+        )
+    assert found == [{"playlist_id": "PLz"}, {"playlist_id": "PLa"}]
+
+    with_entries = helper.get_playlists(
+        subscribed_only=True, source=["playlist_id", "playlist_entries"]
+    )
+    assert with_entries == [{"playlist_id": "PLz", "playlist_entries": []}]

@@ -349,7 +349,11 @@ def get_playlists(
     if subscribed_only:
         playlists = playlists.filter(subscribed=True)
 
-    return [_project(playlist.to_doc(), source) for playlist in playlists]
+    with_entries = not source or "playlist_entries" in source
+    return [
+        _project(playlist.to_doc(with_entries=with_entries), source)
+        for playlist in playlists
+    ]
 
 
 def calc_is_watched(duration: float, position: float) -> bool:
