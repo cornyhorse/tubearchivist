@@ -72,6 +72,8 @@ INSTALLED_APPS = [
     "user",
     "config",
     "emby",
+    "jobs",
+    "mediaserver",
 ]
 
 MIDDLEWARE = [
@@ -247,6 +249,33 @@ SPECTACULAR_SETTINGS = {
     "VERSION": TA_VERSION,
     "SERVE_INCLUDE_SCHEMA": False,
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
+    # stable names for the enums of docs/ux-api-contract.md
+    "ENUM_NAME_OVERRIDES": {
+        "JobTypeEnum": "jobs.serializers.JOB_TYPES",
+        "JobStatusEnum": "jobs.serializers.JOB_STATUSES",
+        "LaneEnum": "jobs.serializers.LANES",
+        "JobActionEnum": "jobs.serializers.JOB_ACTIONS",
+        "JobCreatedByEnum": "jobs.serializers.CREATED_BY",
+        "PriorityEnum": "jobs.serializers.PRIORITY_NAMES",
+        "NumberingSchemeEnum": "emby.serializers.NUMBERING_SCHEMES",
+        "SeriesKindEnum": "emby.serializers.SERIES_KINDS",
+        "RuleReasonKeyEnum": "download.serializers_rules.REASON_KEYS",
+        "VideoOverrideEnum": "download.serializers_rules.OVERRIDES",
+        "FoundByEnum": "download.serializers_found.FOUND_BY",
+        "FoundStateEnum": "download.serializers_found.FOUND_STATES",
+        "FoundTabEnum": "download.serializers_found.FOUND_TABS",
+        "FoundActionEnum": "download.serializers_found.FOUND_ACTIONS",
+        "FoundSortEnum": "download.serializers_found.FOUND_SORT",
+        "AddModeEnum": "download.serializers_found.ADD_MODES",
+        "UrlKindEnum": "download.serializers_found.URL_KINDS",
+        "MediaServerTypeEnum": "mediaserver.serializers.SERVER_TYPES",
+        "ApiKeySourceEnum": "mediaserver.serializers.KEY_SOURCES",
+        "NumberingSourceEnum": "download.serializers_found.NUMBERING_SOURCES",
+        "RuleActionEnum": "download.serializers.RULE_ACTIONS",
+        "RuleScopeEnum": "download.serializers_rules.RULE_SCOPES",
+        "RuleRefScopeEnum": "download.serializers_rules.RULE_REF_SCOPES",
+        "VerdictActionEnum": "download.serializers_rules.VERDICT_ACTIONS",
+    },
 }
 
 # Logging configuration

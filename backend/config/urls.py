@@ -28,6 +28,12 @@ urlpatterns = [
     path("api/appsettings/", include("appsettings.urls")),
     path("api/stats/", include("stats.urls")),
     path("api/user/", include("user.urls")),
+    path("api/queue/", include("jobs.urls")),
+    path("api/found/", include("download.urls_found")),
+    path("api/add/", include("download.urls_add")),
+    path("api/rules/", include("download.urls_rules")),
+    path("api/numbering/", include("emby.urls")),
+    path("api/mediaserver/", include("mediaserver.urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "api/docs/",
