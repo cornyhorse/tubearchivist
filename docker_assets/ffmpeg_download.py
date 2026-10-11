@@ -1,50 +1,59 @@
 """
-ffmpeg link builder
+ffmpeg downloader
 copied as into build step in Dockerfile
+
+Pinned to one yt-dlp/FFmpeg-Builds release and verified by sha256, so a
+rebuild gets the same binaries. The monthly autobuild-YYYY-MM-<last day>
+releases are the ones upstream keeps; pin to one of those. To update, pick
+a newer one and copy the hashes from its checksums.sha256 asset.
 """
 
-import json
+import hashlib
 import os
 import sys
 import tarfile
 import urllib.request
-from enum import Enum
 
-API_URL = "https://api.github.com/repos/yt-dlp/FFmpeg-Builds/releases/latest"
+RELEASE = "autobuild-2026-09-30-18-57"
+BUILD = "ffmpeg-N-127043-g5a54fcf75e"
+BASE_URL = (
+    f"https://github.com/yt-dlp/FFmpeg-Builds/releases/download/{RELEASE}"
+)
+ASSETS = {
+    "linux/amd64": (
+        f"{BUILD}-linux64-gpl.tar.xz",
+        "a6cade1ba7f04e761b8070aa133ba80aa3c889c47026feae33ff20ebf3b0d9c7",
+    ),
+    "linux/arm64": (
+        f"{BUILD}-linuxarm64-gpl.tar.xz",
+        "23fd56211cfaa7afb5ee8b06058120e4b4288d09eae61928fcb489f295a17f8b",
+    ),
+}
 BINARIES = ["ffmpeg", "ffprobe"]
 
 
-class PlatformFilter(Enum):
-    """options"""
+def sha256sum(filename):
+    """sha256 hex digest of a file"""
+    digest = hashlib.sha256()
+    with open(filename, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
 
-    ARM64 = "linuxarm64"
-    AMD64 = "linux64"
-
-
-def get_assets():
-    """get all available assets from latest build"""
-    with urllib.request.urlopen(API_URL) as f:
-        all_links = json.loads(f.read().decode("utf-8"))
-
-    return all_links
+    return digest.hexdigest()
 
 
-def pick_url(all_links, platform):
-    """pick url for platform"""
-    filter_by = PlatformFilter[platform.split("/")[1].upper()].value
-    options = [i for i in all_links["assets"] if filter_by in i["name"]]
-    if not options:
-        raise ValueError(f"no valid asset found for filter {filter_by}")
+def download_extract(platform):
+    """download, verify and extract binaries"""
+    if platform not in ASSETS:
+        raise ValueError(f"no ffmpeg build pinned for {platform}")
 
-    url_pick = options[0]["browser_download_url"]
+    name, expected = ASSETS[platform]
+    print(f"download {name}")
+    filename, _ = urllib.request.urlretrieve(f"{BASE_URL}/{name}")
+    actual = sha256sum(filename)
+    if actual != expected:
+        raise ValueError(f"sha256 mismatch for {name}: {actual}")
 
-    return url_pick
-
-
-def download_extract(url):
-    """download and extract binaries"""
-    print("download file")
-    filename, _ = urllib.request.urlretrieve(url)
     print("extract file")
     with tarfile.open(filename, "r:xz") as tar:
         for member in tar.getmembers():
@@ -62,9 +71,7 @@ def main():
     else:
         platform = args[1]
 
-    all_links = get_assets()
-    url = pick_url(all_links, platform)
-    download_extract(url)
+    download_extract(platform)
 
 
 if __name__ == "__main__":
