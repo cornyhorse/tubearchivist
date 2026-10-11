@@ -270,8 +270,25 @@ job, so it shows in Queue → History with its status code.
 
 ## 7. MCP — `/api/mcp`
 
-Streamable HTTP MCP server, same token auth. Not used by the frontend. Tools
-call the same service functions as the endpoints above.
+Streamable HTTP, stateless: POST JSON-RPC, JSON responses (no SSE; GET is
+405). Auth is the TA API token as `Authorization: Bearer <key>` or
+`Token <key>`, admin users only; a browser `Origin` outside `TA_HOST` is
+refused. Protocol versions 2025-11-25, 2025-06-18, 2025-03-26. Not used by
+the frontend.
+
+Tools (each calls the same service functions as the REST endpoints):
+`preview_url`, `add_url`, `set_rule` (also per-video overrides),
+`set_numbering` (with `dry_run`), `list_queue`, `list_found`, `download`,
+`ignore`, `move_to_top`, `activity`, `stop_task`, `search_library`,
+`get_video`, `notify_media_server`. Errors an agent can fix come back as
+`isError: true` with a plain message saying what to send instead.
+
+Claude config, with the token from mattstash:
+
+```json
+{"type": "http", "url": "https://<ta-host>/api/mcp",
+ "headersHelper": "<print 'Authorization: Bearer <token>' from mattstash>"}
+```
 
 ## Open questions for the frontend
 
