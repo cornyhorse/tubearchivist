@@ -8,6 +8,7 @@ from common.serializers import (
 )
 from common.views_base import AdminWriteOnly, ApiBaseView
 from drf_spectacular.utils import OpenApiResponse, extend_schema
+from jobs.src.handlers import request_emby_write
 from playlist.models import Playlist
 from playlist.serializers import (
     PlaylistBulkAddSerializer,
@@ -274,6 +275,7 @@ class PlaylistApiView(ApiBaseView):
             )
             json_data = Playlist.load_doc(playlist_id)
             json_data["emby_numbering"] = numbering
+            request_emby_write()
 
         if not json_data:
             error = ErrorResponseSerializer(
@@ -310,4 +312,6 @@ class PlaylistApiView(ApiBaseView):
         else:
             YoutubePlaylist(playlist_id).delete_metadata()
 
+        # the series and its links go from the Emby tree (review T2)
+        request_emby_write()
         return Response(status=204)

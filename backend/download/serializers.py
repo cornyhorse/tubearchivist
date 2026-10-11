@@ -2,9 +2,9 @@
 
 # pylint: disable=abstract-method
 
-import re
-
+import regex
 from common.serializers import PaginationSerializer, ValidateUnknownFieldsMixin
+from download.src.rules import MAX_PATTERN
 from rest_framework import serializers
 from video.src.constants import VideoTypeEnum
 
@@ -163,9 +163,13 @@ class DownloadRuleSerializer(serializers.Serializer):
 
     @staticmethod
     def _validate_regex(value: str) -> str:
+        if len(value) > MAX_PATTERN:
+            raise serializers.ValidationError(
+                f"regex longer than {MAX_PATTERN} characters"
+            )
         try:
-            re.compile(value)
-        except re.error as err:
+            regex.compile(value)
+        except regex.error as err:
             raise serializers.ValidationError(f"invalid regex: {err}") from err
         return value
 

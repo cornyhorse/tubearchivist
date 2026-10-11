@@ -263,25 +263,26 @@ class PendingList(PendingIndex):
         if video_id in self.to_skip:
             return None
 
-        # fallback
-        channel_name = channel_json["channel_name"]
-        channel_id = channel_json["channel_id"]
-
         if self.flat:
-            if not video_data.get("channel"):
-                video_data["channel"] = channel_name
+            return self._flat_entry(video_data, channel_json)
 
-            if not video_data.get("channel_id"):
-                video_data["channel_id"] = channel_id
+        # the listing already shows length and type: a video the rules
+        # turn away isn't fully extracted (review T3)
+        candidate = self._flat_entry(dict(video_data), channel_json)
+        if candidate and self.rules.check(candidate, rule=self.rule):
+            return candidate
 
-            to_add = self._parse_entry(
-                youtube_id=video_id,
-                video_data=video_data,
-            )
-        else:
-            to_add = self._parse_video(video_id, vid_type)
+        return self._parse_video(video_id, vid_type)
 
-        return to_add
+    def _flat_entry(self, video_data: dict, channel_json: dict) -> dict | None:
+        """queue entry from a flat listing entry, channel as fallback"""
+        if not video_data.get("channel"):
+            video_data["channel"] = channel_json["channel_name"]
+        if not video_data.get("channel_id"):
+            video_data["channel_id"] = channel_json["channel_id"]
+        return self._parse_entry(
+            youtube_id=video_data["id"], video_data=video_data
+        )
 
     def _stream(self) -> None:
         """store found videos right away when someone waits for them"""
@@ -524,13 +525,17 @@ class PendingList(PendingIndex):
             return 0
 
         self._notify_start(total)
-        items = []
+        # one row per video: a duplicate (e.g. twice in a playlist) would
+        # fail the whole bulk insert (review P3)
+        unique: dict[str, dict] = {}
         for video_entry in self.missing_videos:
             video_entry["auto_start"] = self.auto_start
             # a download rule may already have set ignore
             video_entry.setdefault("status", status)
             video_entry.update(self.found_by)
-            items.append(Download.from_doc(video_entry))
+            unique[video_entry["youtube_id"]] = video_entry
+        self.missing_videos = list(unique.values())
+        items = [Download.from_doc(entry) for entry in self.missing_videos]
 
         try:
             with transaction.atomic():

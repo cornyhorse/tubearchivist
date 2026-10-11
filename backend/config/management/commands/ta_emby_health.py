@@ -3,6 +3,7 @@
 from django.core.management.base import BaseCommand, CommandError
 from emby.src.health import check_emby_health
 from emby.src.sync import paths_from_env
+from jobs.src.locks import with_emby_lock
 
 
 class Command(BaseCommand):
@@ -15,6 +16,7 @@ class Command(BaseCommand):
         parser.add_argument("--max-age-hours", type=float, default=6)
         parser.add_argument("--failing-runs", type=int, default=3)
 
+    @with_emby_lock
     def handle(self, *args, **options):
         paths = paths_from_env()
         if not paths:

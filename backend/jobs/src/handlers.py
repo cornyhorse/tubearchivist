@@ -26,10 +26,13 @@ from download.src.subscriptions import (
 )
 from download.src.thumbnails import ThumbValidator
 from download.src.yt_dlp_handler import DownloadPostProcess, VideoDownloader
-from emby.src.sync import paths_from_env, sync_all
-from jobs.models import ACTIVE, Job, Priority
+from emby.src.health import check_emby_health
+from emby.src.sync import EmbyLayoutOutdated, paths_from_env, sync_all
+from emby.src.writer import EmbyRootError
+from jobs.models import ACTIVE, CreatedBy, Job, Priority
 from jobs.src.context import JobContext
 from jobs.src.engine import enqueue
+from jobs.src.locks import LockBusy, emby_lock
 from jobs.src.registry import Defer, JobError, register
 from mediaserver.src.jobs import changed_folders, queue_notify
 from playlist.models import Playlist
@@ -37,6 +40,8 @@ from playlist.src.index import YoutubePlaylist
 from video.models import Video
 from video.src.meta_embed import MetadataEmbed
 
+# another Emby writer holds the lock: check again after this long
+LOCK_RECHECK = 60
 # wait this long after a download before post processing, to batch
 POST_DOWNLOAD_DELAY = 60
 # while downloads are queued, check again after this long
@@ -339,22 +344,72 @@ def queue_emby_write(ctx: JobContext) -> None:
     legacy_name="emby_sync",
 )
 def emby_write(ctx: JobContext) -> dict:
-    """write the Emby tree"""
+    """
+    write the Emby tree, holding the Emby lock; a request while it runs
+    queues one more run behind it (review T1)
+    """
     paths = paths_from_env()
     if not paths:
         return {"skipped": "TA_EMBY_ROOT is not set"}
-    ctx.send_progress(["Writing the Emby library."])
-    report = sync_all(paths)
+    try:
+        with emby_lock():
+            ctx.send_progress(["Writing the Emby library."])
+            report = sync_all(paths)
+    except LockBusy as err:
+        raise Defer(LOCK_RECHECK, str(err)) from err
+    except (EmbyLayoutOutdated, EmbyRootError) as err:
+        # needs a person (ta_emby_migrate_layout, mounts); no retry
+        raise JobError(str(err)) from err
     for warning in report.warnings[:20]:
         print(f"[emby] {warning}")
+    for error in report.errors[:20]:
+        print(f"[emby] error: {error}")
     folders = changed_folders(report)
     queue_notify(folders, created_by=ctx.job.created_by, parent=ctx.job)
-    return {
+    result = {
         "created": len(report.created),
         "updated": len(report.updated),
         "renamed": len(report.renamed),
         "removed": len(report.deleted),
+        "errors": len(report.errors),
     }
+    if report.failed:
+        result["failed"] = report.failed
+    return result
+
+
+def request_emby_write(created_by: str = CreatedBy.USER) -> Job | None:
+    """queue an Emby write after a library change, if the writer is on"""
+    if not paths_from_env():
+        return None
+    job, _ = enqueue("emby_write", created_by=created_by)
+    return job
+
+
+@register(
+    "emby_health",
+    "postprocess",
+    "Check the Emby library sync",
+    legacy_name="emby_health",
+)
+def emby_health(ctx: JobContext) -> dict:
+    """
+    detect a stuck or failing Emby sync and repair the safe cases; fails
+    (visible in the queue history, notified) when a person is needed
+    """
+    paths = paths_from_env()
+    if not paths:
+        return {"skipped": "TA_EMBY_ROOT is not set"}
+    try:
+        with emby_lock():
+            report = check_emby_health(paths, repair=True)
+    except LockBusy as err:
+        raise Defer(LOCK_RECHECK, str(err)) from err
+    if report.rerun_sync:
+        _child(ctx, "emby_write")
+    if not report.healthy:
+        raise JobError(report.message())
+    return {"healthy": True, "repaired": report.repaired}
 
 
 @register(

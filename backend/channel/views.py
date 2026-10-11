@@ -24,6 +24,7 @@ from drf_spectacular.utils import (
     OpenApiResponse,
     extend_schema,
 )
+from jobs.src.handlers import request_emby_write
 from rest_framework.response import Response
 from task.tasks import index_channel_playlists, subscribe_to
 from video.models import Video
@@ -158,6 +159,7 @@ class ChannelApiView(ApiBaseView):
             Channel.objects.filter(channel_id=channel_id).update(
                 emby_numbering=numbering
             )
+            request_emby_write()
 
         if "download_rule" in validated_data:
             set_rule(channel_id, validated_data["download_rule"])
@@ -190,6 +192,8 @@ class ChannelApiView(ApiBaseView):
         """delete channel"""
         try:
             YoutubeChannel(channel_id).delete_channel()
+            # the series and its links go from the Emby tree (review T2)
+            request_emby_write()
             return Response(status=204)
         except FileNotFoundError:
             pass

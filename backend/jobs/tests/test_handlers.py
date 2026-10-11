@@ -375,6 +375,8 @@ def test_emby_write(monkeypatch, capsys):
         renamed=[],
         deleted=["c/B/"],
         warnings=["w1"],
+        errors=[],
+        failed={},
     )
     monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
     monkeypatch.setattr(handlers, "sync_all", lambda paths: report)
@@ -383,8 +385,87 @@ def test_emby_write(monkeypatch, capsys):
         "updated": 1,
         "renamed": 0,
         "removed": 1,
+        "errors": 0,
     }
     assert "[emby] w1" in capsys.readouterr().out
+
+    report.errors = ["channels/X: name too long"]
+    report.failed = {"channels/X": "name too long"}
+    result = handlers.emby_write(ctx)
+    assert (result["errors"], result["failed"]) == (
+        1,
+        {"channels/X": "name too long"},
+    )
+    assert "[emby] error: channels/X" in capsys.readouterr().out
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "error",
+    [
+        handlers.EmbyLayoutOutdated("run ta_emby_migrate_layout"),
+        handlers.EmbyRootError("no hardlinks"),
+    ],
+)
+def test_emby_write_needs_a_person(monkeypatch, error):
+    def fail(paths):
+        raise error
+
+    monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
+    monkeypatch.setattr(handlers, "sync_all", fail)
+    _, ctx = running("emby_write")
+    with pytest.raises(JobError, match=str(error)):
+        handlers.emby_write(ctx)
+
+
+@pytest.mark.django_db
+def test_emby_jobs_wait_for_the_lock(monkeypatch):
+    # pylint: disable=import-outside-toplevel
+    from jobs.src.locks import emby_lock
+
+    monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
+    for job_type in ["emby_write", "emby_health"]:
+        _, ctx = running(job_type)
+        with emby_lock():
+            with pytest.raises(Defer):
+                getattr(handlers, job_type)(ctx)
+        Job.objects.update(status=JobStatus.DONE)
+
+
+@pytest.mark.django_db
+def test_emby_health(monkeypatch):
+    monkeypatch.setattr(handlers, "paths_from_env", lambda: None)
+    job, ctx = running("emby_health")
+    assert handlers.emby_health(ctx) == {"skipped": "TA_EMBY_ROOT is not set"}
+
+    report = SimpleNamespace(
+        healthy=True,
+        repaired=["channels/X: name too long, 3 names shortened"],
+        rerun_sync=True,
+        message=lambda: "repaired: channels/X",
+    )
+    monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
+    monkeypatch.setattr(
+        handlers, "check_emby_health", lambda paths, repair: report
+    )
+    assert handlers.emby_health(ctx) == {
+        "healthy": True,
+        "repaired": report.repaired,
+    }
+    assert children("emby_write") == [("emby_write", None, job.pk)]
+
+    report.healthy, report.rerun_sync = False, False
+    report.message = lambda: "problem: no successful Emby sync since ever"
+    with pytest.raises(JobError, match="no successful Emby sync"):
+        handlers.emby_health(ctx)
+
+
+@pytest.mark.django_db
+def test_request_emby_write(monkeypatch):
+    monkeypatch.setattr(handlers, "paths_from_env", lambda: None)
+    assert handlers.request_emby_write() is None
+    monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
+    assert handlers.request_emby_write().type == "emby_write"
 
 
 @pytest.mark.django_db

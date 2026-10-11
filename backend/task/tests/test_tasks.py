@@ -205,3 +205,8 @@ def test_user_tasks(task, args, job_type, target, params):
 def test_system_schedules(task, job_type):
     task.run()
     assert jobs() == [(job_type, None, "schedule", Priority.LOW, {})]
+
+
+def test_emby_health_task():
+    tasks.emby_health.run(created_by="schedule")
+    assert jobs() == [("emby_health", None, "schedule", Priority.LOW, {})]

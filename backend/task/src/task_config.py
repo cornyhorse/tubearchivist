@@ -115,6 +115,13 @@ EMBY_SYNC: TaskItemConfig = {
     "api_stop": False,
 }
 
+EMBY_HEALTH: TaskItemConfig = {
+    "title": "Check Emby library sync",
+    "group": "setting:embyhealth",
+    "api_start": True,
+    "api_stop": False,
+}
+
 TASK_CONFIG: dict[str, TaskItemConfig] = {
     "update_subscribed": UPDATE_SUBSCRIBED,
     "download_pending": DOWNLOAD_PENDING,
@@ -130,4 +137,5 @@ TASK_CONFIG: dict[str, TaskItemConfig] = {
     "subscribe_to": SUBSCRIBE_TO,
     "version_check": VERSION_CHECK,
     "emby_sync": EMBY_SYNC,
+    "emby_health": EMBY_HEALTH,
 }
