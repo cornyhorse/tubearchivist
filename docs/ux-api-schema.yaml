@@ -579,9 +579,70 @@ paths:
           * `subscribed` - subscribed
           * `unsubscribed` - unsubscribed
       - in: query
+        name: has_errors
+        schema:
+          type: boolean
+          nullable: true
+      - in: query
+        name: has_queued
+        schema:
+          type: boolean
+          nullable: true
+      - in: query
+        name: has_rule
+        schema:
+          type: boolean
+          nullable: true
+      - in: query
+        name: order
+        schema:
+          enum:
+          - asc
+          - desc
+          type: string
+          default: asc
+          minLength: 1
+        description: |-
+          * `asc` - asc
+          * `desc` - desc
+      - in: query
         name: page
         schema:
           type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+      - in: query
+        name: q
+        schema:
+          type: string
+          minLength: 1
+        description: search name, @handle or channel id
+      - in: query
+        name: sort
+        schema:
+          enum:
+          - name
+          - subscribed
+          - downloaded
+          - queued
+          - ignored
+          - latest_upload
+          - last_checked
+          type: string
+          default: name
+          minLength: 1
+        description: |-
+          * `name` - name
+          * `subscribed` - subscribed
+          * `downloaded` - downloaded
+          * `queued` - queued
+          * `ignored` - ignored
+          * `latest_upload` - latest_upload
+          * `last_checked` - last_checked
       tags:
       - channel
       security:
@@ -3608,10 +3669,22 @@ paths:
         schema:
           type: integer
       - in: query
+        name: page_size
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+      - in: query
         name: playlist
         schema:
           type: string
           minLength: 1
+      - in: query
+        name: q
+        schema:
+          type: string
+          minLength: 1
+        description: search title and channel name
       - in: query
         name: sort
         schema:
@@ -4300,6 +4373,25 @@ components:
           type: string
       required:
       - value
+    ChannelCounts:
+      type: object
+      description: videos of a channel by state
+      properties:
+        downloaded:
+          type: integer
+        queued:
+          type: integer
+          description: found, waiting to download
+        ignored:
+          type: integer
+        errors:
+          type: integer
+          description: found, download failed
+      required:
+      - downloaded
+      - errors
+      - ignored
+      - queued
     ChannelList:
       type: object
       description: serialize channel list
@@ -4307,12 +4399,84 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/Channel'
+            $ref: '#/components/schemas/ChannelListItem'
         paginate:
           $ref: '#/components/schemas/Pagination'
       required:
       - data
       - paginate
+    ChannelListItem:
+      type: object
+      description: a channel table row
+      properties:
+        channel_id:
+          type: string
+        channel_active:
+          type: boolean
+        channel_banner_url:
+          type: string
+          nullable: true
+        channel_thumb_url:
+          type: string
+          nullable: true
+        channel_tvart_url:
+          type: string
+          nullable: true
+        channel_description:
+          type: string
+          nullable: true
+        channel_last_refresh:
+          type: string
+        channel_name:
+          type: string
+        channel_overwrites:
+          $ref: '#/components/schemas/ChannelOverwrite'
+        channel_subs:
+          type: integer
+        channel_subscribed:
+          type: boolean
+        channel_tags:
+          type: array
+          items:
+            type: string
+        channel_tabs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelTabsEnum'
+        emby_numbering:
+          $ref: '#/components/schemas/EmbyNumbering4c7Enum'
+        download_rule:
+          allOf:
+          - $ref: '#/components/schemas/DownloadRule'
+          nullable: true
+        _index:
+          type: string
+          title: ' index'
+        _score:
+          type: integer
+          title: ' score'
+        counts:
+          $ref: '#/components/schemas/ChannelCounts'
+        rule_summary:
+          type: string
+          nullable: true
+          description: 'badge text of the channel''s own rule; null: the default'
+        latest_upload:
+          type: string
+          format: date-time
+          nullable: true
+          description: newest published of its videos
+      required:
+      - channel_active
+      - channel_id
+      - channel_last_refresh
+      - channel_name
+      - channel_subs
+      - channel_subscribed
+      - channel_tabs
+      - counts
+      - latest_upload
+      - rule_summary
     ChannelNav:
       type: object
       description: serialize channel navigation
@@ -4509,6 +4673,11 @@ components:
         last_run_at:
           type: string
           format: date-time
+        next_run_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
         config:
           type: object
           additionalProperties: {}
@@ -4516,6 +4685,7 @@ components:
       - config
       - last_run_at
       - name
+      - next_run_at
       - schedule
       - schedule_human
     DownloadAggBucket:
@@ -5122,6 +5292,18 @@ components:
       - verdict
       - vid_type
       - youtube_id
+    HomeLayoutEnum:
+      enum:
+      - default
+      - shelves
+      - timeline
+      - whatsnew
+      type: string
+      description: |-
+        * `default` - default
+        * `shelves` - shelves
+        * `timeline` - timeline
+        * `whatsnew` - whatsnew
     Job:
       type: object
       description: one unit of work
@@ -7446,11 +7628,21 @@ components:
         view_style_home:
           $ref: '#/components/schemas/ViewStyleHomeEnum'
         view_style_channel:
-          $ref: '#/components/schemas/ViewStylePlaylistEnum'
+          $ref: '#/components/schemas/ViewStyleChannelEnum'
         view_style_downloads:
-          $ref: '#/components/schemas/ViewStylePlaylistEnum'
+          $ref: '#/components/schemas/ViewStyleDownloadsEnum'
         view_style_playlist:
           $ref: '#/components/schemas/ViewStylePlaylistEnum'
+        home_layout:
+          allOf:
+          - $ref: '#/components/schemas/HomeLayoutEnum'
+          description: |-
+            home page design
+
+            * `default` - default
+            * `shelves` - shelves
+            * `timeline` - timeline
+            * `whatsnew` - whatsnew
         vid_type_filter:
           nullable: true
           oneOf:
@@ -7487,6 +7679,7 @@ components:
       - hide_watched
       - hide_watched_channel
       - hide_watched_playlist
+      - home_layout
       - page_size
       - show_help_text
       - show_ignored_only
@@ -7855,6 +8048,26 @@ components:
       - duration
       - duration_str
       - media_size
+    ViewStyleChannelEnum:
+      enum:
+      - grid
+      - list
+      - table
+      type: string
+      description: |-
+        * `grid` - grid
+        * `list` - list
+        * `table` - table
+    ViewStyleDownloadsEnum:
+      enum:
+      - grid
+      - list
+      - table
+      type: string
+      description: |-
+        * `grid` - grid
+        * `list` - list
+        * `table` - table
     ViewStyleHomeEnum:
       enum:
       - grid
@@ -7869,10 +8082,12 @@ components:
       enum:
       - grid
       - list
+      - table
       type: string
       description: |-
         * `grid` - grid
         * `list` - list
+        * `table` - table
     WatchItemStats:
       type: object
       description: serialize watch item stats

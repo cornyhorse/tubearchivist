@@ -50,6 +50,7 @@ class VideoApiListView(ApiBaseView):
         query_serializer = VideoListQuerySerializer(data=request.query_params)
         query_serializer.is_valid(raise_exception=True)
         validated_query = query_serializer.validated_data
+        page_size = validated_query.pop("page_size", None)
 
         queryset = QueryBuilder(
             request.user.id, **validated_query
@@ -64,6 +65,7 @@ class VideoApiListView(ApiBaseView):
             queryset,
             progress_match=request.user.id,
             to_docs=Video.to_docs,
+            page_size=page_size,
         )
 
         response_serializer = VideoListSerializer(self.response)

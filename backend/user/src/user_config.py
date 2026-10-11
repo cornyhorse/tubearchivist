@@ -21,6 +21,7 @@ class UserConfigType(TypedDict, total=False):
     view_style_channel: str
     view_style_downloads: str
     view_style_playlist: str
+    home_layout: str
     vid_type_filter: str | None
     grid_items: int
     hide_watched: bool | None
@@ -45,9 +46,10 @@ class UserConfig:
         sort_by="published",
         sort_order="desc",
         view_style_home="grid",
-        view_style_channel="list",
+        view_style_channel="table",
         view_style_downloads="list",
         view_style_playlist="grid",
+        home_layout="default",
         vid_type_filter=None,
         grid_items=3,
         hide_watched=False,

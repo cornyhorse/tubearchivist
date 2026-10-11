@@ -17,3 +17,12 @@ class CustomPeriodicTask(PeriodicTask):
         day_of_week = cronexp(self.crontab.day_of_week)
 
         return f"{minute} {hour} {day_of_week}"
+
+    @property
+    def next_run_at(self):
+        """when beat runs it next, in the server TZ; None if disabled"""
+        if not self.enabled or not self.crontab:
+            return None
+        schedule = self.crontab.schedule
+        now = schedule.now()
+        return now + schedule.remaining_estimate(self.last_run_at or now)
