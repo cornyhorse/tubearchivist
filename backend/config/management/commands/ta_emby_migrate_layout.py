@@ -8,7 +8,8 @@ from common.src.env_settings import EnvironmentSettings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from emby.src.migrate_layout import AlreadyMigrated, migrate_layout
-from emby.src.sync import paths_from_env, sync_all
+from emby.src.sync import paths_from_env, preflight, sync_all
+from emby.src.writer import EmbyRootError
 from jobs.src.locks import with_emby_lock
 
 
@@ -50,13 +51,18 @@ class Command(BaseCommand):
         if not paths and not (options["no_sync"] or options["dry_run"]):
             raise CommandError("TA_EMBY_ROOT is not set; use --no-sync")
         try:
+            if paths and not (options["no_sync"] and not options["dry_run"]):
+                # before the database changes: a root that can't take the
+                # renames must not leave the database migrated, and the
+                # dry run checks exactly what the real run checks
+                preflight(paths)
             if options["dry_run"]:
                 self._dry_run(paths, options)
                 return
             summary = migrate_layout(
                 EnvironmentSettings.TZ, set(options["keep_playlist_position"])
             )
-        except AlreadyMigrated as err:
+        except (AlreadyMigrated, EmbyRootError) as err:
             raise CommandError(str(err)) from err
 
         self._write_summary(summary, "")

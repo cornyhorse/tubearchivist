@@ -211,7 +211,7 @@ by name. Output is deterministic and strips XML-invalid control characters.
 - Sidecars are written to a temp file, fsynced and renamed, and only when
   the bytes differ. Unchanged files keep their inode and mtime.
 - `.ta-emby-manifest.json` records every owned file (kind, owner, role,
-  inode or sha256). Owners are qualified by series, because one video can
+  link identity or sha256). Owners are qualified by series, because one video can
   appear in a channel and in several playlists.
 - Only manifest files are renamed or deleted, and only if they are
   unchanged since the writer wrote them. Anything else is a warning or a
@@ -223,9 +223,28 @@ by name. Output is deterministic and strips XML-invalid control characters.
 - An identical existing file is adopted, so a lost manifest rebuilds with
   zero writes. An unreadable manifest is moved to `.corrupt-<ts>` and
   rebuilt that way; entries with unsafe paths are dropped on load.
-- Links are recorded by `st_ino` and size, not `st_dev`, which a CIFS mount
-  changes on every remount. Before linking, a preflight hardlink checks the
-  root is on the media's mount and keeps inodes.
+- Links are recorded by size, `st_mtime_ns` and source path (manifest
+  version 3), never by `st_ino` or `st_dev`. A CIFS mount changes `st_dev`
+  on every remount, and when the client autodisables server inode numbers
+  (noserverino, seen on apps on 2026-10-21) a video and its hardlink report
+  different `st_ino` values. A hardlink is still one file on the server, so
+  it always shares size and mtime with its source. A file counts as the
+  writer's link if it matches what was recorded, or (the source was
+  changed in place, and the link with it) if it matches the recorded
+  source, which must be another path. A file recorded as its own source is
+  never unlinked.
+- Version 1 and 2 manifests (`st_ino`, size) load as they are. The next
+  sync upgrades each link entry it still wants, without relinking, when
+  the file still has the recorded inode or matches its source in size and
+  mtime. An entry no sync can upgrade (not wanted any more, and its inode
+  looks different) is reported as changed outside the writer and kept.
+- Before writing, a preflight tests hardlinks by behaviour: it creates a
+  probe in a scratch dot folder under the media root, links it into the
+  Emby root, writes through one name and reads through the other, both
+  ways, then removes both. It fails only if the link can't be made or the
+  two names aren't one file. A dry run runs the same preflight, so a dry
+  run can't pass where the real run fails; it creates and removes the
+  probe and nothing else.
 - The manifest is saved after the first rename phase; temp names are
   random, and leftovers in owned dirs are swept at the start of a run.
 - A failure in one series is reported in `errors` and leaves that series
