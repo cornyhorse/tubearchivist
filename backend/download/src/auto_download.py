@@ -17,7 +17,9 @@ MODELS = {"channel": Channel, "playlist": Playlist}
 
 def is_auto_download(kind: str, target_id: str) -> bool:
     """the channel or playlist is opted in to auto download"""
-    return MODELS[kind].objects.filter(pk=target_id, auto_download=True).exists()
+    return (
+        MODELS[kind].objects.filter(pk=target_id, auto_download=True).exists()
+    )
 
 
 def set_auto_download(kind: str, ids: list[str], value: bool) -> list[str]:
@@ -48,4 +50,6 @@ def waiting_from_other_source(
             found_playlist_id__isnull=True, channel_id=target_id
         )
     busy = active_jobs("download_video", ids)
-    return [item for item in items.order_by("timestamp") if item.pk not in busy]
+    return [
+        item for item in items.order_by("timestamp") if item.pk not in busy
+    ]

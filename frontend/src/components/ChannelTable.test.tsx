@@ -1,6 +1,11 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const saveAutoDownload = vi.fn();
+vi.mock('../api/actions/updateAutoDownload', () => ({
+  default: (...args: unknown[]) => saveAutoDownload(...args),
+}));
 import ChannelTable from './ChannelTable';
 import { ChannelType } from '../pages/Channels';
 
@@ -23,6 +28,7 @@ const rows = [
     counts: { downloaded: 1200, queued: 3, ignored: 0, errors: 0 },
     latest_upload: '2026-10-08',
     emby_numbering: 'year_frozen',
+    auto_download: true,
   }),
   channel({ channel_id: 'UC2', channel_name: 'Coasters', channel_subscribed: false }),
 ];
@@ -75,8 +81,25 @@ describe('ChannelTable', () => {
     expect(onSortChange).toHaveBeenCalledWith({ key: 'queued', order: 'asc' });
   });
 
+  it('shows auto-download per row, off unless opted in, and saves a switch', async () => {
+    saveAutoDownload.mockResolvedValue({ status: 200 });
+    const onChanged = vi.fn();
+    renderTable({ onChanged });
+    expect(screen.getByRole('columnheader', { name: /Auto-download/ })).toBeTruthy();
+    const trains = screen.getByRole('switch', { name: 'Auto-download for Trains' });
+    const coasters = screen.getByRole('switch', { name: 'Auto-download for Coasters' });
+    expect((trains as HTMLInputElement).checked).toBe(true);
+    expect((coasters as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(coasters);
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(saveAutoDownload).toHaveBeenCalledWith('channel', 'UC2', true);
+  });
+
   it('is read-only for viewers', () => {
     renderTable({ isAdmin: false });
+    expect(screen.queryByRole('switch')).toBeNull();
     expect(screen.queryByRole('checkbox')).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
     expect(screen.queryByRole('button', { name: /numbering/ })).toBeNull();

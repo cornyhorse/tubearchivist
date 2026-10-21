@@ -6,6 +6,7 @@ import formatDate from '../functions/formatDates';
 import ChannelIcon from './ChannelIcon';
 import DataTable, { Column, SortState } from './ux/DataTable';
 import { NumberingBadge, RuleBadge } from './ux/Badges';
+import AutoDownloadSwitch from './ux/AutoDownloadSwitch';
 
 type ChannelTableProps = {
   channels: ChannelType[];
@@ -128,6 +129,21 @@ const ChannelTable = ({
           channelName={channel.channel_name}
           rule={channel.download_rule}
           defaultRule={defaultRule}
+          canEdit={isAdmin}
+          onSaved={onChanged}
+        />
+      ),
+    },
+    {
+      key: 'auto_download',
+      header: 'Auto-download',
+      help: 'On: new videos a check finds download at once, within the rule. Off: they wait in Found videos.',
+      render: channel => (
+        <AutoDownloadSwitch
+          kind="channel"
+          id={channel.channel_id}
+          name={channel.channel_name}
+          value={channel.auto_download}
           canEdit={isAdmin}
           onSaved={onChanged}
         />

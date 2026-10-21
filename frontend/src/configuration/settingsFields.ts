@@ -34,7 +34,7 @@ export const SETTING_DEFAULTS: Record<SettingPath, SettingValue> = {
   'subscriptions.live_channel_size': 50,
   'subscriptions.shorts_channel_size': 50,
   'subscriptions.playlist_size': 50,
-  'subscriptions.auto_start': false,
+  'subscriptions.auto_download_default': false,
   'subscriptions.extract_flat': false,
   'downloads.limit_speed': null,
   'downloads.sleep_interval': 10,
@@ -267,9 +267,9 @@ export const SPEED_FIELDS: SettingDef[] = [
 
 export const WHEN_FIELDS: SettingDef[] = [
   {
-    path: 'subscriptions.auto_start',
-    label: 'Download found videos straight away',
-    help: 'When a channel check finds new videos your rules allow, start downloading them at once instead of waiting for the download schedule or your click.',
+    path: 'subscriptions.auto_download_default',
+    label: 'Auto-download for new subscriptions',
+    help: 'Auto-download is set per channel and playlist, and is off unless you switch it on there. This only sets where a channel or playlist you subscribe to from now on starts; it changes nothing you already subscribe to.',
     kind: 'toggle',
   },
 ];

@@ -20,7 +20,7 @@ const config = (): AppSettingsConfigType => ({
     live_channel_size: 0,
     shorts_channel_size: 50,
     playlist_size: 50,
-    auto_start: false,
+    auto_download_default: false,
     extract_flat: true,
   },
   downloads: {

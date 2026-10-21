@@ -45,6 +45,7 @@ const AddDialog = ({ onClose, onAdded }: AddDialogProps) => {
   const [numbering, setNumbering] = useState<NumberingScheme | ''>('');
   const [mode, setMode] = useState<Mode>('subscribe');
   const [newestN, setNewestN] = useState(10);
+  const [autoDownload, setAutoDownload] = useState(false);
   const [result, setResult] = useState<AddResult | null>(null);
   // legacy form
   const [autostart, setAutostart] = useState(true);
@@ -98,6 +99,8 @@ const AddDialog = ({ onClose, onAdded }: AddDialogProps) => {
         numbering: (numbering || undefined) as AddRequest['numbering'],
         download_now: true,
         priority: 'high',
+        // off unless ticked: later checks leave new videos waiting
+        auto_download: mode === 'subscribe' ? autoDownload : undefined,
       });
       if (response.data) {
         setResult(response.data);
@@ -316,6 +319,17 @@ const AddDialog = ({ onClose, onAdded }: AddDialogProps) => {
                     />{' '}
                     Subscribe and keep checking for new videos
                     {rule && <span className="ux-muted"> (and keep this rule)</span>}
+                  </label>
+                )}
+                {anyChannel && mode === 'subscribe' && (
+                  <label className="ux-option-indent">
+                    <input
+                      type="checkbox"
+                      checked={autoDownload}
+                      onChange={event => setAutoDownload(event.target.checked)}
+                    />{' '}
+                    Auto-download new videos the rule allows when later checks find them
+                    <span className="ux-muted"> (off: they wait in Found videos)</span>
                   </label>
                 )}
                 <label>

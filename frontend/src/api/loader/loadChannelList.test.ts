@@ -32,4 +32,9 @@ describe('loadChannelList', () => {
       '/api/channel/?page=1&has_rule=true&q=train&sort=queued&order=desc&page_size=100',
     );
   });
+
+  it('sends the auto-download filter as its own flag', async () => {
+    await loadChannelList({ page: 0, filter: 'auto_download' });
+    expect(path()).toBe('/api/channel/?auto_download=true');
+  });
 });

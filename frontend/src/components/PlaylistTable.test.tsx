@@ -1,0 +1,82 @@
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import PlaylistTable from './PlaylistTable';
+import { PlaylistType } from '../api/loader/loadPlaylistById';
+
+vi.mock('../api/actions/updateAutoDownload', () => ({ default: vi.fn() }));
+
+const playlist = (changes: Partial<PlaylistType>): PlaylistType => ({
+  playlist_active: true,
+  playlist_channel: 'Trains',
+  playlist_channel_id: 'UC1',
+  playlist_description: null,
+  playlist_entries: [],
+  playlist_sort_order: 'top',
+  playlist_id: 'PL1',
+  playlist_last_refresh: '2026-10-09T10:00:00+00:00',
+  playlist_name: 'Rides',
+  playlist_subscribed: true,
+  playlist_thumbnail: '',
+  playlist_type: 'regular',
+  _index: '',
+  _score: 0,
+  ...changes,
+});
+
+const rows = [
+  playlist({ auto_download: true }),
+  playlist({ playlist_id: 'PL2', playlist_name: 'Old', playlist_subscribed: false }),
+  playlist({ playlist_id: 'TA_custom', playlist_name: 'Mine', playlist_type: 'custom' }),
+];
+
+afterEach(cleanup);
+
+const renderTable = (props: Partial<Parameters<typeof PlaylistTable>[0]> = {}) =>
+  render(
+    <MemoryRouter>
+      <PlaylistTable
+        playlists={rows}
+        isAdmin
+        selected={new Set()}
+        onSelectedChange={() => {}}
+        onToggleSubscribe={() => {}}
+        onChanged={() => {}}
+        {...props}
+      />
+    </MemoryRouter>,
+  );
+
+describe('PlaylistTable', () => {
+  it('shows auto-download, off unless opted in, none for your own playlists', () => {
+    renderTable();
+    const [, first, second, custom] = screen.getAllByRole('row');
+    const on = within(first).getByRole('switch', { name: 'Auto-download for Rides' });
+    expect((on as HTMLInputElement).checked).toBe(true);
+    const off = within(second).getByRole('switch', { name: 'Auto-download for Old' });
+    expect((off as HTMLInputElement).checked).toBe(false);
+    expect(within(custom).queryByRole('switch')).toBeNull();
+    expect(within(custom).getByText('Your playlist')).toBeTruthy();
+    expect(within(custom).queryByRole('button', { name: /Subscribe/ })).toBeNull();
+  });
+
+  it('toggles subscription per row and selects rows for bulk actions', () => {
+    const onToggleSubscribe = vi.fn();
+    const onSelectedChange = vi.fn();
+    renderTable({ onToggleSubscribe, onSelectedChange });
+    fireEvent.click(screen.getByRole('button', { name: 'Unsubscribe from Rides' }));
+    expect(onToggleSubscribe).toHaveBeenCalledWith(rows[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Subscribe to Old' }));
+    expect(onToggleSubscribe).toHaveBeenLastCalledWith(rows[1]);
+    fireEvent.click(screen.getAllByRole('checkbox', { name: /Old/ })[0]);
+    expect(onSelectedChange).toHaveBeenCalledWith(new Set(['PL2']));
+  });
+
+  it('is read-only for viewers', () => {
+    renderTable({ isAdmin: false });
+    expect(screen.queryByRole('switch')).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+    expect(screen.getAllByText('On').length).toBe(1);
+  });
+});
