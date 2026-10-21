@@ -1,6 +1,7 @@
 """tests for playlist indexing and custom playlists, yt-dlp faked"""
 
 import pytest
+from appsettings.src.config import AppConfig
 from channel.models import Channel
 from common.tests.docs import channel_doc, playlist_doc, video_doc
 from playlist.models import Playlist, PlaylistEntry
@@ -178,6 +179,22 @@ def test_change_subscribe():
 
     assert data["playlist_subscribed"] is True
     assert Playlist.objects.get().subscribed is True
+    assert Playlist.objects.get().auto_download is False
+
+
+def test_change_subscribe_auto_download_default():
+    """the default applies to a new subscription only"""
+    AppConfig().update_config(
+        {"subscriptions": {"auto_download_default": True}}
+    )
+    Playlist.save_doc(playlist_doc(PL, []))
+
+    YoutubePlaylist(PL).change_subscribe(new_subscribe_state=True)
+    assert Playlist.objects.get().auto_download is True
+
+    Playlist.objects.update(auto_download=False)
+    YoutubePlaylist(PL).change_subscribe(new_subscribe_state=True)
+    assert Playlist.objects.get().auto_download is False
 
 
 def test_match_local():

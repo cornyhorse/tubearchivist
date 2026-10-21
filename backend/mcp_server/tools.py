@@ -13,6 +13,7 @@ from django.utils import timezone
 from download.models import Download, DownloadRule
 from download.serializers import DownloadRuleSerializer
 from download.src.add import add, preview
+from download.src.auto_download import set_auto_download
 from download.src.found import found_action, found_dicts, found_queryset
 from download.src.rules_api import (
     PRESETS,
@@ -144,13 +145,26 @@ def add_url(args: dict) -> dict:
         download_now=args.get("download_now", True),
         priority=Priority.HIGH,
         created_by=AGENT,
+        auto_download=args.get("auto_download"),
     )
     return {"jobs": jobs_dicts(jobs), "errors": errors}
 
 
+def _auto_download(args: dict) -> bool | None:
+    """the auto_download argument, None if not given"""
+    value = args.get("auto_download")
+    if value is not None and args.get("scope") not in ("channel", "playlist"):
+        raise ToolError("auto_download is set per channel or playlist")
+    return value
+
+
 def set_rule(args: dict) -> dict:
-    """store a rule on the default, a channel or a playlist, or a video"""
+    """
+    store a rule on the default, a channel or a playlist, or a video;
+    auto_download on a channel or playlist
+    """
     scope, target_id = args.get("scope"), args.get("target_id")
+    auto_download = _auto_download(args)
     if scope == "video":
         if not target_id:
             raise ToolError("give target_id: the YouTube video id")
@@ -167,8 +181,14 @@ def set_rule(args: dict) -> dict:
         target_id and target_exists(scope, target_id)
     ):
         raise ToolError(f"{scope} {target_id} is not in the archive")
-    rule = _rule(args, required=True)
-    return {"rule": set_target_rule(scope, target_id, rule)}
+    rule = _rule(args, required=auto_download is None)
+    result = {}
+    if rule is not False:
+        result["rule"] = set_target_rule(scope, target_id, rule)
+    if auto_download is not None:
+        set_auto_download(scope, [target_id], auto_download)
+        result["auto_download"] = auto_download
+    return result
 
 
 def set_numbering(args: dict) -> dict:
@@ -427,6 +447,14 @@ TOOLS = [
             "save_rule": {"type": "boolean"},
             "numbering": {"enum": SCHEMES},
             "download_now": {"type": "boolean", "default": True},
+            "auto_download": {
+                "type": "boolean",
+                "description": (
+                    "store on the channels/playlists: later checks download "
+                    "what the rules allow. Omit to leave it; a new "
+                    "subscription starts off (unless the default says on)"
+                ),
+            },
         },
         add_url,
         required=["url"],
@@ -438,13 +466,17 @@ TOOLS = [
         "Store the download rule of the default, a channel or a playlist "
         "(rule null deletes it), or a per-video override with scope video: "
         "override download (download anyway), ignore (always ignore) or "
-        "null (rules decide again).",
+        "null (rules decide again). auto_download (channel or playlist "
+        "only) switches auto download: true makes its checks download what "
+        "the rule allows; false (the default) leaves found videos waiting. "
+        "Give rule/presets, auto_download, or both.",
         {
             "scope": {"enum": ["default", "channel", "playlist", "video"]},
             "target_id": {"type": "string"},
             "rule": {"anyOf": [RULE_SCHEMA, {"type": "null"}]},
             "presets": PRESETS_SCHEMA,
             "override": {"enum": ["download", "ignore", None]},
+            "auto_download": {"type": "boolean"},
         },
         set_rule,
         required=["scope"],

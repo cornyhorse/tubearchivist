@@ -42,7 +42,6 @@ class ChannelSubscription:
         pending_handler = PendingList(
             youtube_ids=all_channel_urls,
             task=self.task,
-            auto_start=self.config["subscriptions"].get("auto_start", False),
             flat=self.config["subscriptions"].get("extract_flat", False),
         )
         added = pending_handler.parse_url_list()
@@ -108,7 +107,6 @@ class PlaylistSubscription:
         pending_handler = PendingList(
             youtube_ids=all_playlist_urls,
             task=self.task,
-            auto_start=self.config["subscriptions"].get("auto_start", False),
             flat=self.config["subscriptions"].get("extract_flat", False),
         )
         added = pending_handler.parse_url_list()
@@ -122,7 +120,6 @@ class SubscriptionScanner:
     def __init__(self, task=False):
         self.task = task
         self.missing_videos = False
-        self.auto_start = AppConfig().config["subscriptions"].get("auto_start")
 
     def scan(self):
         """scan channels and playlists"""

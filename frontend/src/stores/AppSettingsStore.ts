@@ -13,7 +13,7 @@ export const useAppSettingsStore = create<AppSettingsState>(set => ({
       live_channel_size: null,
       shorts_channel_size: null,
       playlist_size: null,
-      auto_start: false,
+      auto_download_default: false,
       extract_flat: false,
     },
     downloads: {

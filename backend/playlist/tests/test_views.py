@@ -324,3 +324,32 @@ def test_delete_with_videos(client):
     assert response.status_code == 204
     assert not Playlist.objects.filter(pk=PL).exists()
     assert not Video.objects.exists()
+
+
+def test_auto_download_read_update_filter(client):
+    add_playlists()
+    assert client.get(f"{LIST}{PL}/").data["auto_download"] is False
+
+    response = client.post(
+        f"{LIST}{PL}/", {"auto_download": True}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert response.data["auto_download"] is True
+    assert Playlist.objects.get(pk=PL).auto_download is True
+    assert ids(client.get(LIST, {"auto_download": "true"})) == [PL]
+    assert ids(client.get(LIST, {"auto_download": "false"})) == [
+        "PLother",
+        CUSTOM,
+    ]
+
+
+def test_subscribe_keeps_auto_download_off(client):
+    """subscribing never opts in unless the default says so"""
+    add_playlists()
+
+    client.post(
+        f"{LIST}PLother/", {"playlist_subscribed": True}, format="json"
+    )
+
+    assert Playlist.objects.get(pk="PLother").auto_download is False

@@ -35,6 +35,7 @@ import NotFound from './NotFound';
 import updatePlaylistSortOrder from '../api/actions/updatePlaylistSortOrder';
 import EmbyNumberingSelect from '../components/EmbyNumberingSelect';
 import { NumberingBadge, RuleBadge } from '../components/ux/Badges';
+import AutoDownloadSwitch, { AUTO_DOWNLOAD_HELP } from '../components/ux/AutoDownloadSwitch';
 import { useFilterBarTempConf } from '../stores/FilterbarTempConf';
 import { HideWatchedType, HideWatchedName } from '../configuration/constants/HideWatched';
 
@@ -154,6 +155,17 @@ const Playlist = () => {
                 'year_frozen',
                 'absolute_frozen',
               ]}
+              canEdit={isAdmin}
+              onSaved={() => setRefresh(true)}
+            />
+            <span className="ux-badge-label" title={AUTO_DOWNLOAD_HELP}>
+              Auto-download
+            </span>
+            <AutoDownloadSwitch
+              kind="playlist"
+              id={playlist.playlist_id}
+              name={playlist.playlist_name}
+              value={playlist.auto_download}
               canEdit={isAdmin}
               onSaved={() => setRefresh(true)}
             />

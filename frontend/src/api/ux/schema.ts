@@ -1555,6 +1555,8 @@ export interface components {
       download_now: boolean;
       /** @default high */
       priority: components['schemas']['PriorityEnum'];
+      /** @description store auto download on the channels and playlists: later checks download what the rules allow; omit to leave it (a new subscription gets subscriptions.auto_download_default, off) */
+      auto_download?: boolean;
     };
     /** @description serialize single item to add */
     AddDownloadItem: {
@@ -1630,7 +1632,8 @@ export interface components {
       live_channel_size?: number | null;
       shorts_channel_size?: number | null;
       playlist_size?: number | null;
-      auto_start?: boolean;
+      /** @description auto_download of newly subscribed channels and playlists; changes nothing that is already subscribed */
+      auto_download_default?: boolean;
       extract_flat?: boolean;
     };
     /** @description serialize new async task */
@@ -1682,6 +1685,8 @@ export interface components {
       channel_tabs: components['schemas']['ChannelTabsEnum'][];
       emby_numbering?: components['schemas']['NumberingSchemeEnum'];
       download_rule?: components['schemas']['DownloadRule'] | null;
+      /** @description a check downloads what the rules allow; off: found videos wait */
+      auto_download?: boolean;
       /**  index */
       _index?: string;
       /**  score */
@@ -1698,6 +1703,15 @@ export interface components {
       value: number;
       value_str?: string;
     };
+    /** @description videos of a channel by state */
+    ChannelCounts: {
+      downloaded: number;
+      /** @description found, waiting to download */
+      queued: number;
+      ignored: number;
+      /** @description found, download failed */
+      errors: number;
+    };
     /** @description a channel option of the filter, with its count */
     ChannelFacet: {
       channel_id: string;
@@ -1706,8 +1720,40 @@ export interface components {
     };
     /** @description serialize channel list */
     ChannelList: {
-      data: components['schemas']['Channel'][];
+      data: components['schemas']['ChannelListItem'][];
       paginate: components['schemas']['Pagination'];
+    };
+    /** @description a channel table row */
+    ChannelListItem: {
+      channel_id: string;
+      channel_active: boolean;
+      channel_banner_url?: string | null;
+      channel_thumb_url?: string | null;
+      channel_tvart_url?: string | null;
+      channel_description?: string | null;
+      channel_last_refresh: string;
+      channel_name: string;
+      channel_overwrites?: components['schemas']['ChannelOverwrite'];
+      channel_subs: number;
+      channel_subscribed: boolean;
+      channel_tags?: string[];
+      channel_tabs: components['schemas']['ChannelTabsEnum'][];
+      emby_numbering?: components['schemas']['NumberingSchemeEnum'];
+      download_rule?: components['schemas']['DownloadRule'] | null;
+      /** @description a check downloads what the rules allow; off: found videos wait */
+      auto_download?: boolean;
+      /**  index */
+      _index?: string;
+      /**  score */
+      _score?: number;
+      counts: components['schemas']['ChannelCounts'];
+      /** @description badge text of the channel's own rule; null: the default */
+      rule_summary: string | null;
+      /**
+       * Format: date-time
+       * @description newest published of its videos
+       */
+      latest_upload: string | null;
     };
     /** @description serialize channel navigation */
     ChannelNav: {
@@ -1749,6 +1795,8 @@ export interface components {
       channel_overwrites?: components['schemas']['ChannelOverwrite'];
       emby_numbering?: components['schemas']['ChannelUpdateEmbyNumberingEnum'];
       download_rule?: components['schemas']['DownloadRule'] | null;
+      /** @description a check downloads what the rules allow; off: found videos wait */
+      auto_download?: boolean;
     };
     /**
      * @description * `date` - date
@@ -1798,6 +1846,8 @@ export interface components {
       schedule_human: string;
       /** Format: date-time */
       last_run_at: string;
+      /** Format: date-time */
+      readonly next_run_at: string | null;
       config: {
         [key: string]: unknown;
       };
@@ -1912,6 +1962,7 @@ export interface components {
       subscribe_to?: components['schemas']['TaskNotificationItem'];
       version_check?: components['schemas']['TaskNotificationItem'];
       emby_sync?: components['schemas']['TaskNotificationItem'];
+      emby_health?: components['schemas']['TaskNotificationItem'];
     };
     /** @description the rule that applies to a target and where it comes from */
     EffectiveRule: {
@@ -2110,6 +2161,14 @@ export interface components {
       /** Format: date-time */
       downloaded_at: string | null;
     };
+    /**
+     * @description * `default` - default
+     *     * `shelves` - shelves
+     *     * `timeline` - timeline
+     *     * `whatsnew` - whatsnew
+     * @enum {string}
+     */
+    HomeLayoutEnum: 'default' | 'shelves' | 'timeline' | 'whatsnew';
     /** @description one unit of work */
     Job: {
       id: number;
@@ -2549,8 +2608,8 @@ export interface components {
      *     change when it runs; a schedule that doesn't exist yet is created */
     PatchedScheduledJobUpdate: {
       enabled?: boolean;
-      /** @description cron 'minute hour weekday', e.g. '0 *\/6 *', or 'auto' */
-      schedule?: string;
+      /** @description cron 'minute hour weekday', e.g. '0 *\/6 *', 'auto' for the default, or null to turn the schedule off */
+      schedule?: string | null;
     };
     /** @description serialize ping response */
     Ping: {
@@ -2591,6 +2650,8 @@ export interface components {
       playlist_thumbnail: string;
       playlist_type: components['schemas']['PlaylistTypeEnum'];
       emby_numbering?: components['schemas']['NumberingSchemeEnum'];
+      /** @description a check downloads what the rules allow; off: found videos wait */
+      auto_download?: boolean;
       /**  index */
       _index?: string;
       /**  score */
@@ -2664,6 +2725,8 @@ export interface components {
       playlist_subscribed?: boolean;
       playlist_sort_order?: components['schemas']['PlaylistSortOrderEnum'];
       emby_numbering?: components['schemas']['NumberingSchemeEnum'];
+      /** @description a check downloads what the rules allow; off: found videos wait */
+      auto_download?: boolean;
     };
     /**
      * @description * `top` - top
@@ -2900,11 +2963,11 @@ export interface components {
        *     * `date` - date
        *     * `text` - text
        *     * `seconds` - seconds */
-      needs_value:
+      needs_value?:
         | (components['schemas']['NeedsValueEnum'] | components['schemas']['NullEnum'])
         | null;
       /** @description rule field the value goes into */
-      value_field: string | null;
+      value_field?: string | null;
     };
     /** @description '38 download / 12 skipped', with the reasons */
     RulePreview: {
@@ -2980,10 +3043,10 @@ export interface components {
       label: string;
       job_type: components['schemas']['JobTypeEnum'];
       lane: components['schemas']['LaneEnum'];
-      /** @description cron: minute hour weekday */
-      schedule: string;
+      /** @description cron: minute hour weekday; null: no schedule (off) */
+      schedule: string | null;
       /** @description e.g. 'At 18:00' */
-      schedule_human: string;
+      schedule_human: string | null;
       enabled: boolean;
       /** Format: date-time */
       next_run: string | null;
@@ -3205,6 +3268,7 @@ export interface components {
      *     * `subscribe_to` - subscribe_to
      *     * `version_check` - version_check
      *     * `emby_sync` - emby_sync
+     *     * `emby_health` - emby_health
      * @enum {string}
      */
     TaskNameEnum:
@@ -3221,7 +3285,8 @@ export interface components {
       | 'index_playlists'
       | 'subscribe_to'
       | 'version_check'
-      | 'emby_sync';
+      | 'emby_sync'
+      | 'emby_health';
     /** @description serialize single task notification */
     TaskNotificationItem: {
       urls: string[];
@@ -3287,9 +3352,16 @@ export interface components {
       sort_by: components['schemas']['SortByEnum'];
       sort_order: components['schemas']['SortOrderEnum'];
       view_style_home: components['schemas']['ViewStyleHomeEnum'];
-      view_style_channel: components['schemas']['ViewStylePlaylistEnum'];
-      view_style_downloads: components['schemas']['ViewStylePlaylistEnum'];
+      view_style_channel: components['schemas']['ViewStyleChannelEnum'];
+      view_style_downloads: components['schemas']['ViewStyleDownloadsEnum'];
       view_style_playlist: components['schemas']['ViewStylePlaylistEnum'];
+      /** @description home page design
+       *
+       *     * `default` - default
+       *     * `shelves` - shelves
+       *     * `timeline` - timeline
+       *     * `whatsnew` - whatsnew */
+      home_layout: components['schemas']['HomeLayoutEnum'];
       vid_type_filter:
         | (components['schemas']['VidTypeFilterEnum'] | components['schemas']['NullEnum'])
         | null;
@@ -3468,13 +3540,28 @@ export interface components {
      *     * `table` - table
      * @enum {string}
      */
+    ViewStyleChannelEnum: 'grid' | 'list' | 'table';
+    /**
+     * @description * `grid` - grid
+     *     * `list` - list
+     *     * `table` - table
+     * @enum {string}
+     */
+    ViewStyleDownloadsEnum: 'grid' | 'list' | 'table';
+    /**
+     * @description * `grid` - grid
+     *     * `list` - list
+     *     * `table` - table
+     * @enum {string}
+     */
     ViewStyleHomeEnum: 'grid' | 'list' | 'table';
     /**
      * @description * `grid` - grid
      *     * `list` - list
+     *     * `table` - table
      * @enum {string}
      */
-    ViewStylePlaylistEnum: 'grid' | 'list';
+    ViewStylePlaylistEnum: 'grid' | 'list' | 'table';
     /** @description serialize watch item stats */
     WatchItemStats: {
       duration: number;
@@ -4155,10 +4242,35 @@ export interface operations {
   channel_retrieve: {
     parameters: {
       query?: {
+        auto_download?: boolean | null;
         /** @description * `subscribed` - subscribed
          *     * `unsubscribed` - unsubscribed */
         filter?: 'subscribed' | 'unsubscribed';
+        has_errors?: boolean | null;
+        has_queued?: boolean | null;
+        has_rule?: boolean | null;
+        /** @description * `asc` - asc
+         *     * `desc` - desc */
+        order?: 'asc' | 'desc';
         page?: number;
+        page_size?: number;
+        /** @description search name, @handle or channel id */
+        q?: string;
+        /** @description * `name` - name
+         *     * `subscribed` - subscribed
+         *     * `downloaded` - downloaded
+         *     * `queued` - queued
+         *     * `ignored` - ignored
+         *     * `latest_upload` - latest_upload
+         *     * `last_checked` - last_checked */
+        sort?:
+          | 'name'
+          | 'subscribed'
+          | 'downloaded'
+          | 'queued'
+          | 'ignored'
+          | 'latest_upload'
+          | 'last_checked';
       };
       header?: never;
       path?: never;
@@ -5323,6 +5435,7 @@ export interface operations {
   playlist_retrieve: {
     parameters: {
       query?: {
+        auto_download?: boolean | null;
         channel?: string;
         page?: number;
         subscribed?: boolean | null;
@@ -7036,7 +7149,10 @@ export interface operations {
          *     * `desc` - desc */
         order?: 'asc' | 'desc';
         page?: number;
+        page_size?: number;
         playlist?: string;
+        /** @description search title and channel name */
+        q?: string;
         /** @description * `published` - published
          *     * `downloaded` - downloaded
          *     * `views` - views

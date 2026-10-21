@@ -7,6 +7,7 @@ functionality:
 import os
 from datetime import datetime
 
+from appsettings.src.config import auto_download_default
 from channel.models import OVERWRITE_FIELDS, Channel
 from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
@@ -150,11 +151,19 @@ class YoutubeChannel(YouTubeItem):
         ThumbManager(self.youtube_id, item_type="channel").download(urls)
 
     def change_subscribe(self, new_subscribe_state: bool):
-        """change subscribe status"""
+        """
+        change subscribe status; a new subscription gets the default
+        auto_download (subscriptions.auto_download_default, off unless set)
+        """
+        was_subscribed = Channel.objects.filter(
+            channel_id=self.youtube_id, subscribed=True
+        ).exists()
         if not self.json_data:
             self.build_json()
 
         self.json_data["channel_subscribed"] = new_subscribe_state
+        if new_subscribe_state and not was_subscribed:
+            self.json_data["auto_download"] = auto_download_default()
         self.save_to_db()
         return self.json_data
 

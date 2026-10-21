@@ -300,6 +300,15 @@ def test_add_once_and_newest(youtube):
     assert "save_rule" in Job.objects.order_by("-id").first().params
 
 
+def test_add_auto_download(youtube):
+    """stored on channels and playlists only, absent unless asked"""
+    # pylint: disable=unused-argument
+    add("UC1 PL1 sv0000001", "subscribe", auto_download=True)
+
+    params = [job.params for job in Job.objects.order_by("id")]
+    assert [p.get("auto_download") for p in params] == [True, True, None]
+
+
 @pytest.fixture(name="api")
 def fixture_api(db):
     """DRF client as staff"""
@@ -336,7 +345,12 @@ def test_add_view(youtube, api):
     # pylint: disable=unused-argument
     response = api.post(
         "/api/add/",
-        {"urls": "UC1 bad", "mode": "once", "priority": "normal"},
+        {
+            "urls": "UC1 bad",
+            "mode": "once",
+            "priority": "normal",
+            "auto_download": False,
+        },
         format="json",
     )
     assert response.status_code == 201
@@ -345,6 +359,7 @@ def test_add_view(youtube, api):
     assert body["jobs"][0]["priority"] == Priority.NORMAL
     assert body["jobs"][0]["created_by"] == "user"
     assert body["errors"][0]["url"] == "bad"
+    assert Job.objects.get().params["auto_download"] is False
 
     failed = api.post("/api/add/", {"urls": "bad", "mode": "once"})
     assert failed.status_code == 400

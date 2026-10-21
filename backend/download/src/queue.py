@@ -114,10 +114,13 @@ class PendingList(PendingIndex):
         on_added: Callable[[list[dict]], None] | None = None,
         found_by: dict | None = None,
         rule: DownloadRule | None | bool = False,
+        on_seen: Callable[[list[str]], None] | None = None,
     ):
         """
         on_added: called with the new entries as soon as they're stored,
         then videos are stored one by one instead of per url
+        on_seen: called after each url with the ids of videos it listed
+        that were already waiting in found videos (not failed)
         found_by: found_by_kind, found_by_job, found_playlist_id fields
         rule: use this rule for every channel instead of the stored rules,
         None for no rule, False (default) for the stored rules
@@ -137,11 +140,17 @@ class PendingList(PendingIndex):
         self.found_by = found_by or {}
         self.rule = rule
         self.status = "pending"
+        self.on_seen = on_seen
+        self.waiting_ids: set[str] = set()
+        self.seen: list[str] = []
 
     def parse_url_list(self, status="pending") -> int:
         """extract youtube ids from list"""
         self.status = status
         self.get_download()
+        self.waiting_ids = {
+            i["youtube_id"] for i in self.all_pending if not i.get("message")
+        }
         self.get_indexed()
         self.get_channels()
         total = len(self.youtube_ids)
@@ -153,6 +162,7 @@ class PendingList(PendingIndex):
                 )
 
             self._process_entry(entry, idx, total)
+            self._flush_seen()
 
             if self.missing_videos:
                 self.added += self.add_to_pending(status)
@@ -164,6 +174,17 @@ class PendingList(PendingIndex):
             rand_sleep(self.config)
 
         return self.added
+
+    def _see(self, video_id: str) -> None:
+        """remember a listed video that is already waiting"""
+        if self.on_seen and video_id in self.waiting_ids:
+            self.seen.append(video_id)
+
+    def _flush_seen(self) -> None:
+        """hand the waiting videos this url listed to on_seen"""
+        if self.seen:
+            seen, self.seen = self.seen, []
+            self.on_seen(seen)
 
     def _process_entry(self, entry: ParsedURLType, idx: int, total: int):
         """process single entry from url list"""
@@ -261,6 +282,7 @@ class PendingList(PendingIndex):
         """parse video of channel"""
         video_id = video_data["id"]
         if video_id in self.to_skip:
+            self._see(video_id)
             return None
 
         if self.flat:
@@ -328,6 +350,7 @@ class PendingList(PendingIndex):
         for idx, video_data in enumerate(video_results, start=1):
             video_id = video_data["id"]
             if video_id in self.to_skip:
+                self._see(video_id)
                 continue
 
             if self.task and self.task.is_stopped():

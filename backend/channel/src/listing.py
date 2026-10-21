@@ -87,6 +87,7 @@ def channel_list(filters: dict) -> QuerySet:
         "has_queued": Q(count_queued__gt=0),
         "has_errors": Q(count_errors__gt=0),
         "has_rule": Q(has_rule=True),
+        "auto_download": Q(auto_download=True),
     }
     for key, condition in toggles.items():
         if filters.get(key) is not None:

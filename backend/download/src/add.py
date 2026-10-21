@@ -311,10 +311,13 @@ def add(
     download_now: bool = True,
     priority: int = Priority.HIGH,
     created_by: str = CreatedBy.USER,
+    auto_download: bool | None = None,
 ) -> tuple[list[Job], list[dict]]:
     """
     queue one scan job per link, returns (jobs, errors)
     rule: validated rule dict, None for 'no rule', False to keep the rules
+    auto_download: store it on the channels and playlists, None leaves
+    them as they are (a new subscription gets the default, off)
     """
     parsed, errors = parse_links(text)
     if save_rule is None:
@@ -338,6 +341,8 @@ def add(
             params["save_rule" if stored else "rule"] = _rule_data(rule)
         if numbering and kind != "video":
             params["numbering"] = numbering
+        if auto_download is not None and kind != "video":
+            params["auto_download"] = auto_download
         job, _ = enqueue(
             JOB_TYPES[kind],
             item_id,

@@ -1451,3 +1451,20 @@ b {
 .ux-table {
   font-family: Sen-Regular, sans-serif;
 }
+
+/* --- auto-download switch (channel and playlist) --- */
+
+.ux-auto-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ux-auto-download .ux-error {
+  color: var(--danger);
+  font-size: 0.85em;
+}
+
+.ux-option-indent {
+  margin-left: 24px;
+}

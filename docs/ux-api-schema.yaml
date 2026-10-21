@@ -568,6 +568,11 @@ paths:
       description: get request
       parameters:
       - in: query
+        name: auto_download
+        schema:
+          type: boolean
+          nullable: true
+      - in: query
         name: filter
         schema:
           enum:
@@ -1946,6 +1951,11 @@ paths:
       operationId: playlist_retrieve
       description: get playlist list
       parameters:
+      - in: query
+        name: auto_download
+        schema:
+          type: boolean
+          nullable: true
       - in: query
         name: channel
         schema:
@@ -4044,6 +4054,11 @@ components:
           allOf:
           - $ref: '#/components/schemas/PriorityEnum'
           default: high
+        auto_download:
+          type: boolean
+          description: 'store auto download on the channels and playlists: later checks
+            download what the rules allow; omit to leave it (a new subscription gets
+            subscriptions.auto_download_default, off)'
       required:
       - mode
       - urls
@@ -4218,8 +4233,10 @@ components:
         playlist_size:
           type: integer
           nullable: true
-        auto_start:
+        auto_download_default:
           type: boolean
+          description: auto_download of newly subscribed channels and playlists; changes
+            nothing that is already subscribed
         extract_flat:
           type: boolean
     AsyncTaskResponse:
@@ -4335,6 +4352,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/DownloadRule'
           nullable: true
+        auto_download:
+          type: boolean
+          description: 'a check downloads what the rules allow; off: found videos
+            wait'
         _index:
           type: string
           title: ' index'
@@ -4463,6 +4484,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/DownloadRule'
           nullable: true
+        auto_download:
+          type: boolean
+          description: 'a check downloads what the rules allow; off: found videos
+            wait'
         _index:
           type: string
           title: ' index'
@@ -4588,6 +4613,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/DownloadRule'
           nullable: true
+        auto_download:
+          type: boolean
+          description: 'a check downloads what the rules allow; off: found videos
+            wait'
     ChannelUpdateEmbyNumberingEnum:
       enum:
       - date
@@ -6260,6 +6289,10 @@ components:
           $ref: '#/components/schemas/PlaylistTypeEnum'
         emby_numbering:
           $ref: '#/components/schemas/NumberingSchemeEnum'
+        auto_download:
+          type: boolean
+          description: 'a check downloads what the rules allow; off: found videos
+            wait'
         _index:
           type: string
           title: ' index'
@@ -6436,6 +6469,10 @@ components:
           $ref: '#/components/schemas/PlaylistSortOrderEnum'
         emby_numbering:
           $ref: '#/components/schemas/NumberingSchemeEnum'
+        auto_download:
+          type: boolean
+          description: 'a check downloads what the rules allow; off: found videos
+            wait'
     PlaylistSortOrderEnum:
       enum:
       - top

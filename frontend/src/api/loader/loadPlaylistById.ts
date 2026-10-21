@@ -23,6 +23,8 @@ export type PlaylistType = {
   playlist_thumbnail: string;
   playlist_type: string;
   emby_numbering?: EmbyNumberingType;
+  /** opted in: checks download new videos the rule allows; off by default */
+  auto_download?: boolean;
   _index: string;
   _score: number;
 };

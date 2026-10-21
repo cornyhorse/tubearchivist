@@ -23,6 +23,10 @@ class QueryBuilder:
         if subscribed is not None:
             queryset = queryset.filter(subscribed=subscribed)
 
+        auto_download = self.request_params.get("auto_download")
+        if auto_download is not None:
+            queryset = queryset.filter(auto_download=auto_download)
+
         playlist_type = self.request_params.get("type")
         if playlist_type:
             queryset = queryset.filter(

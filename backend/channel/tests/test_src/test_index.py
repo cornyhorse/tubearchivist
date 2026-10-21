@@ -1,6 +1,7 @@
 """tests for channel indexing, yt-dlp and artwork faked"""
 
 import pytest
+from appsettings.src.config import AppConfig
 from channel.models import Channel
 from channel.src.index import ChannelDelete, YoutubeChannel, channel_overwrites
 from common.tests.docs import channel_doc, playlist_doc, video_doc
@@ -338,3 +339,27 @@ def test_channel_overwrites_saves():
 
     assert data["channel_overwrites"] == {"index_playlists": True}
     assert Channel.objects.get().overwrites == {"index_playlists": True}
+
+
+@pytest.mark.parametrize("default", [False, True])
+def test_new_subscription_gets_default_auto_download(default):
+    """
+    auto_download_default only sets the start value of a new subscription
+    """
+    AppConfig().update_config(
+        {"subscriptions": {"auto_download_default": default}}
+    )
+    Channel.save_doc(channel_doc(channel_subscribed=False))
+
+    YoutubeChannel(CH).change_subscribe(new_subscribe_state=True)
+
+    assert Channel.objects.get().auto_download is default
+
+
+def test_resubscribe_and_unsubscribe_keep_auto_download():
+    Channel.save_doc(channel_doc(channel_subscribed=True, auto_download=True))
+
+    YoutubeChannel(CH).change_subscribe(new_subscribe_state=True)
+    assert Channel.objects.get().auto_download is True
+    YoutubeChannel(CH).change_subscribe(new_subscribe_state=False)
+    assert Channel.objects.get().auto_download is True

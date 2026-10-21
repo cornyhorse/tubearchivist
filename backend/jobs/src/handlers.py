@@ -18,8 +18,13 @@ from channel.src.index import YoutubeChannel
 from django.utils import timezone
 from download.models import Download, DownloadRule
 from download.serializers import DownloadRuleSerializer
+from download.src.auto_download import (
+    is_auto_download,
+    set_auto_download,
+    waiting_from_other_source,
+)
 from download.src.queue import PendingList
-from download.src.rules import set_rule
+from download.src.rules import RuleSet, set_rule
 from download.src.subscriptions import (
     ChannelSubscription,
     SubscriptionHandler,
@@ -83,12 +88,19 @@ def rule_from_params(params: dict) -> DownloadRule | None | bool:
 
 
 def prepare_channel(ctx: JobContext) -> None:
-    """subscribe, store rule and numbering, as the add dialog asked"""
+    """
+    subscribe, store rule, numbering and auto download, as the add dialog
+    asked
+    """
     params, channel_id = ctx.params, ctx.job.target_id
     if params.get("subscribe"):
         ctx.send_progress(["Subscribing to the channel."])
         YoutubeChannel(channel_id).change_subscribe(new_subscribe_state=True)
-    elif "save_rule" in params or params.get("numbering"):
+    elif (
+        "save_rule" in params
+        or "auto_download" in params
+        or params.get("numbering")
+    ):
         YoutubeChannel(channel_id).build_json(upload=True)
     if "save_rule" in params:
         set_rule(channel_id, _rule_fields(params["save_rule"]))
@@ -96,6 +108,8 @@ def prepare_channel(ctx: JobContext) -> None:
         Channel.objects.filter(pk=channel_id).update(
             emby_numbering=params["numbering"]
         )
+    if "auto_download" in params:
+        set_auto_download("channel", [channel_id], params["auto_download"])
 
 
 def scan(
@@ -103,13 +117,18 @@ def scan(
     entries: list,
     found_kind: str,
     playlist_id: str | None = None,
+    source: tuple[str, str] | None = None,
 ) -> dict:
-    """find videos of entries, queue downloads for the allowed ones"""
+    """
+    find videos of entries, queue downloads for the allowed ones when the
+    job asks for it (download_now) or, if it doesn't say, when the source
+    (kind, id) is opted in to auto download; else they wait in found videos
+    """
     config = AppConfig().config["subscriptions"]
     params = ctx.params
     download_now = params.get("download_now")
-    if download_now is None:
-        download_now = bool(config.get("auto_start"))
+    auto = download_now is None and bool(source) and is_auto_download(*source)
+    download_now = bool(download_now) or auto
 
     counts = {"found": 0, "allowed": 0, "ignored": 0, "queued_downloads": 0}
 
@@ -129,6 +148,15 @@ def scan(
                 )
                 counts["queued_downloads"] += 1
 
+    rules = RuleSet() if auto else None
+
+    def on_seen(ids: list[str]) -> None:
+        for item in waiting_from_other_source(ids, *source):
+            if rules.check(item.to_doc(channel_indexed=True), playlist_id):
+                continue
+            _child(ctx, "download_video", item.pk, target_title=item.title)
+            counts["queued_downloads"] += 1
+
     PendingList(
         youtube_ids=entries,
         task=ctx,
@@ -143,7 +171,10 @@ def scan(
             "found_playlist_id": playlist_id,
         },
         rule=rule_from_params(params),
+        on_seen=on_seen if auto else None,
     ).parse_url_list(status=params.get("status", "pending"))
+    if auto:
+        counts["auto_download"] = True
     return counts
 
 
@@ -211,7 +242,7 @@ def check_channel(ctx: JobContext) -> dict:
                 "limit": newest_n,
             }
         ]
-    return scan(ctx, entries, "channel_check")
+    return scan(ctx, entries, "channel_check", source=("channel", channel_id))
 
 
 @register(
@@ -240,7 +271,7 @@ def check_playlist(ctx: JobContext) -> dict:
     if ctx.params.get("subscribe"):
         ctx.send_progress(["Subscribing to the playlist."])
         YoutubePlaylist(playlist_id).change_subscribe(new_subscribe_state=True)
-    elif "save_rule" in ctx.params:
+    elif "save_rule" in ctx.params or "auto_download" in ctx.params:
         YoutubePlaylist(playlist_id).update_playlist()
     if "save_rule" in ctx.params:
         set_rule(
@@ -248,7 +279,17 @@ def check_playlist(ctx: JobContext) -> dict:
             _rule_fields(ctx.params["save_rule"]),
             playlist_id=playlist_id,
         )
-    result = scan(ctx, [entry], "playlist_check", playlist_id=playlist_id)
+    if "auto_download" in ctx.params:
+        set_auto_download(
+            "playlist", [playlist_id], ctx.params["auto_download"]
+        )
+    result = scan(
+        ctx,
+        [entry],
+        "playlist_check",
+        playlist_id=playlist_id,
+        source=("playlist", playlist_id),
+    )
     if ctx.params.get("numbering"):
         # the scan indexed the playlist
         Playlist.objects.filter(pk=playlist_id).update(

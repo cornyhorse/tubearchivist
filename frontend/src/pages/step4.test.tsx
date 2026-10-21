@@ -285,6 +285,7 @@ describe('AddDialog', () => {
         priority: 'high',
       }),
     );
+    expect(clientMock.addUrls.mock.lastCall![0].auto_download).toBeUndefined();
     expect(screen.getByText('bad: gone')).toBeTruthy();
     expect(onAdded).toHaveBeenCalled();
     fireEvent.click(screen.getAllByRole('button', { name: 'Close' }).at(-1)!);
@@ -329,8 +330,16 @@ describe('AddDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
     await waitFor(() => expect(screen.getByText('Subscribed')).toBeTruthy());
     fireEvent.click(screen.getByRole('radio', { name: /Subscribe and keep checking/ }));
+    // auto-download is opt in: unticked unless you tick it
+    const auto = screen.getByRole('checkbox', { name: /Auto-download new videos/ });
+    expect((auto as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(auto);
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     await waitFor(() => expect(screen.getByText('Could not add those links.')).toBeTruthy());
+    expect(clientMock.addUrls.mock.lastCall![0]).toMatchObject({
+      mode: 'subscribe',
+      auto_download: true,
+    });
     clientMock.addUrls.mockRejectedValue({ status: 400, message: 'x' });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     await waitFor(() => expect(screen.getByText(/None of those links could be read/)).toBeTruthy());

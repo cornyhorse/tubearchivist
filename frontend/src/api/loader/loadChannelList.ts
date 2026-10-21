@@ -14,7 +14,8 @@ export type ChannelListFilter =
   | 'unsubscribed'
   | 'has_queued'
   | 'has_rule'
-  | 'has_errors';
+  | 'has_errors'
+  | 'auto_download';
 
 export type ChannelSortKey =
   | 'name'
@@ -48,7 +49,7 @@ const loadChannelList = async (
 
   const searchParams = new URLSearchParams();
   if (query.page) searchParams.append('page', query.page.toString());
-  // subscribed/unsubscribed go in `filter`; the has_* quick filters are their own flags
+  // subscribed/unsubscribed go in `filter`; has_* and auto_download are their own flags
   if (query.filter === 'subscribed' || query.filter === 'unsubscribed') {
     searchParams.append('filter', query.filter);
   } else if (query.filter) {

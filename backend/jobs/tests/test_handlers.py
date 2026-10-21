@@ -153,7 +153,7 @@ def test_channel_check_downloads_while_scanning(
 
 
 @pytest.mark.django_db
-def test_scan_download_now_follows_config(yt, app_config):
+def test_scan_waits_unless_opted_in(yt, app_config):
     # pylint: disable=unused-argument
     yt.channel_videos = [flat_entry("vid1")]
     _, ctx = running(
@@ -165,7 +165,7 @@ def test_scan_download_now_follows_config(yt, app_config):
 
     result = handlers.check_channel(ctx)
 
-    # auto_start is off by default: found, not queued
+    # auto download is off by default: found, not queued
     assert result["queued_downloads"] == 0
     assert Download.objects.get().found_by_kind == "channel_check"
 
@@ -176,7 +176,7 @@ def test_check_channel_entries(fake, app_config):
     calls = []
     Channel.save_doc(channel_doc(channel_tabs=["videos", "shorts"]))
 
-    def fake_scan(ctx, entries, kind, playlist_id=None):
+    def fake_scan(ctx, entries, kind, playlist_id=None, source=None):
         calls.append((entries, kind, playlist_id))
         return {}
 
@@ -241,8 +241,8 @@ def test_check_playlist_limits(app_config):
     # pylint: disable=unused-argument
     calls = []
     real = handlers.scan
-    handlers.scan = lambda ctx, entries, kind, playlist_id=None: calls.append(
-        (entries[0]["limit"], kind, playlist_id)
+    handlers.scan = lambda ctx, entries, kind, playlist_id=None, **_: (
+        calls.append((entries[0]["limit"], kind, playlist_id))
     )
     try:
         _, ctx = running("check_playlist", "PL1")
@@ -604,7 +604,7 @@ def test_playlist_subscribe_and_numbering(fake, app_config, monkeypatch):
     # pylint: disable=unused-argument
     playlist = fake("YoutubePlaylist")
 
-    def fake_scan(ctx, entries, kind, playlist_id=None):
+    def fake_scan(ctx, entries, kind, playlist_id=None, source=None):
         Playlist.save_doc(playlist_doc("PL1", []))
         return {"found": 0}
 

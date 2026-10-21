@@ -22,6 +22,7 @@ import Notifications from '../components/Notifications';
 import Button from '../components/Button';
 import updateBulkChannelSubscriptions from '../api/actions/updateBulkChannelSubscriptions';
 import updateChannelSubscription from '../api/actions/updateChannelSubscription';
+import updateAutoDownload from '../api/actions/updateAutoDownload';
 import useIsAdmin from '../functions/useIsAdmin';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import updateUserConfig, { UserConfigType } from '../api/actions/updateUserConfig';
@@ -73,6 +74,8 @@ export type ChannelType = {
   channel_tvart_url: string;
   emby_numbering?: EmbyNumberingType;
   download_rule?: DownloadRuleType | null;
+  /** opted in: checks download new videos the rule allows; off by default */
+  auto_download?: boolean;
   /** list view only: per-channel counts of videos */
   counts?: ChannelCountsType;
   /** list view only: newest upload among the channel's videos */
@@ -87,6 +90,11 @@ const QUICK_FILTERS: ChipOption<QuickFilter>[] = [
   { value: 'unsubscribed', label: 'Not subscribed' },
   { value: 'has_queued', label: 'Has queued videos', help: 'Found videos waiting to download' },
   { value: 'has_rule', label: 'Has a rule', help: 'Channels with their own download rule' },
+  {
+    value: 'auto_download',
+    label: 'Auto-download',
+    help: 'Channels whose new videos download as soon as a check finds them',
+  },
   { value: 'has_errors', label: 'Has errors', help: 'Channels with failed downloads' },
 ];
 
@@ -215,6 +223,12 @@ const Channels = () => {
     reload();
   };
 
+  const bulkAutoDownload = async (value: boolean) => {
+    await forEachChannel(selectedIds, id => updateAutoDownload('channel', id, value));
+    setSelected(new Set());
+    reload();
+  };
+
   const totalHits = pagination?.total_hits;
 
   return (
@@ -331,6 +345,20 @@ const Channels = () => {
               onClick={() => setBulkDialog('numbering')}
             >
               Set numbering…
+            </button>
+            <button
+              type="button"
+              title="New videos a check finds download at once, within each channel's rule"
+              onClick={() => bulkAutoDownload(true)}
+            >
+              Auto-download on
+            </button>
+            <button
+              type="button"
+              title="New videos wait in Found videos until you download them"
+              onClick={() => bulkAutoDownload(false)}
+            >
+              Auto-download off
             </button>
             {queueAvailable && (
               <button

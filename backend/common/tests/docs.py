@@ -16,6 +16,7 @@ BASE_CHANNEL = {
     "channel_tags": ["trains", "coasters"],
     "channel_tabs": ["videos", "shorts"],
     "emby_numbering": "date",
+    "auto_download": False,
 }
 
 BASE_VIDEO = {
@@ -109,6 +110,7 @@ def playlist_doc(playlist_id: str, entries: list[str], **overrides) -> dict:
         "playlist_thumbnail": "https://i.ytimg.com/pl.jpg",
         "playlist_type": "regular",
         "emby_numbering": "playlist_position",
+        "auto_download": False,
         "playlist_entries": [
             {
                 "youtube_id": youtube_id,

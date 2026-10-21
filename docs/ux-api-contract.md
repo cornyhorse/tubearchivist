@@ -181,7 +181,7 @@ duration_seconds, published, known, verdict}`.
 `verdict.total`, `download`, `skipped`, `reasons`.
 
 `POST /api/add/` `{urls, mode, newest_n?, rule?, save_rule?, numbering?,
-download_now (default true), priority (default high)}`:
+download_now (default true), priority (default high), auto_download?}`:
 
 - `mode=subscribe`: subscribe, then check now. `save_rule` defaults true
   (the rule is stored on the channel/playlist).
@@ -191,6 +191,9 @@ download_now (default true), priority (default high)}`:
 - `numbering` sets the channel's/playlist's scheme.
 - `save_rule` stores the rule on the channel or the playlist; for a single
   video it is always one-off.
+- `auto_download` stores auto download on the channel or playlist (section
+  8); omitted, a new subscription gets `subscriptions.auto_download_default`
+  (off).
 
 Response 201 `{jobs: Job[], errors[]}` (400 with the same shape when no
 link could be read) — one high priority scan job per link (`check_channel`, `check_playlist` or `fetch_video`); follow them in
@@ -290,7 +293,8 @@ refused. Protocol versions 2025-11-25, 2025-06-18, 2025-03-26. Not used by
 the frontend.
 
 Tools (each calls the same service functions as the REST endpoints):
-`preview_url`, `add_url`, `set_rule` (also per-video overrides),
+`preview_url`, `add_url` (with `auto_download`), `set_rule` (also
+per-video overrides, and `auto_download` per channel or playlist),
 `set_numbering` (with `dry_run`), `list_queue`, `list_found`, `download`,
 `ignore`, `move_to_top`, `activity`, `stop_task`, `search_library`,
 `get_video`, `notify_media_server`. Errors an agent can fix come back as
@@ -302,6 +306,27 @@ Claude config, with the token from mattstash:
 {"type": "http", "url": "https://<ta-host>/api/mcp",
  "headersHelper": "<print 'Authorization: Bearer <token>' from mattstash>"}
 ```
+
+## 8. Auto download — channel and playlist field
+
+Off by default, opted in per channel or playlist; see
+[`fork/auto-download.md`](fork/auto-download.md). A check of an opted in
+channel or playlist queues a download for each new video the rules allow
+(and for waiting videos another source found); otherwise found videos
+wait. The old global `subscriptions.auto_start` is gone;
+`subscriptions.auto_download_default` (default false) only sets
+`auto_download` of a new subscription.
+
+| method | path | body / query | response |
+|---|---|---|---|
+| GET | `/api/channel/<id>/`, `/api/playlist/<id>/` | | `auto_download` in the body |
+| POST | `/api/channel/<id>/`, `/api/playlist/<id>/` | `{auto_download}` (with the other update fields) | as before |
+| GET | `/api/channel/`, `/api/playlist/` | `auto_download=true\|false` | rows carry `auto_download` |
+
+There is no bulk endpoint for channel or playlist settings: bulk actions
+send one update per selected id, like the rule and numbering bulk actions.
+`check_channel`/`check_playlist` results gain `"auto_download": true`
+when the source's opt in made the downloads.
 
 ## Open questions for the frontend
 

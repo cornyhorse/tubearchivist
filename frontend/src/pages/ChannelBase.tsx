@@ -12,6 +12,7 @@ import NotFound from './NotFound';
 import loadDefaultDownloadRule from '../api/loader/loadDownloadRule';
 import { DownloadRuleType } from '../api/actions/updateDownloadRule';
 import { NumberingBadge, RuleBadge } from '../components/ux/Badges';
+import AutoDownloadSwitch, { AUTO_DOWNLOAD_HELP } from '../components/ux/AutoDownloadSwitch';
 
 type ChannelParams = {
   channelId: string;
@@ -96,6 +97,17 @@ const ChannelBase = () => {
               name={channel.channel_name}
               value={channel.emby_numbering}
               options={['date', 'year_frozen', 'absolute_frozen']}
+              canEdit={isAdmin}
+              onSaved={() => setRefreshChannel(current => current + 1)}
+            />
+            <span className="ux-badge-label" title={AUTO_DOWNLOAD_HELP}>
+              Auto-download
+            </span>
+            <AutoDownloadSwitch
+              kind="channel"
+              id={channelId}
+              name={channel.channel_name}
+              value={channel.auto_download}
               canEdit={isAdmin}
               onSaved={() => setRefreshChannel(current => current + 1)}
             />
