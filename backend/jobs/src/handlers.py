@@ -148,7 +148,7 @@ def scan(
                 )
                 counts["queued_downloads"] += 1
 
-    rules = RuleSet()
+    rules = RuleSet() if auto else None
 
     def on_seen(ids: list[str]) -> None:
         for item in waiting_from_other_source(ids, *source):
