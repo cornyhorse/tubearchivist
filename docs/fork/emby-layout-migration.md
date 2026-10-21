@@ -37,11 +37,30 @@ the 200-byte cap.
 
 | Option | Effect |
 |---|---|
-| `--dry-run` | Runs everything inside a transaction, including a dry-run sync, prints the counts, then rolls back. Nothing changes on disk or in the database. |
+| `--dry-run` | Runs everything inside a transaction, including a dry-run sync, prints the counts, then rolls back. Nothing changes on disk or in the database (the hardlink preflight creates a probe and removes it again). |
 | `--verbose-changes` | Prints every rename, create and delete. |
 | `--no-sync` | Migrates the database only, and the next `emby_sync` does the renames. |
 
 After it has run, every later sync of an unchanged library reports `renamed 0`.
+
+Unless `--no-sync` is given, the command runs the writer's hardlink preflight before it touches the database, in
+a dry run as well as a real run. A root that can't take the renames therefore fails the command with the database
+still on layout 1, and a dry run can't pass where the real run would fail.
+
+### 2026-10-21: the half-applied production run
+
+On fork-v0.3.0 the preflight compared inode numbers. The CIFS client on apps had autodisabled server inode numbers
+on the NAS share ("Hardlinks will not be recognized on this mount"), so the database part committed and the sync
+then refused the root with `EmbyRootError` before touching a file. Production was left on database layout 2 with
+the files still on layout 1. fork-v0.4.0 tests hardlinks by behaviour and recognises links by size, mtime and
+source (see `postgres-storage-design.md` §2.5), so the recovery is not to rerun the migration (it reports
+`already on Emby layout 2`) but to run the sync:
+
+1. `ta_emby_sync /youtube/.emby --dry-run`: the renames should match the earlier preview (about 5,244: 5,139
+   date-scheme renumbers and 105 over-long playlist names), with `errors 0`, `created 0`, `deleted 0`. The
+   version 2 manifest is upgraded in memory only.
+2. `ta_emby_sync /youtube/.emby`: does the renames and writes a version 3 manifest.
+3. A second `--dry-run` reports `renamed 0`.
 
 ## First production run (needs Matt's OK at each step)
 

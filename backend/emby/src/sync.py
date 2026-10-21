@@ -28,7 +28,7 @@ from emby.src.layout import (
 )
 from emby.src.nfo import EpisodeInfo, SeriesInfo
 from emby.src.numbering import FROZEN_SCHEMES, NumberingItem, assign_numbers
-from emby.src.writer import EmbyWriter, SyncReport
+from emby.src.writer import EmbyWriter, SyncReport, check_hardlinks
 from playlist.models import Playlist
 from video.models import Video
 
@@ -124,6 +124,21 @@ def paths_from_env() -> EmbyPaths | None:
         output_root=Path(EnvironmentSettings.EMBY_ROOT),
         timezone=EnvironmentSettings.TZ,
     )
+
+
+def _writer(paths: EmbyPaths, dry_run: bool) -> EmbyWriter:
+    return EmbyWriter(
+        paths.output_root, dry_run=dry_run, media_root=paths.media_root
+    )
+
+
+def preflight(paths: EmbyPaths) -> None:
+    """
+    check the Emby root can hold hardlinks to the media (EmbyRootError if
+    not); every sync does this first, call it before changing anything a
+    sync would then have to finish
+    """
+    check_hardlinks(paths.media_root, paths.output_root)
 
 
 def layout_version() -> int:
@@ -495,7 +510,7 @@ def sync_channel(
     check_layout(dry_run)
     channel = Channel.objects.get(channel_id=channel_id)
     series, episodes, warnings = channel_series(channel, paths, dry_run)
-    writer = EmbyWriter(paths.output_root, dry_run=dry_run)
+    writer = _writer(paths, dry_run)
     return sync_series(series, episodes, writer, warnings)
 
 
@@ -506,7 +521,7 @@ def sync_playlist(
     check_layout(dry_run)
     playlist = Playlist.objects.get(playlist_id=playlist_id)
     series, episodes, warnings = playlist_series(playlist, paths, dry_run)
-    writer = EmbyWriter(paths.output_root, dry_run=dry_run)
+    writer = _writer(paths, dry_run)
     return sync_series(series, episodes, writer, warnings)
 
 
@@ -542,7 +557,7 @@ def sync_all(paths: EmbyPaths, dry_run: bool = False) -> SyncReport:
 
 def _sync_all(paths: EmbyPaths, dry_run: bool) -> SyncReport:
     check_layout(dry_run)
-    writer = EmbyWriter(paths.output_root, dry_run=dry_run)
+    writer = _writer(paths, dry_run)
     desired, warnings, errors, keep = [], [], [], set()
     failed = {}
     sources = [

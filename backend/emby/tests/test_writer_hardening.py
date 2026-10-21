@@ -53,15 +53,26 @@ def write_manifest(out: Path, manifest: dict) -> None:
 # E2: CIFS st_dev changes on every remount
 
 
+class FakeStat:
+    """a stat result with some fields replaced, the rest passed through"""
+
+    def __init__(self, real, **fields):
+        self._real = real
+        self._fields = fields
+
+    def __getattr__(self, name):
+        if name in self._fields:
+            return self._fields[name]
+        return getattr(self._real, name)
+
+
 def remount(monkeypatch):
     """every later stat reports another st_dev, as after a CIFS remount"""
     real_stat = Path.stat
 
     def stat(self, *args, **kwargs):
         result = real_stat(self, *args, **kwargs)
-        fields = list(result[:10])
-        fields[2] = result.st_dev + 1000
-        return os.stat_result(fields)
+        return FakeStat(result, st_dev=result.st_dev + 1000)
 
     monkeypatch.setattr(Path, "stat", stat)
 
@@ -82,20 +93,21 @@ def test_links_are_recognised_after_remount(tmp_path, monkeypatch):
     assert sorted(p.name for p in (out / "s").iterdir()) == ["c.mp4"]
 
 
-def test_manifest_records_inode_and_size_only(tmp_path):
+def test_manifest_records_size_mtime_and_source(tmp_path):
     source = media_file(tmp_path)
     out = tmp_path / "out"
 
     EmbyWriter(out).sync([link("s/v.mp4", source)], "s")
 
     manifest = read_manifest(out)
-    assert manifest["version"] == 2
+    assert manifest["version"] == 3
     assert manifest["files"]["s/v.mp4"] == {
         "kind": "link",
         "owner": "o",
         "role": "media",
-        "ino": source.stat().st_ino,
         "size": 5,
+        "mtime_ns": source.stat().st_mtime_ns,
+        "source": str(source),
     }
 
 
@@ -105,24 +117,26 @@ def test_version_1_manifest_is_upgraded(tmp_path):
     EmbyWriter(out).sync([link("s/v.mp4", source), data("s/v.nfo")], "s")
     manifest = read_manifest(out)
     manifest["version"] = 1
-    entry = manifest["files"]["s/v.mp4"]
-    entry["inode"] = [12345, entry.pop("ino")]
-    del entry["size"]
+    manifest["files"]["s/v.mp4"] = {
+        "kind": "link",
+        "owner": "o",
+        "role": "media",
+        "inode": [12345, source.stat().st_ino],
+    }
     write_manifest(out, manifest)
 
     report = EmbyWriter(out).sync([], "s")
 
     assert sorted(report.deleted) == ["s/", "s/v.mp4", "s/v.nfo"]
-    assert read_manifest(out) == {"version": 2, "files": {}, "dirs": []}
+    assert read_manifest(out) == {"version": 3, "files": {}, "dirs": []}
 
 
-def test_inode_reuse_with_another_size_is_not_ours(tmp_path):
+def test_replaced_link_is_not_ours(tmp_path):
     source = media_file(tmp_path)
     out = tmp_path / "out"
     EmbyWriter(out).sync([link("s/v.mp4", source)], "s")
-    manifest = read_manifest(out)
-    manifest["files"]["s/v.mp4"]["size"] = 999
-    write_manifest(out, manifest)
+    (out / "s" / "v.mp4").unlink()
+    (out / "s" / "v.mp4").write_bytes(b"someone else's file")
 
     report = EmbyWriter(out).sync([], "s")
 
@@ -190,12 +204,12 @@ def test_tampered_manifest_cannot_reach_outside_root(tmp_path):
     [
         ("text", "not an object"),
         ({"kind": "data", "role": "r", "sha256": "0"}, "no owner or role"),
-        ({"kind": "link", "owner": "o", "role": "r"}, "link without inode"),
+        ({"kind": "link", "owner": "o", "role": "r"}, "link without identity"),
         ({"kind": "data", "owner": "o", "role": "r"}, "unknown kind"),
         ({"kind": "dir", "owner": "o", "role": "r"}, "unknown kind"),
         (
             {"kind": "link", "owner": "o", "role": "r", "inode": [1, 2, 3]},
-            "link without inode",
+            "link without identity",
         ),
     ],
 )
@@ -312,16 +326,17 @@ def test_preflight_refuses_other_filesystem(tmp_path, monkeypatch):
     assert list((tmp_path / "out").iterdir()) == []
 
 
-def test_preflight_refuses_fake_inodes(tmp_path, monkeypatch):
+def test_preflight_refuses_a_link_that_is_not_one_file(tmp_path, monkeypatch):
     source = media_file(tmp_path)
     monkeypatch.setattr(writer_module.os, "link", shutil.copyfile)
 
-    with pytest.raises(EmbyRootError, match="noserverino"):
+    with pytest.raises(EmbyRootError, match="not the same file"):
         EmbyWriter(tmp_path / "out").sync([link("s/v.mp4", source)], "s")
     assert list((tmp_path / "out").iterdir()) == []
+    assert sorted(p.name for p in (tmp_path / "media").iterdir()) == ["v.mp4"]
 
 
-def test_preflight_other_errors_propagate(tmp_path, monkeypatch):
+def test_preflight_refuses_other_link_errors(tmp_path, monkeypatch):
     source = media_file(tmp_path)
 
     def denied(*_):
@@ -329,18 +344,26 @@ def test_preflight_other_errors_propagate(tmp_path, monkeypatch):
 
     monkeypatch.setattr(writer_module.os, "link", denied)
 
-    with pytest.raises(PermissionError):
+    with pytest.raises(EmbyRootError, match="can't hardlink from"):
         EmbyWriter(tmp_path / "out").sync([link("s/v.mp4", source)], "s")
 
 
-def test_dry_run_and_missing_sources_skip_preflight(tmp_path, monkeypatch):
+def test_dry_run_runs_the_preflight_too(tmp_path, monkeypatch):
     source = media_file(tmp_path)
-    monkeypatch.setattr(writer_module, "check_hardlinks", None)
 
-    report = EmbyWriter(tmp_path / "out", dry_run=True).sync(
-        [link("s/v.mp4", source)], "s"
-    )
-    assert report.created == ["s/v.mp4"]
+    def refuse(*_):
+        raise EmbyRootError("no")
+
+    monkeypatch.setattr(writer_module, "check_hardlinks", refuse)
+
+    with pytest.raises(EmbyRootError):
+        EmbyWriter(tmp_path / "out", dry_run=True).sync(
+            [link("s/v.mp4", source)], "s"
+        )
+
+
+def test_missing_sources_skip_preflight(tmp_path, monkeypatch):
+    monkeypatch.setattr(writer_module, "check_hardlinks", None)
 
     gone = tmp_path / "gone.mp4"
     report = EmbyWriter(tmp_path / "out").sync([link("s/v.mp4", gone)], "s")

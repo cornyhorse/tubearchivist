@@ -6,6 +6,10 @@ Functionality:
 - every file written is recorded in a manifest; only manifest files are
   ever renamed or deleted, nothing is wiped, directories are removed only
   when empty and created by the writer
+- links are recognised by size, mtime and their recorded source, never by
+  inode number or device: a CIFS mount changes st_dev on every remount and
+  stops reporting the server's inode numbers when it autodisables
+  serverino, while a hardlink still shares size and mtime with its source
 - a failure in one series is reported and leaves that series as it was,
   the other series still sync
 """
@@ -23,8 +27,11 @@ from pathlib import Path, PurePosixPath
 
 MANIFEST_NAME = ".ta-emby-manifest.json"
 # 1: links recorded as [st_dev, st_ino]; 2: st_ino and size, because the
-# st_dev of a CIFS mount is anonymous and changes on every remount
-MANIFEST_VERSION = 2
+# st_dev of a CIFS mount is anonymous and changes on every remount;
+# 3: size, mtime_ns and source path, because a CIFS mount that autodisabled
+# server inode numbers (noserverino) reports made-up st_ino values.
+# Older link entries keep their st_ino until a sync upgrades them
+MANIFEST_VERSION = 3
 TEMP_PREFIX = ".ta-tmp-"
 MOVE_PREFIX = ".ta-move-"
 PREFLIGHT_PREFIX = ".ta-preflight-"
@@ -114,9 +121,9 @@ def _entry_problem(entry) -> str | None:
     if not all(isinstance(entry.get(k), str) for k in ("owner", "role")):
         return "no owner or role"
     if entry.get("kind") == "link":
-        if isinstance(entry.get("ino"), int):
+        if _has_identity(entry) or isinstance(entry.get("ino"), int):
             return None
-        return "link without inode"
+        return "link without identity"
     if entry.get("kind") == "data" and isinstance(entry.get("sha256"), str):
         return None
     return "unknown kind"
@@ -147,7 +154,7 @@ class Manifest:
                     f"{self.path} is version {version}, this writer "
                     f"knows {MANIFEST_VERSION}; refusing to touch it"
                 )
-            if version not in (1, MANIFEST_VERSION):
+            if version not in (1, 2, MANIFEST_VERSION):
                 raise ValueError(f"unknown version {version!r}")
             files, dirs = raw["files"], raw["dirs"]
             if not isinstance(files, dict) or not isinstance(dirs, list):
@@ -270,30 +277,85 @@ def atomic_link(source: Path, path: Path) -> None:
             os.unlink(tmp)
 
 
-def check_hardlinks(source: Path, root: Path) -> None:
+def _has_identity(entry: dict) -> bool:
+    """a version 3 link entry: size and mtime_ns recorded"""
+    return all(
+        isinstance(entry.get(key), int) and not isinstance(entry[key], bool)
+        for key in ("size", "mtime_ns")
+    )
+
+
+def link_identity(stat: os.stat_result) -> dict:
     """
-    preflight: link source into root and check both names share an inode;
-    fails on a different filesystem and on mounts that fake inode numbers
-    (CIFS noserverino), where the manifest couldn't recognise its links
+    what a hardlink shares with its source whatever the mount reports for
+    st_ino and st_dev: one inode on the server, so one size and one mtime
     """
+    return {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+
+
+def _same_content(a: os.stat_result, b: os.stat_result) -> bool:
+    return os.path.samestat(a, b) or link_identity(a) == link_identity(b)
+
+
+def _write_through(path: Path, data: bytes) -> None:
+    with open(path, "r+b") as f:
+        f.write(data)
+        f.truncate()
+        f.flush()
+        os.fsync(f.fileno())
+
+
+def nearest_dir(path: Path) -> Path:
+    """path, or its closest existing parent"""
+    return next(p for p in (path, *path.parents) if p.is_dir())
+
+
+def check_hardlinks(media_dir: Path, root: Path) -> None:
+    """
+    preflight, by behaviour rather than inode numbers (a CIFS mount that
+    autodisabled serverino reports different st_ino for two names of one
+    file): create a probe in a scratch dir under media_dir, hardlink it
+    into root, write through one name and read through the other, both
+    ways; fails if the link can't be made or the names aren't one file
+    """
+    root = nearest_dir(root)
+    try:
+        scratch = Path(
+            tempfile.mkdtemp(prefix=PREFLIGHT_PREFIX, dir=media_dir)
+        )
+    except OSError as err:
+        raise EmbyRootError(
+            f"can't create a hardlink probe in {media_dir}: {err}"
+        ) from err
+    source = scratch / "probe"
     probe = _temp_name(root / "probe", PREFLIGHT_PREFIX)
     try:
-        os.link(source, probe)
-    except OSError as err:
-        if err.errno == errno.EXDEV:
+        source.write_bytes(b"ta-emby-preflight")
+        try:
+            os.link(source, probe)
+        except OSError as err:
+            if err.errno == errno.EXDEV:
+                raise EmbyRootError(
+                    f"{root} is on another filesystem than the media "
+                    f"({media_dir}); hardlinks need the same mount"
+                ) from err
             raise EmbyRootError(
-                f"{root} is on another filesystem than the media "
-                f"({source}); hardlinks need the same mount"
+                f"can't hardlink from {media_dir} into {root}: {err}"
             ) from err
-        raise
-    try:
-        if probe.stat().st_ino != source.stat().st_ino:
-            raise EmbyRootError(
-                f"hardlinks in {root} don't keep the inode of {source}; "
-                "is the share mounted with noserverino?"
-            )
+        for written, read in ((probe, source), (source, probe)):
+            token = secrets.token_hex(16).encode()
+            _write_through(written, token)
+            if read.read_bytes() != token:
+                raise EmbyRootError(
+                    f"a hardlink in {root} is not the same file as its "
+                    f"source in {media_dir}: a write through one name "
+                    "didn't show through the other"
+                )
     finally:
-        probe.unlink()
+        for path in (probe, source):
+            if os.path.lexists(path):
+                path.unlink()
+        scratch.rmdir()
 
 
 class EmbyWriter:
@@ -305,8 +367,11 @@ class EmbyWriter:
         dry_run: bool = False,
         file_mode: int = 0o644,
         dir_mode: int = 0o755,
+        media_root: Path | None = None,
     ):
         self.root = Path(root)
+        # where the preflight puts its probe; defaults to a source's dir
+        self.media_root = Path(media_root) if media_root else None
         self.dry_run = dry_run
         self.file_mode = file_mode
         self.dir_mode = dir_mode
@@ -339,6 +404,7 @@ class EmbyWriter:
         self._check_desired(desired, scope)
         self._preflight(desired)
         self._sweep_temp()
+        self._upgrade_links(desired)
 
         self._vacate_moves(desired)
         if self._moved_from and not self.dry_run:
@@ -370,18 +436,46 @@ class EmbyWriter:
                 raise ValueError(f"{item.relpath} outside scope {scope}")
 
     def _preflight(self, desired: list[DesiredFile]) -> None:
-        if self.dry_run:
-            return
-        source = next(
+        """
+        the same check in a dry run, so a dry run can't pass where the
+        real run then fails; it only creates and removes a probe
+        """
+        media_dir = self.media_root or next(
             (
-                d.source
+                d.source.parent
                 for d in desired
                 if d.kind == "link" and d.source.is_file()
             ),
             None,
         )
-        if source:
-            check_hardlinks(source, self.root)
+        if media_dir:
+            check_hardlinks(media_dir, self.root)
+
+    def _upgrade_links(self, desired: list[DesiredFile]) -> None:
+        """
+        give link entries from manifest version 1 and 2 (st_ino) the
+        version 3 identity, without relinking: the recorded file still
+        has the inode we recorded, or it matches the source it should be
+        a link of in size and mtime
+        """
+        for item in desired:
+            if item.kind != "link":
+                continue
+            relpath = self.manifest.owned_by(item.owner, item.role)
+            entry = self.manifest.files.get(relpath) if relpath else None
+            if not entry or _has_identity(entry) or not self._exists(relpath):
+                continue
+            path = self._real(relpath)
+            if path.is_symlink() or not item.source.is_file():
+                continue
+            have, want = path.stat(), item.source.stat()
+            same_size = have.st_size == entry.get("size", have.st_size)
+            if same_size and (
+                have.st_ino == entry["ino"] or _same_content(have, want)
+            ):
+                upgraded = {k: v for k, v in entry.items() if k != "ino"}
+                upgraded.update(link_identity(have), source=str(item.source))
+                self.manifest.set(relpath, upgraded)
 
     def _guarded(self, relpath: str, operation, *args) -> None:
         """run one file operation, a failure only stops its series"""
@@ -483,9 +577,7 @@ class EmbyWriter:
         if path.is_symlink():
             return False
         if item.kind == "link":
-            have, want = path.stat(), item.source.stat()
-            # both stats are taken now, on one mount: st_dev agrees
-            return os.path.samestat(have, want)
+            return _same_content(path.stat(), item.source.stat())
         return path.read_bytes() == item.data
 
     def _is_ours(self, relpath: str) -> bool:
@@ -497,17 +589,38 @@ class EmbyWriter:
         if path.is_symlink():
             return False
         if entry["kind"] == "link":
-            stat = path.stat()
+            return self._is_our_link(entry, path)
+        return sha256(path.read_bytes()) == entry["sha256"]
+
+    @staticmethod
+    def _is_our_link(entry: dict, path: Path) -> bool:
+        """
+        the file still looks like the link we made: as recorded, or (the
+        source changed in place, and the link with it) like the recorded
+        source, which must be another file than this one
+        """
+        stat = path.stat()
+        if not _has_identity(entry):
+            # version 1/2 entry no sync could upgrade
             size = entry.get("size", stat.st_size)
             return (stat.st_ino, stat.st_size) == (entry["ino"], size)
-        return sha256(path.read_bytes()) == entry["sha256"]
+        if link_identity(stat) == {
+            "size": entry["size"],
+            "mtime_ns": entry["mtime_ns"],
+        }:
+            return True
+        source = entry.get("source")
+        if not isinstance(source, str) or not os.path.isfile(source):
+            return False
+        if os.path.realpath(source) == os.path.realpath(path):
+            return False
+        return link_identity(stat) == link_identity(os.stat(source))
 
     def _record(self, item: DesiredFile) -> None:
         entry = {"kind": item.kind, "owner": item.owner, "role": item.role}
         if item.kind == "link":
-            stat = item.source.stat()
-            entry["ino"] = stat.st_ino
-            entry["size"] = stat.st_size
+            entry.update(link_identity(item.source.stat()))
+            entry["source"] = str(item.source)
         else:
             entry["sha256"] = sha256(item.data)
         self.manifest.set(item.relpath, entry)
@@ -570,13 +683,23 @@ class EmbyWriter:
 
     def _remove(self, relpath: str) -> None:
         origin = self._moved_from.pop(relpath, relpath)
-        if self._is_ours(relpath):
+        if self._is_source(relpath):
+            # never unlink the archive's own name of a video
+            self.report.warnings.append(f"{origin}: is its own source, kept")
+        elif self._is_ours(relpath):
             if not self.dry_run:
                 self._abs(relpath).unlink()
             self.report.deleted.append(origin)
         elif self._exists(relpath):
             self.report.warnings.append(f"{origin}: changed outside writer")
         self.manifest.forget(relpath)
+
+    def _is_source(self, relpath: str) -> bool:
+        entry = self.manifest.files[relpath]
+        source = entry.get("source")
+        return isinstance(source, str) and os.path.realpath(
+            source
+        ) == os.path.realpath(self._real(relpath))
 
     def _prune_dirs(self, scope: str | None, wanted: set[str]) -> None:
         """remove empty directories we created that nothing needs"""

@@ -4,6 +4,8 @@ old tree is renamed in exactly one pass and nothing moves afterwards
 """
 
 import io
+import os
+import shutil
 from datetime import date
 
 import pytest
@@ -25,6 +27,7 @@ from emby.src.numbering import NumberingError
 from emby.src.sync import LAYOUT_KEY, layout_version, sync_all
 from emby.tests.conftest import add_video
 from emby.tests.test_sync import numbers
+from emby.tests.test_writer_noserverino import noserverino
 from playlist.models import Playlist
 from video.models import Video
 
@@ -269,3 +272,42 @@ def test_commands_report_failed_series(library, monkeypatch, settings_env):
     assert "error: playlists/PL1: duplicate playlist positions" in output
     with pytest.raises(CommandError, match="1 series failed"):
         run("ta_emby_sync", str(library.output_root))
+
+
+def test_command_checks_hardlinks_before_migrating(
+    library, monkeypatch, settings_env
+):
+    """
+    2026-10-21: the database migrated, then the sync's preflight refused
+    the root; now the preflight runs first, in a dry run too
+    """
+    old_layout(library, monkeypatch)
+    rows = list(EpisodeNumber.objects.order_by("pk").values())
+    monkeypatch.setattr(os, "link", shutil.copyfile)
+
+    for args in ([], ["--dry-run"]):
+        with pytest.raises(CommandError, match="not the same file"):
+            run("ta_emby_migrate_layout", *args)
+        assert layout_version() == 1
+        assert list(EpisodeNumber.objects.order_by("pk").values()) == rows
+
+    assert "not synced" in run("ta_emby_migrate_layout", "--no-sync")
+
+
+def test_command_migrates_on_a_noserverino_mount(
+    library, monkeypatch, settings_env
+):
+    old_layout(library, monkeypatch)
+    inodes = media_inodes(library.output_root)
+    noserverino(monkeypatch, library.output_root, remount=True)
+
+    dry = run("ta_emby_migrate_layout", "--dry-run")
+    output = run("ta_emby_migrate_layout")
+
+    assert "[dry-run] renamed 9, created 0" in dry
+    assert "renamed 9, created 0, updated 3" in output
+    assert "errors 0" in output
+    assert (
+        sorted(os.stat(p).st_ino for p in library.output_root.rglob("*.mp4"))
+        == inodes
+    )
