@@ -24,11 +24,10 @@ class FakePendingList:
 
     calls: list = []
 
-    def __init__(self, youtube_ids, task=None, auto_start=False, flat=False):
+    def __init__(self, youtube_ids, task=None, flat=False):
         self.kwargs = {
             "youtube_ids": youtube_ids,
             "task": task,
-            "auto_start": auto_start,
             "flat": flat,
         }
 
@@ -48,7 +47,7 @@ def fixture_pending(monkeypatch, app_config):  # pylint: disable=W0613
 
 def test_channel_subscription(pending):
     """one query per tab of each subscribed channel"""
-    set_config(subscriptions={"auto_start": True, "shorts_channel_size": 5})
+    set_config(subscriptions={"shorts_channel_size": 5})
     Channel.save_doc(
         channel_doc(
             channel_tabs=["videos", "shorts"],
@@ -64,7 +63,6 @@ def test_channel_subscription(pending):
     assert ChannelSubscription(task=task).find_missing() == 2
 
     call = pending.calls[0]
-    assert call["auto_start"] is True
     assert call["flat"] is False
     assert call["youtube_ids"] == [
         {

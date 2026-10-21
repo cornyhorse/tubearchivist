@@ -358,6 +358,14 @@ class AddSerializer(UrlInputSerializer):
     priority = serializers.ChoiceField(
         choices=PRIORITY_NAMES, required=False, default="high"
     )
+    auto_download = serializers.BooleanField(
+        required=False,
+        help_text=(
+            "store auto download on the channels and playlists: later "
+            "checks download what the rules allow; omit to leave it (a new "
+            "subscription gets subscriptions.auto_download_default, off)"
+        ),
+    )
 
     def validate(self, attrs):
         """newest_n needs its count"""

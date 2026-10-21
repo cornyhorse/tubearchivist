@@ -383,7 +383,11 @@ def test_delete_and_numbering_queue_emby_write(client, monkeypatch):
 def _table_data():
     """channels with videos, found items and a rule"""
     add_channels()
-    Channel.save_doc(channel_doc(channel_id="UCthird", channel_name="Third"))
+    Channel.save_doc(
+        channel_doc(
+            channel_id="UCthird", channel_name="Third", auto_download=True
+        )
+    )
     Video.save_doc(video_doc(youtube_id="v1", published=1700000000))
     Video.save_doc(video_doc(youtube_id="v2", published=1600000000))
     Download.upsert_doc(download_doc(youtube_id="q1", channel_id=OTHER))
@@ -437,6 +441,8 @@ def test_table_row(client):
         ({"has_errors": "true"}, [CH]),
         ({"has_rule": "true"}, [CH]),
         ({"has_rule": "false", "filter": "subscribed"}, ["UCthird"]),
+        ({"auto_download": "true"}, ["UCthird"]),
+        ({"auto_download": "false"}, [OTHER, CH]),
         ({"sort": "queued", "order": "desc"}, [OTHER, CH, "UCthird"]),
         ({"sort": "downloaded", "order": "desc"}, [CH, OTHER, "UCthird"]),
         ({"sort": "latest_upload", "order": "desc"}, [CH, OTHER, "UCthird"]),
@@ -460,3 +466,20 @@ def test_table_page_size(client):
     assert data["paginate"]["page_size"] == 2
     too_big = client.get("/api/channel/", {"page_size": 101})
     assert too_big.status_code == 400
+
+
+def test_auto_download_read_and_update(client):
+    Channel.save_doc(channel_doc())
+    assert client.get(URL).data["auto_download"] is False
+
+    response = client.post(URL, {"auto_download": True}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["auto_download"] is True
+    assert Channel.objects.get().auto_download is True
+    assert client.get(URL).data["auto_download"] is True
+    row = table(client)[0]
+    assert row["auto_download"] is True
+
+    client.post(URL, {"auto_download": False}, format="json")
+    assert Channel.objects.get().auto_download is False

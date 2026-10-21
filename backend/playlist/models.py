@@ -27,6 +27,8 @@ class Playlist(models.Model):
         choices=EmbyNumbering.choices,
         default=EmbyNumbering.PLAYLIST_FROZEN,
     )
+    # opt in: a check of this playlist downloads what the rules allow
+    auto_download = models.BooleanField(default=False)
 
     search = models.GeneratedField(
         expression=WeightedSearchVector(
@@ -75,6 +77,11 @@ class Playlist(models.Model):
             **(
                 {"emby_numbering": doc["emby_numbering"]}
                 if doc.get("emby_numbering")
+                else {}
+            ),
+            **(
+                {"auto_download": bool(doc["auto_download"])}
+                if "auto_download" in doc
                 else {}
             ),
         }
@@ -130,6 +137,7 @@ class Playlist(models.Model):
             "playlist_thumbnail": self.thumbnail,
             "playlist_type": self.playlist_type,
             "emby_numbering": self.emby_numbering,
+            "auto_download": self.auto_download,
         }
         if with_entries:
             entries = self.entries.with_downloaded().order_by("idx")

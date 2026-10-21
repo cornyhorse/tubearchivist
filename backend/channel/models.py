@@ -62,6 +62,8 @@ class Channel(models.Model):
         choices=EmbyNumbering.choices,
         default=EmbyNumbering.DATE,
     )
+    # opt in: a check of this channel downloads what the rules allow
+    auto_download = models.BooleanField(default=False)
 
     search = models.GeneratedField(
         expression=WeightedSearchVector(
@@ -118,6 +120,8 @@ class Channel(models.Model):
         # fork setting: only in docs written by the fork, ES docs keep default
         if doc.get("emby_numbering"):
             fields["emby_numbering"] = doc["emby_numbering"]
+        if "auto_download" in doc:
+            fields["auto_download"] = bool(doc["auto_download"])
 
         return fields
 
@@ -158,6 +162,7 @@ class Channel(models.Model):
             "channel_tags": list(self.tags),
             "channel_tabs": list(self.tabs),
             "emby_numbering": self.emby_numbering,
+            "auto_download": self.auto_download,
         }
         if overwrites := self.overwrites:
             doc["channel_overwrites"] = overwrites

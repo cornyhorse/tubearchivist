@@ -37,6 +37,12 @@ class PlaylistSerializer(serializers.Serializer):
     emby_numbering = serializers.ChoiceField(
         choices=EmbyNumbering.values, required=False
     )
+    auto_download = serializers.BooleanField(
+        required=False,
+        help_text=(
+            "a check downloads what the rules allow; off: found videos wait"
+        ),
+    )
     _index = serializers.CharField(required=False)
     _score = serializers.IntegerField(required=False)
 
@@ -53,6 +59,7 @@ class PlaylistListQuerySerializer(serializers.Serializer):
 
     channel = serializers.CharField(required=False)
     subscribed = serializers.BooleanField(required=False, allow_null=True)
+    auto_download = serializers.BooleanField(required=False, allow_null=True)
     type = serializers.ChoiceField(
         choices=["regular", "custom"], required=False
     )
@@ -81,6 +88,12 @@ class PlaylistSingleUpdate(serializers.Serializer):
     )
     emby_numbering = serializers.ChoiceField(
         choices=EmbyNumbering.values, required=False
+    )
+    auto_download = serializers.BooleanField(
+        required=False,
+        help_text=(
+            "a check downloads what the rules allow; off: found videos wait"
+        ),
     )
 
 

@@ -268,6 +268,16 @@ def test_tool_errors(mcp, app_config):
         ("set_rule", {"scope": "odd"}, "scope is"),
         ("set_rule", {"scope": "channel", "target_id": "UCx"}, "not in"),
         ("set_rule", {"scope": "default"}, "give rule"),
+        (
+            "set_rule",
+            {"scope": "default", "auto_download": True},
+            "per channel or playlist",
+        ),
+        (
+            "set_rule",
+            {"scope": "video", "target_id": "v", "auto_download": False},
+            "per channel or playlist",
+        ),
         ("set_numbering", {"kind": "odd"}, "give kind"),
         ("set_numbering", {"kind": "channel", "id": "x"}, "scheme is"),
         (
@@ -449,3 +459,41 @@ def test_preview_without_any_rule(mcp, youtube):
     assert stored["items"][0]["verdict"]["skipped"] == 1
     none = mcp.tool("preview_url", url=CHANNEL_ID, rule=None)
     assert none["structuredContent"]["items"][0]["verdict"]["download"] == 1
+
+
+def test_auto_download_tools(mcp, app_config, no_broker):
+    """set_rule switches auto download; add_url can opt in on subscribe"""
+    # pylint: disable=unused-argument
+    Channel.save_doc(channel_doc())
+    Playlist.save_doc(playlist_doc("PL1", []))
+
+    only = mcp.tool(
+        "set_rule", scope="channel", target_id=CHANNEL_ID, auto_download=True
+    )["structuredContent"]
+    assert only == {"auto_download": True}
+    assert Channel.objects.get().auto_download is True
+    both = mcp.tool(
+        "set_rule",
+        scope="playlist",
+        target_id="PL1",
+        presets=["no_shorts"],
+        auto_download=True,
+    )["structuredContent"]
+    assert both["auto_download"] is True
+    assert both["rule"]["summary"] == "No Shorts"
+    assert Playlist.objects.get().auto_download is True
+    mcp.tool(
+        "set_rule", scope="channel", target_id=CHANNEL_ID, auto_download=False
+    )
+    assert Channel.objects.get().auto_download is False
+
+    added = mcp.tool(
+        "add_url", url=CHANNEL_ID, mode="subscribe", auto_download=True
+    )["structuredContent"]
+    job = Job.objects.get(pk=added["jobs"][0]["id"])
+    assert job.params["auto_download"] is True
+    assert job.params["subscribe"] is True
+    tools = {t["name"]: t for t in mcp("tools/list")["result"]["tools"]}
+    for name in ("set_rule", "add_url"):
+        schema = tools[name]["inputSchema"]["properties"]
+        assert schema["auto_download"]["type"] == "boolean"

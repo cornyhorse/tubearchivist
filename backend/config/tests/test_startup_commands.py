@@ -444,7 +444,9 @@ def test_startup_existing_install(startup):
     CrontabSchedule.objects.update(timezone="Europe/Berlin")
     config = AppConfig().config
     config["application"]["old_key"] = True
-    config["subscriptions"].pop("auto_start")
+    config["subscriptions"].pop("auto_download_default")
+    # the retired global switch, left on by an older version
+    config["subscriptions"]["auto_start"] = True
     config["application"]["enable_snapshot"] = False
     ConfigDocument.objects.filter(key=AppConfig.KEY).update(value=config)
 
@@ -465,7 +467,14 @@ def test_startup_existing_install(startup):
     assert "schedule init already done, skipping..." in output
     assert "schedules to UTC." in output
     assert not CrontabSchedule.objects.exclude(timezone="UTC").exists()
-    assert "added new default: {'subscriptions': {'auto_start'" in output
+    assert (
+        "added new default: {'subscriptions': {'auto_download_default': "
+        "False}}" in output
+    )
+    assert "removed old key: subscriptions.auto_start" in output
+    stored = AppConfig().config["subscriptions"]
+    assert "auto_start" not in stored
+    assert stored["auto_download_default"] is False
     assert "removed old key: application.old_key" in output
     assert "snapshots disabled" in output
     assert startup.snapshots == ["setup"]

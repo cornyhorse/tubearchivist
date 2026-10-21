@@ -6,6 +6,7 @@ functionality:
 
 from datetime import datetime
 
+from appsettings.src.config import auto_download_default
 from common.src.env_settings import EnvironmentSettings
 from common.src.index_generic import YouTubeItem
 from download.src.thumbnails import ThumbManager
@@ -135,9 +136,17 @@ class YoutubePlaylist(YouTubeItem):
         ThumbManager(self.youtube_id, item_type="playlist").download(url)
 
     def change_subscribe(self, new_subscribe_state: bool):
-        """change subscribe status"""
+        """
+        change subscribe status; a new subscription gets the default
+        auto_download (subscriptions.auto_download_default, off unless set)
+        """
+        was_subscribed = Playlist.objects.filter(
+            playlist_id=self.youtube_id, subscribed=True
+        ).exists()
         self.build_json()
         self.json_data["playlist_subscribed"] = new_subscribe_state
+        if new_subscribe_state and not was_subscribed:
+            self.json_data["auto_download"] = auto_download_default()
         self.save_to_db()
         return self.json_data
 

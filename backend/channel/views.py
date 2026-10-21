@@ -18,6 +18,7 @@ from common.src.helper import get_duration_str
 from common.src.urlparser import Parser
 from common.views_base import AdminWriteOnly, ApiBaseView
 from django.db.models import Count, Sum
+from download.src.auto_download import set_auto_download
 from download.src.rules import get_rule, set_rule
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -164,6 +165,11 @@ class ChannelApiView(ApiBaseView):
 
         if "download_rule" in validated_data:
             set_rule(channel_id, validated_data["download_rule"])
+
+        if "auto_download" in validated_data:
+            set_auto_download(
+                "channel", [channel_id], validated_data["auto_download"]
+            )
 
         return Response(serializer.data, status=200)
 

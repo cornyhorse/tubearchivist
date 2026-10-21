@@ -142,6 +142,7 @@ class AddView(ApiBaseView):
             download_now=data["download_now"],
             priority=PRIORITY_BY_NAME[data["priority"]],
             created_by=CreatedBy.USER,
+            auto_download=data.get("auto_download"),
         )
         status = 201 if jobs else 400
         return Response(

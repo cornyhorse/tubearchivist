@@ -57,6 +57,12 @@ class ChannelSerializer(serializers.Serializer):
         choices=EmbyNumbering.values, required=False
     )
     download_rule = DownloadRuleSerializer(required=False, allow_null=True)
+    auto_download = serializers.BooleanField(
+        required=False,
+        help_text=(
+            "a check downloads what the rules allow; off: found videos wait"
+        ),
+    )
     _index = serializers.CharField(required=False)
     _score = serializers.IntegerField(required=False)
 
@@ -102,6 +108,7 @@ class ChannelListQuerySerializer(serializers.Serializer):
     has_queued = serializers.BooleanField(required=False, allow_null=True)
     has_rule = serializers.BooleanField(required=False, allow_null=True)
     has_errors = serializers.BooleanField(required=False, allow_null=True)
+    auto_download = serializers.BooleanField(required=False, allow_null=True)
     sort = serializers.ChoiceField(
         choices=[
             "name",
@@ -138,6 +145,12 @@ class ChannelUpdateSerializer(serializers.Serializer):
         required=False,
     )
     download_rule = DownloadRuleSerializer(required=False, allow_null=True)
+    auto_download = serializers.BooleanField(
+        required=False,
+        help_text=(
+            "a check downloads what the rules allow; off: found videos wait"
+        ),
+    )
 
 
 class ChannelAggBucketSerializer(serializers.Serializer):

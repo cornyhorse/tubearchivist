@@ -7,6 +7,7 @@ from common.serializers import (
     ErrorResponseSerializer,
 )
 from common.views_base import AdminWriteOnly, ApiBaseView
+from download.src.auto_download import set_auto_download
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from jobs.src.handlers import request_emby_write
 from playlist.models import Playlist
@@ -277,11 +278,17 @@ class PlaylistApiView(ApiBaseView):
             json_data["emby_numbering"] = numbering
             request_emby_write()
 
+        if "auto_download" in validated_data:
+            set_auto_download(
+                "playlist", [playlist_id], validated_data["auto_download"]
+            )
+            json_data = Playlist.load_doc(playlist_id)
+
         if not json_data:
             error = ErrorResponseSerializer(
                 {
-                    "error": "expect playlist_subscribed, playlist_sort_order"
-                    + " or emby_numbering"
+                    "error": "expect playlist_subscribed, playlist_sort_order,"
+                    + " emby_numbering or auto_download"
                 }
             )
             return Response(error.data, status=400)

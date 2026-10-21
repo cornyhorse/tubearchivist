@@ -29,7 +29,13 @@ class AppConfigSubSerializer(
         required=False, allow_null=True
     )
     playlist_size = serializers.IntegerField(required=False, allow_null=True)
-    auto_start = serializers.BooleanField(required=False)
+    auto_download_default = serializers.BooleanField(
+        required=False,
+        help_text=(
+            "auto_download of newly subscribed channels and playlists; "
+            "changes nothing that is already subscribed"
+        ),
+    )
     extract_flat = serializers.BooleanField(required=False)
 
 
