@@ -3,12 +3,14 @@
 import io
 
 import pytest
+from appsettings.models import ConfigDocument
 from channel.models import Channel
 from common.src.env_settings import EnvironmentSettings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from emby.models import EmbyPlaylistLink
 from emby.src import playlist_sync
+from emby.src.health import check_emby_health
 from emby.src.playlist_sync import (
     PlaylistSyncResult,
     media_paths,
@@ -489,7 +491,8 @@ def test_stale_link_that_is_not_ours_is_dropped_not_deleted(emby):
     assert emby.playlists[link.emby_id]["name"] == "renamed by hand"
 
 
-def test_a_half_scanned_emby_does_not_empty_playlists(emby):
+def test_a_half_scanned_emby_does_not_empty_playlists(emby, monkeypatch):
+    monkeypatch.setattr(playlist_sync, "MIN_LARGE_REMOVAL", 1)
     run(emby)
     pid = next(iter(emby.playlists))
     emby.known = {"v2", "v3"}  # enough files known, but v1 not yet
@@ -506,7 +509,8 @@ def test_a_half_scanned_emby_does_not_empty_playlists(emby):
     assert [i for _, i in emby.playlists[pid]["entries"]] == ["e-v3"]
 
 
-def test_large_removal_can_be_allowed(emby):
+def test_large_removal_can_be_allowed(emby, monkeypatch):
+    monkeypatch.setattr(playlist_sync, "MIN_LARGE_REMOVAL", 1)
     run(emby)
     pid = next(iter(emby.playlists))
     # the TA playlist now holds only v2: both entries of the Emby copy go
@@ -622,3 +626,69 @@ def test_delete_of_a_playlist_that_just_vanished(emby, monkeypatch):
 
     assert len(result.deleted) == 1 and not result.errors
     assert not EmbyPlaylistLink.objects.exists()
+
+
+def test_ordinary_edits_are_not_held_back(emby):
+    """replacing the only video of a short playlist is not a large removal"""
+    run(emby)
+    pid = next(iter(emby.playlists))
+    PlaylistEntry.objects.filter(playlist_id="PL1").delete()
+    PlaylistEntry.objects.create(playlist_id="PL1", idx=0, youtube_id="v2")
+
+    result = run(emby)
+
+    assert len(result.changed) == 1 and not result.held
+    assert [i for _, i in emby.playlists[pid]["entries"]] == ["e-v2"]
+
+
+def test_held_back_playlists_are_recorded_and_shown_by_health(
+    emby, monkeypatch
+):
+    monkeypatch.setattr(playlist_sync, "MIN_LARGE_REMOVAL", 1)
+    run(emby)
+    PlaylistEntry.objects.filter(playlist_id="PL1").delete()
+    PlaylistEntry.objects.create(playlist_id="PL1", idx=0, youtube_id="v2")
+
+    result = run(emby)
+    record_run(result=result)
+    first = sync_state()["held"]
+    record_run(result=result)
+
+    assert list(first) == ["Playlist PL1 for Matt"]
+    assert sync_state()["held"] == first  # the time it was first held
+    assert result.summary()["held_back"] == 1
+
+    # fresh: not yet a problem; held since long ago: a problem
+    assert not [
+        p for p in check_emby_health(emby.library).problems if "held back" in p
+    ]
+    state = sync_state()
+    state["held"] = {"Playlist PL1 for Matt": "2020-01-01T00:00:00+00:00"}
+    ConfigDocument.objects.update_or_create(
+        key=playlist_sync.STATE_KEY, defaults={"value": state}
+    )
+    problems = check_emby_health(emby.library).problems
+    assert any("held back since 2020" in p for p in problems)
+
+    # once the change goes through, it is no longer held
+    allowed = sync_playlists(emby, emby.paths, allow_large_removal=True)
+    record_run(result=allowed)
+    assert sync_state()["held"] == {}
+
+
+def test_a_deleted_emby_user_does_not_fail_every_run(emby, monkeypatch):
+    run(emby)
+    real = emby.owned_item
+
+    def user_gone(user_id, item_id):
+        raise MediaServerNotFound("no such user")
+
+    monkeypatch.setattr(emby, "owned_item", user_gone)
+    Playlist.objects.update(emby_playlist=False)
+
+    result = run(emby)
+
+    assert not result.errors and not result.deleted
+    assert "not the playlist TA made" in result.warnings[0]
+    assert not EmbyPlaylistLink.objects.exists()
+    monkeypatch.setattr(emby, "owned_item", real)

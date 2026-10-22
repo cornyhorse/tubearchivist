@@ -43,7 +43,8 @@ Safety rules:
   touched; the dry run prints it as a warning.
 - **No shrinking while Emby is catching up.** A run is held back as a whole when Emby knows fewer than half of the
   files of the tree (it is still scanning, or `path_to` is wrong): `held back: Emby knows N of M files`. A playlist
-  is held back when the run would remove more than half of its entries. `ta_emby_playlists --allow-large-removal`
+  is held back when the run would remove at least 10 entries and more than half of them (shorter playlists change
+  freely: replacing the only video of a one-video playlist is an ordinary edit). `ta_emby_playlists --allow-large-removal`
   (or the job parameter `allow_large_removal`) lets such a change through when it is meant.
 - **One at a time.** The job and the command take a lock for the whole run, so two cannot each create a copy.
 - **Repeats.** A video listed twice in a TA playlist is added once (Emby does not add an item twice).
@@ -51,8 +52,11 @@ Safety rules:
   `recreate <old> -> <new>`.
 
 A failing playlist is reported in the job result and the others still sync. The hourly `emby_health` check adds a
-problem when the playlist sync is on and has not succeeded for 6 hours or its last run failed (a held back run is
-neither).
+problem when the playlist sync is on and has not succeeded for 6 hours or its last run failed. A playlist held back for
+a large removal is remembered (`held`, with the time it was first held) and reported as a problem after 12 hours, so it
+cannot stay stale unseen; `ta_emby_playlists --allow-large-removal` lets the change through. The job and the commands
+that write the tree (`ta_emby_sync`, `ta_emby_migrate_layout`) queue the playlist sync after the files are written.
+If the Emby user who owns a copy was deleted, the link is dropped and nothing else happens.
 
 ## First production run
 

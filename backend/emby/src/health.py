@@ -36,6 +36,8 @@ from emby.src.writer import (
 )
 from mediaserver.src import settings as media_settings
 
+# a playlist held back for a large removal is a problem after this long
+HELD_HOURS = 12
 # a name repaired after ENAMETOOLONG: well under any filesystem limit
 REPAIRED_NAME_BYTES = 60
 _TOO_LONG = (
@@ -129,6 +131,14 @@ def _check_playlists(report: HealthReport, max_age_hours: float) -> None:
         )
     if error := state.get("last_error"):
         report.problems.append(f"last Emby playlist sync failed: {error}")
+    held_cutoff = datetime.now(timezone.utc) - timedelta(hours=HELD_HOURS)
+    for label, since in sorted(state.get("held", {}).items()):
+        if datetime.fromisoformat(since) < held_cutoff:
+            report.problems.append(
+                f"Emby playlist {label} held back since {since}: a change "
+                "would remove most of it; check it, then run "
+                "ta_emby_playlists --allow-large-removal"
+            )
 
 
 def _name_too_long(error: str) -> bool:

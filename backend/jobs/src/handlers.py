@@ -414,14 +414,7 @@ def emby_write(ctx: JobContext) -> dict:
         print(f"[emby] {warning}")
     for error in report.errors[:20]:
         print(f"[emby] error: {error}")
-    folders = changed_folders(report)
-    queue_notify(folders, created_by=ctx.job.created_by, parent=ctx.job)
-    queue_item_refresh(
-        changed_items(report, _media_stems(paths)),
-        created_by=ctx.job.created_by,
-        parent=ctx.job,
-    )
-    queue_playlist_sync(ctx)
+    after_sync(report, paths, ctx.job.created_by, ctx.job)
     result = {
         "created": len(report.created),
         "updated": len(report.updated),
@@ -434,16 +427,19 @@ def emby_write(ctx: JobContext) -> dict:
     return result
 
 
-def queue_playlist_sync(ctx: JobContext) -> None:
+def queue_playlist_sync(
+    created_by: str = CreatedBy.SYSTEM, parent: Job | None = None
+) -> None:
     """sync the Emby playlists once Emby has scanned the new files"""
     stored = media_settings.load()
     if not (stored["type"] == "emby" and stored["playlists_enabled"]):
         return
     delay = timedelta(seconds=stored["debounce_seconds"] + 60)
-    _child(
-        ctx,
+    enqueue(
         "emby_playlists",
         priority=Priority.LOW,
+        created_by=created_by,
+        parent=parent,
         not_before=timezone.now() + delay,
     )
 
@@ -492,6 +488,25 @@ def emby_playlists(ctx: JobContext) -> dict:
     if result.errors:
         raise JobError("; ".join(result.errors[:5]))
     return result.summary()
+
+
+def after_sync(
+    report, paths, created_by: str = CreatedBy.USER, parent: Job | None = None
+) -> None:
+    """
+    tell the media server what a sync changed: a debounced notify for the
+    changed folders and a refresh of the items whose NFO changed (tags are
+    only read again on a refresh). The one step after every real sync:
+    the emby_write job and the ta_emby_* commands all end with it; it also
+    queues the Emby playlist sync when that is on.
+    """
+    queue_notify(changed_folders(report), created_by=created_by, parent=parent)
+    queue_item_refresh(
+        changed_items(report, _media_stems(paths)),
+        created_by=created_by,
+        parent=parent,
+    )
+    queue_playlist_sync(created_by, parent)
 
 
 def _media_stems(paths) -> dict[str, str]:

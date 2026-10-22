@@ -7,7 +7,7 @@ from appsettings.models import ConfigDocument
 from common.src.env_settings import EnvironmentSettings
 from django.core.management import call_command
 from emby.src import shows_change
-from emby.src.sync import LAYOUT_KEY
+from emby.src.sync import LAYOUT_KEY, sync_all
 from emby.src.writer import SyncReport
 from mediaserver.src import client as client_mod
 from mediaserver.src import settings
@@ -251,3 +251,35 @@ def test_migration_lists_watch_history_on_renamed_files(
         CMD + "watch_history_at_risk", lambda media: ({}, "down")
     )
     assert "renamed files with" not in run_dry("--dry-run")
+
+
+def test_migration_tells_the_media_server(
+    server, library, settings_env, monkeypatch
+):
+    """the run that writes new tags into existing items must queue the
+    notify and the refresh itself; no job does it for a command"""
+    # pylint: disable=unused-argument
+    from common.src.ta_redis import RedisBase  # pylint: disable=C0415
+    from jobs.models import Job  # pylint: disable=C0415
+
+    monkeypatch.setenv(settings.KEY_ENV, "k")
+    RedisBase().conn.delete(
+        RedisBase.NAME_SPACE + "mediaserver:refresh_pending"
+    )
+    sync_all(library)
+    from channel.models import Channel  # pylint: disable=C0415
+
+    Channel.objects.update(emby_tags=["David"])
+    ConfigDocument.objects.filter(key=LAYOUT_KEY).update(value={"version": 2})
+    monkeypatch.setattr(CMD + "before_state", lambda c, t, f: None)
+    monkeypatch.setattr(
+        CMD + "watch_history_at_risk", lambda media: ({}, None)
+    )
+
+    run_dry()
+
+    assert Job.objects.get(type="media_notify").created_by == "user"
+    pending = RedisBase().conn.smembers(
+        RedisBase.NAME_SPACE + "mediaserver:refresh_pending"
+    )
+    assert any(item.startswith("series:channels/") for item in pending)

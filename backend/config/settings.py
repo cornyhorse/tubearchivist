@@ -14,10 +14,11 @@ import hashlib
 from os import environ
 from pathlib import Path
 
+from corsheaders.defaults import default_headers
+
 from common.src.env_settings import EnvironmentSettings
 from common.src.helper import ta_host_parser
 from common.src.ta_redis import RedisArchivist
-from corsheaders.defaults import default_headers
 
 try:
     from dotenv import load_dotenv

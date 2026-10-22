@@ -28,6 +28,10 @@ from mediaserver.src.client import (
 from playlist.models import Playlist
 
 STATE_KEY = "emby_playlist_state"
+# a change that removes more than half of a playlist is held back only from
+# this many removals on: replacing the only video of a short playlist, or
+# trimming a few, is an ordinary edit
+MIN_LARGE_REMOVAL = 10
 
 
 @dataclass
@@ -58,6 +62,8 @@ class PlaylistSyncResult:
     # videos of the Emby tree, and how many of them Emby has scanned
     known: int = 0
     resolved: int = 0
+    # playlist copies a large removal was held back for
+    held: list[str] = field(default_factory=list)
     # set when the whole run was held back, and why
     skipped: str = ""
     warnings: list[str] = field(default_factory=list)
@@ -72,6 +78,7 @@ class PlaylistSyncResult:
             "unchanged": self.unchanged,
             "not_in_emby_yet": self.missing,
             "errors": len(self.errors),
+            "held_back": len(self.held),
             **({"skipped": self.skipped} if self.skipped else {}),
         }
 
@@ -164,7 +171,11 @@ def _make_current(
         return "unchanged"
     wanted = set(want.item_ids)
     going = sum(1 for _, item in current if item not in wanted)
-    if going * 2 > len(current) and not allow_large:
+    if (
+        going >= MIN_LARGE_REMOVAL
+        and going * 2 > len(current)
+        and (not allow_large)
+    ):
         raise LargeRemoval(f"{going} of its {len(current)} entries")
     if dry_run:
         return "changed"
@@ -202,7 +213,11 @@ def _ours(client: MediaServerClient, link: EmbyPlaylistLink) -> bool:
     TA last gave it. An Emby database that was rebuilt or restored can
     hand the id to anything else.
     """
-    info = client.owned_item(link.user_id, link.emby_id)
+    try:
+        info = client.owned_item(link.user_id, link.emby_id)
+    except MediaServerNotFound:
+        # the owner's Emby user was deleted: nothing of ours is left there
+        return False
     return (
         bool(info)
         and info["type"] == "Playlist"
@@ -250,6 +265,7 @@ def _update(
         link.delete()
         return False
     except LargeRemoval as err:
+        result.held.append(label)
         result.warnings.append(
             f"{label}: held back, {err}; "
             "ta_emby_playlists --allow-large-removal if that is right"
@@ -387,6 +403,10 @@ def record_run(
     state["last_run"] = now
     state["last_error"] = error
     if result is not None:
+        previous = state.get("held", {})
+        state["held"] = {
+            label: previous.get(label, now) for label in result.held
+        }
         state["last_summary"] = result.summary()
         if not result.errors:
             state["last_success"] = now
