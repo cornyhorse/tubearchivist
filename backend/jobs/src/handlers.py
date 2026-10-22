@@ -44,7 +44,8 @@ from mediaserver.src import settings as media_settings
 from mediaserver.src.client import MediaServerClient, MediaServerError
 from mediaserver.src.jobs import (
     changed_folders,
-    changed_series,
+    changed_items,
+    media_by_stem,
     queue_item_refresh,
     queue_notify,
 )
@@ -416,7 +417,9 @@ def emby_write(ctx: JobContext) -> dict:
     folders = changed_folders(report)
     queue_notify(folders, created_by=ctx.job.created_by, parent=ctx.job)
     queue_item_refresh(
-        changed_series(report), created_by=ctx.job.created_by, parent=ctx.job
+        changed_items(report, _media_stems(paths)),
+        created_by=ctx.job.created_by,
+        parent=ctx.job,
     )
     queue_playlist_sync(ctx)
     result = {
@@ -480,6 +483,11 @@ def emby_playlists(ctx: JobContext) -> dict:
     if result.errors:
         raise JobError("; ".join(result.errors[:5]))
     return result.summary()
+
+
+def _media_stems(paths) -> dict[str, str]:
+    """media files of the Emby tree by path without extension"""
+    return media_by_stem(Manifest(paths.output_root, dry_run=True).files)
 
 
 def request_emby_write(created_by: str = CreatedBy.USER) -> Job | None:

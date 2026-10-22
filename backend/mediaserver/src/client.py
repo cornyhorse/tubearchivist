@@ -154,6 +154,7 @@ class MediaServerClient:
         ).json()
         return [
             {
+                "id": str(item.get("Id") or ""),
                 "name": item.get("Name") or "",
                 "path": item.get("Path") or "",
                 "provider_ids": item.get("ProviderIds") or {},
@@ -168,8 +169,35 @@ class MediaServerClient:
             for item in data.get("Items") or []
         ]
 
+    def series_episode_paths(self, series_id: str) -> list[str]:
+        """server paths of every episode of a show (a read only query)"""
+        paths: list[str] = []
+        start = 0
+        while True:
+            data = self._request(
+                "GET",
+                "/Items",
+                params={
+                    "ParentId": series_id,
+                    "Recursive": "true",
+                    "IncludeItemTypes": "Episode",
+                    "Fields": "Path",
+                    "StartIndex": start,
+                    "Limit": PAGE,
+                },
+            ).json()
+            paths += [
+                i["Path"] for i in data.get("Items") or [] if i.get("Path")
+            ]
+            start += PAGE
+            if start >= data.get("TotalRecordCount", 0):
+                return paths
+
     def find_item(self, server_path: str, item_type: str) -> str | None:
-        """id of the item of this type at an exact server path, if any"""
+        """
+        id of the item of this type at exactly this server path, if any;
+        the filter is not trusted, the path of each result is compared
+        """
         data = self._request(
             "GET",
             "/Items",
@@ -177,22 +205,26 @@ class MediaServerClient:
                 "Path": server_path,
                 "Recursive": "true",
                 "IncludeItemTypes": item_type,
-                "Limit": 1,
+                "Fields": "Path",
+                "Limit": 5,
             },
         ).json()
-        items = data.get("Items") or []
-        return str(items[0]["Id"]) if items else None
+        for item in data.get("Items") or []:
+            if item.get("Path") == server_path:
+                return str(item["Id"])
+        return None
 
-    def refresh_item(self, item_id: str) -> int:
+    def refresh_item(self, item_id: str, recursive: bool = False) -> int:
         """
-        read the item's NFO again; the default mode keeps what the server
-        holds and only fills in what changed on disk (tags, titles)
+        read the item's NFO again (and those below it if recursive); the
+        default mode keeps what the server holds and only fills in what
+        changed on disk (tags, titles)
         """
         return self._request(
             "POST",
             f"/Items/{item_id}/Refresh",
             params={
-                "Recursive": "false",
+                "Recursive": "true" if recursive else "false",
                 "MetadataRefreshMode": "Default",
                 "ReplaceAllMetadata": "false",
             },

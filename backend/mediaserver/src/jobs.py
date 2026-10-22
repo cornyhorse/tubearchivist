@@ -37,35 +37,59 @@ def changed_folders(report) -> set[str]:
     return {str(PurePosixPath(p).parent) for p in paths if p}
 
 
-def changed_series(report) -> set[str]:
-    """
-    series folders whose tvshow.nfo changed; the server doesn't re-read an
-    NFO of a known show on a media update, so these get an item refresh
-    """
-    nfos = list(report.updated) + [new for _, new in report.renamed]
+# more changed episode NFOs than this in one run: refresh the whole show
+EPISODE_REFRESH_LIMIT = 200
+
+
+def media_by_stem(files: dict[str, dict]) -> dict[str, str]:
+    """{relpath without extension: relpath} of the media in a manifest"""
     return {
-        str(PurePosixPath(p).parent)
-        for p in nfos
-        if PurePosixPath(p).name == "tvshow.nfo"
+        str(PurePosixPath(relpath).with_suffix("")): relpath
+        for relpath, entry in files.items()
+        if entry["role"] == "media"
     }
 
 
+def changed_items(report, media: dict[str, str]) -> set[str]:
+    """
+    what to refresh in the server after a sync: the server doesn't re-read
+    an NFO of a known item on a media update, and access tags live in NFOs
+    - "series:<folder>": a show whose tvshow.nfo changed
+    - "episode:<media relpath>": an episode whose NFO changed; past
+      EPISODE_REFRESH_LIMIT of them, "tree:<folder>" refreshes the whole
+      show instead
+    media maps an NFO's path without extension to its media file
+    """
+    nfos = list(report.updated) + [new for _, new in report.renamed]
+    series, episodes = set(), set()
+    for path in nfos:
+        pure = PurePosixPath(path)
+        if pure.name == "tvshow.nfo":
+            series.add(f"series:{pure.parent}")
+        elif pure.suffix == ".nfo" and (found := media.get(str(pure)[:-4])):
+            episodes.add(found)
+    if len(episodes) > EPISODE_REFRESH_LIMIT:
+        folders = {"/".join(e.split("/")[:2]) for e in episodes}
+        return series | {f"tree:{folder}" for folder in folders}
+    return series | {f"episode:{e}" for e in episodes}
+
+
 def queue_item_refresh(
-    folders: set[str] | list[str],
+    items: set[str] | list[str],
     created_by: str = CreatedBy.SYSTEM,
     parent: Job | None = None,
     priority: int = Priority.LOW,
 ) -> Job | None:
     """
-    add series folders to the refresh set and queue the refresh job behind
-    the notify (same debounce, so new items are known first); None if the
-    server is off
+    add items (changed_items) to the refresh set and queue the refresh job
+    behind the notify (same debounce, so new items are known first); None
+    if the server is off
     """
     stored = settings.load()
-    if not stored["type"] or not stored["notify_enabled"] or not folders:
+    if not stored["type"] or not stored["notify_enabled"] or not items:
         return None
     conn, key = _conn(REFRESH_KEY)
-    conn.sadd(key, *sorted(folders))
+    conn.sadd(key, *sorted(items))
     delay = timedelta(seconds=stored["debounce_seconds"] + 5)
     job, _ = enqueue(
         "media_refresh_items",
@@ -157,37 +181,39 @@ def media_notify(ctx: JobContext) -> dict:
 @register(
     "media_refresh_items",
     "postprocess",
-    "Refresh changed shows in the media server",
+    "Refresh changed items in the media server",
     max_attempts=3,
     notify=False,
 )
 def media_refresh_items(ctx: JobContext) -> dict:
     """
-    refresh the shows whose tvshow.nfo changed (tags), found by their path;
-    a show the server doesn't know yet is skipped, its first scan reads
-    the NFO
+    refresh the items whose NFO changed (tags), found by their path; an
+    item the server doesn't know yet is skipped, its first scan reads the
+    NFO
     """
     conn = settings.connection()
     if not conn:
         return {"skipped": "no media server configured"}
     redis_conn, key = _conn(REFRESH_KEY)
-    folders = sorted(redis_conn.spop(key, 10_000) or [])
-    if not folders:
-        return {"folders": 0}
+    entries = sorted(redis_conn.spop(key, 10_000) or [])
+    if not entries:
+        return {"items": 0}
     client = MediaServerClient(conn)
     refreshed = unknown = 0
     try:
-        for index, folder in enumerate(folders):
+        for index, entry in enumerate(entries):
+            kind, _, relpath = entry.partition(":")
             item_id = client.find_item(
-                settings.to_server_path(folder), "Series"
+                settings.to_server_path(relpath),
+                "Episode" if kind == "episode" else "Series",
             )
             if item_id is None:
                 unknown += 1
                 continue
-            client.refresh_item(item_id)
+            client.refresh_item(item_id, recursive=kind == "tree")
             refreshed += 1
     except MediaServerError as err:
-        redis_conn.sadd(key, *folders[index:])
+        redis_conn.sadd(key, *entries[index:])
         raise JobError(str(err)) from err
     return {"refreshed": refreshed, "unknown": unknown}
 

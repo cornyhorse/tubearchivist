@@ -179,3 +179,75 @@ def test_migration_dry_run_lists_the_shows(
     )
     assert expected in output
     assert "rolled back" in output
+
+
+def test_migration_dry_run_compares_visibility(
+    server, library, settings_env, monkeypatch
+):
+    # pylint: disable=unused-argument
+    monkeypatch.setenv(settings.KEY_ENV, "k")
+    ConfigDocument.objects.create(key=LAYOUT_KEY, value={"version": 2})
+    monkeypatch.setattr(CMD + "sync_all", lambda paths, dry_run=False: REPORT)
+    monkeypatch.setattr(
+        CMD + "watch_history_at_risk", lambda media: ({}, None)
+    )
+    monkeypatch.setattr(
+        CMD + "before_state",
+        lambda client, tags, files: {"David": ({"v1"}, 2)},
+    )
+
+    output = run_dry("--dry-run")
+
+    assert (
+        "[dry-run] visible to David: 1 videos now, 0 after, lost 1, gained 0, "
+        "2 Emby items outside" in output
+    )
+    assert "[dry-run]   LOST v1" in output
+
+
+def test_migration_visibility_needs_the_server(
+    server, library, settings_env, monkeypatch
+):
+    # pylint: disable=unused-argument
+    monkeypatch.setenv(settings.KEY_ENV, "k")
+    ConfigDocument.objects.create(key=LAYOUT_KEY, value={"version": 2})
+    monkeypatch.setattr(CMD + "sync_all", lambda paths, dry_run=False: REPORT)
+    monkeypatch.setattr(
+        CMD + "watch_history_at_risk", lambda media: ({}, None)
+    )
+
+    def down(client, tags, files):
+        raise MediaServerError("down")
+
+    monkeypatch.setattr(CMD + "before_state", down)
+
+    assert "visibility not compared: down" in run_dry("--dry-run")
+
+
+def test_migration_lists_watch_history_on_renamed_files(
+    library, settings_env, monkeypatch
+):
+    # pylint: disable=unused-argument
+    ConfigDocument.objects.create(key=LAYOUT_KEY, value={"version": 2})
+    report = SyncReport(renamed=[("c/A/S1/old.mp4", "c/A/S1/new.mp4")])
+    monkeypatch.setattr(CMD + "sync_all", lambda paths, dry_run=False: report)
+    calls = []
+
+    def history(media):
+        calls.append(media)
+        return ({"David": ["c/A/S1/old.mp4"]}, None) if media else ({}, None)
+
+    monkeypatch.setattr(CMD + "watch_history_at_risk", history)
+
+    output = run_dry("--dry-run")
+
+    assert calls[-1] == ["c/A/S1/old.mp4"]
+    assert "renamed files with watch history" in output
+    assert "[dry-run]   David: 1 items" in output
+    assert "no watch history on removed items" in output
+
+    # unreadable server: the renamed section stays out
+    monkeypatch.setattr(
+        CMD + "watch_history_at_risk", lambda media: ({}, "down")
+    )
+    assert "renamed files with" not in run_dry("--dry-run")

@@ -16,12 +16,17 @@ class Migration(migrations.Migration):
             fields=[
                 (
                     "name",
-                    models.CharField(max_length=16, primary_key=True, serialize=False),
+                    models.CharField(
+                        max_length=16, primary_key=True, serialize=False
+                    ),
                 ),
                 ("paused", models.BooleanField(default=False)),
                 ("concurrency", models.IntegerField(default=1)),
                 ("min_interval_seconds", models.IntegerField(default=0)),
-                ("last_started_at", models.DateTimeField(blank=True, null=True)),
+                (
+                    "last_started_at",
+                    models.DateTimeField(blank=True, null=True),
+                ),
             ],
         ),
         migrations.CreateModel(
@@ -38,8 +43,14 @@ class Migration(migrations.Migration):
                 ),
                 ("type", models.CharField(max_length=32)),
                 ("lane", models.CharField(max_length=16)),
-                ("target_kind", models.CharField(default="none", max_length=16)),
-                ("target_id", models.CharField(blank=True, max_length=64, null=True)),
+                (
+                    "target_kind",
+                    models.CharField(default="none", max_length=16),
+                ),
+                (
+                    "target_id",
+                    models.CharField(blank=True, max_length=64, null=True),
+                ),
                 ("target_title", models.TextField(blank=True, null=True)),
                 ("dedupe_key", models.CharField(max_length=128)),
                 ("params", models.JSONField(blank=True, default=dict)),
@@ -85,7 +96,10 @@ class Migration(migrations.Migration):
                 ("not_before", models.DateTimeField(blank=True, null=True)),
                 ("merged", models.IntegerField(default=0)),
                 ("stop_requested", models.BooleanField(default=False)),
-                ("stop_to", models.CharField(blank=True, max_length=16, null=True)),
+                (
+                    "stop_to",
+                    models.CharField(blank=True, max_length=16, null=True),
+                ),
                 (
                     "depends_on",
                     models.ForeignKey(
@@ -118,7 +132,9 @@ class Migration(migrations.Migration):
                 ],
                 "constraints": [
                     models.UniqueConstraint(
-                        condition=models.Q(("status__in", ["queued", "paused"])),
+                        condition=models.Q(
+                            ("status__in", ["queued", "paused"])
+                        ),
                         fields=("dedupe_key",),
                         name="job_one_waiting_per_key",
                     )

@@ -380,6 +380,7 @@ def test_emby_write(monkeypatch, capsys):
     )
     monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
     monkeypatch.setattr(handlers, "sync_all", lambda paths: report)
+    monkeypatch.setattr(handlers, "_media_stems", lambda paths: {})
     assert handlers.emby_write(ctx) == {
         "created": 2,
         "updated": 1,
@@ -716,6 +717,7 @@ def test_emby_write_queues_the_playlist_sync(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
     monkeypatch.setattr(handlers, "sync_all", lambda paths: report)
+    monkeypatch.setattr(handlers, "_media_stems", lambda paths: {})
     _, ctx = running("emby_write")
 
     handlers.emby_write(ctx)
@@ -732,3 +734,24 @@ def test_emby_write_queues_the_playlist_sync(monkeypatch, tmp_path):
     handlers.emby_write(ctx)
     child = Job.objects.get(type="emby_playlists")
     assert child.parent_id == ctx.job.pk and child.not_before
+
+
+def test_media_stems_reads_the_manifest(tmp_path):
+    # pylint: disable=import-outside-toplevel
+    from emby.src.writer import DesiredFile, EmbyWriter
+
+    EmbyWriter(tmp_path).sync(
+        [
+            DesiredFile(
+                "c/A/S1/e.mp4", "data", "channels/c/v1", "media", data=b"x"
+            ),
+            DesiredFile(
+                "c/A/S1/e.nfo", "data", "channels/c/v1", "nfo", data=b"n"
+            ),
+        ],
+        scope=None,
+    )
+
+    stems = handlers._media_stems(SimpleNamespace(output_root=tmp_path))
+
+    assert stems == {"c/A/S1/e": "c/A/S1/e.mp4"}
