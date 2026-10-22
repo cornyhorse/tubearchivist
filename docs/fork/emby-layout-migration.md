@@ -233,4 +233,31 @@ item refresh applies it, and the health check reports a refresh that has waited 
 `delete_branch_on_merge` is off, so a merged parent does not retarget its children. Use merge commits (no squash):
 #26 into main; `gh pr edit 27 --base main`, check its diff, merge; the same for #29 and then #28 (its base
 is the UTC branch). Run the tests on main with all four before building the image, and deploy all four together:
-the layout migration (2 to 3 to 4) must run once, on the image that has all of them.
+the layout migration (2 to 3 to 4, one command run) must run once, on the image that has all of them.
+
+## Layout 4: dates are UTC (fork-v0.5.0)
+
+Before layout 4, `aired`, `premiered`, the season and the `MMDD` of a date number used the date in `TZ` (America/New_York
+on Matt's server). A video published at 00:00 to 04:59 UTC is still the previous day there, so Emby showed its
+premiere date one day early (201 episodes), and a video published just after midnight UTC on 1 January sat in the
+previous year's season. Now every date is the **UTC date of the upload**: it is what YouTube and TA show, and it
+does not change when `TZ` does.
+
+This is a layout step of its own (3 to 4), so it happens once, whichever image first ran an earlier layout step: a
+database on layout 2 or 3 is brought to 4 by one `ta_emby_migrate_layout` run. The command moves the stored numbers
+of the affected episodes in the same transaction, and the following sync renames their files (media, NFO, thumb).
+Its **first output line** is the count:
+
+    [dry-run] UTC dates: N episodes renumbered, M of them change season
+
+- Only the series the writer writes are counted (channels with a show, Other videos), so N is the number of
+  episodes whose files are renamed. Numbers of channels without a show are kept consistent but not counted;
+  playlist series are left alone.
+- `date` scheme: the episode keeps its slot within the day when it is free on the new day, else takes the first free
+  one; one that already lies on its UTC day is not touched. The season becomes the UTC year. Within a day the slot
+  order of a moved episode may no longer follow upload order.
+- `year_frozen`: only an episode whose year changes moves, to the next number of the new season.
+- `absolute_frozen`, playlist schemes and numbers set by hand are not touched.
+- `--verbose-changes` lists every renumbered episode (`series/youtube_id`).
+
+The renames keep the media inodes (files are moved, not recreated) and Emby's rename detection, as in the layout 2 pass.

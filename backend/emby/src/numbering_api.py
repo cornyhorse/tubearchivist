@@ -6,15 +6,13 @@ Functionality:
 - shared by the REST views and the MCP server
 """
 
-from zoneinfo import ZoneInfo
-
 from channel.models import Channel
-from common.src.env_settings import EnvironmentSettings
 from django.db import transaction
 from emby.models import EpisodeNumber
 from emby.src.numbering import FROZEN_SCHEMES
 from emby.src.sync import (
     MANUAL,
+    UTC,
     channel_numbers,
     manual_numbers,
     paths_from_env,
@@ -99,7 +97,7 @@ def _series(kind: str, series_id: str):
 
 def _numbers(kind: str, series, scheme: str | None = None):
     """(videos, numbers, names) of a series, as a dry run"""
-    tz = ZoneInfo(EnvironmentSettings.TZ)
+    tz = UTC
     build = channel_numbers if kind == "channel" else playlist_numbers
     videos, _, found = build(series, tz, scheme=scheme, dry_run=True)
     return videos, found.numbers, found.names

@@ -86,7 +86,7 @@ class Command(BaseCommand):
         except (AlreadyMigrated, EmbyRootError) as err:
             raise CommandError(str(err)) from err
 
-        self._write_summary(summary, "")
+        self._write_summary(summary, "", options["verbose_changes"])
         self._compare(before, "")
         self._hand_set(paths, "")
         if options["no_sync"]:
@@ -180,7 +180,9 @@ class Command(BaseCommand):
                     EnvironmentSettings.TZ,
                     set(options["keep_playlist_position"]),
                 )
-                self._write_summary(summary, prefix)
+                self._write_summary(
+                    summary, prefix, options["verbose_changes"]
+                )
                 self._compare(before, prefix)
                 self._hand_set(paths, prefix)
                 if paths:
@@ -190,7 +192,16 @@ class Command(BaseCommand):
         except _DryRun:
             self.stdout.write(f"{prefix}rolled back, nothing changed")
 
-    def _write_summary(self, summary, prefix: str) -> None:
+    def _write_summary(
+        self, summary, prefix: str, verbose: bool = False
+    ) -> None:
+        self.stdout.write(
+            f"{prefix}UTC dates: {len(summary.utc_renumbered)} episodes "
+            f"renumbered, {summary.utc_season_changes} of them change season"
+        )
+        if verbose:
+            for item in summary.utc_renumbered:
+                self.stdout.write(f"{prefix}  UTC date: {item}")
         for youtube_id in summary.moved_to_own_day:
             self.stdout.write(f"{prefix}back to its own day: {youtube_id}")
         self.stdout.write(
