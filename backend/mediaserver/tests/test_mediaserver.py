@@ -459,8 +459,10 @@ def test_media_refresh_items(http):
     assert all(u.endswith("/Items/42/Refresh") for u, _ in posts)
     recursive = sorted(p["Recursive"] for _, p in posts)
     assert recursive == ["false", "false", "true"]
-    assert all(p["MetadataRefreshMode"] == "Default" for _, p in posts)
-    assert all(p["ReplaceAllMetadata"] == "false" for _, p in posts)
+    # a removed or replaced tag only goes if the NFO replaces what Emby holds
+    assert all(p["MetadataRefreshMode"] == "FullRefresh" for _, p in posts)
+    assert all(p["ReplaceAllMetadata"] == "true" for _, p in posts)
+    assert all(p["ReplaceAllImages"] == "false" for _, p in posts)
 
 
 def test_media_refresh_items_unknown_and_failure(http):

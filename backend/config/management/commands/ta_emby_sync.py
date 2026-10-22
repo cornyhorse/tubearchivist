@@ -13,7 +13,14 @@ from emby.src.sync import (
     validate_output_root,
 )
 from emby.src.writer import EmbyRootError
+from jobs.src.handlers import after_sync
 from jobs.src.locks import with_emby_lock
+
+
+def _env_root() -> Path | None:
+    """TA's Emby root, the one the media server is told about"""
+    root = EnvironmentSettings.EMBY_ROOT
+    return Path(root).resolve() if root else None
 
 
 class Command(BaseCommand):
@@ -59,6 +66,9 @@ class Command(BaseCommand):
             report = self._sync(paths, options)
         except (EmbyLayoutOutdated, EmbyRootError) as err:
             raise CommandError(str(err)) from err
+
+        if not dry_run and output_root == _env_root():
+            after_sync(report, paths)
 
         prefix = "[dry-run] " if dry_run else ""
         if options["verbose_changes"]:
