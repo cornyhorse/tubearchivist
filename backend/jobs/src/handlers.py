@@ -32,13 +32,16 @@ from download.src.subscriptions import (
 from download.src.thumbnails import ThumbValidator
 from download.src.yt_dlp_handler import DownloadPostProcess, VideoDownloader
 from emby.src.health import check_emby_health
+from emby.src.playlist_sync import media_paths, record_run, sync_playlists
 from emby.src.sync import EmbyLayoutOutdated, paths_from_env, sync_all
-from emby.src.writer import EmbyRootError
+from emby.src.writer import EmbyRootError, Manifest
 from jobs.models import ACTIVE, CreatedBy, Job, Priority
 from jobs.src.context import JobContext
 from jobs.src.engine import enqueue
 from jobs.src.locks import LockBusy, emby_lock
 from jobs.src.registry import Defer, JobError, register
+from mediaserver.src import settings as media_settings
+from mediaserver.src.client import MediaServerClient, MediaServerError
 from mediaserver.src.jobs import (
     changed_folders,
     changed_series,
@@ -415,6 +418,7 @@ def emby_write(ctx: JobContext) -> dict:
     queue_item_refresh(
         changed_series(report), created_by=ctx.job.created_by, parent=ctx.job
     )
+    queue_playlist_sync(ctx)
     result = {
         "created": len(report.created),
         "updated": len(report.updated),
@@ -425,6 +429,57 @@ def emby_write(ctx: JobContext) -> dict:
     if report.failed:
         result["failed"] = report.failed
     return result
+
+
+def queue_playlist_sync(ctx: JobContext) -> None:
+    """sync the Emby playlists once Emby has scanned the new files"""
+    stored = media_settings.load()
+    if not (stored["type"] == "emby" and stored["playlists_enabled"]):
+        return
+    delay = timedelta(seconds=stored["debounce_seconds"] + 60)
+    _child(
+        ctx,
+        "emby_playlists",
+        priority=Priority.LOW,
+        not_before=timezone.now() + delay,
+    )
+
+
+@register(
+    "emby_playlists",
+    "postprocess",
+    "Sync the Emby playlists",
+    max_attempts=2,
+)
+def emby_playlists(ctx: JobContext) -> dict:
+    """
+    keep the Emby playlists in step with the TA playlists
+    (emby/src/playlist_sync.py); a playlist that fails is reported, the
+    others are synced
+    """
+    stored = media_settings.load()
+    conn = media_settings.connection()
+    paths = paths_from_env()
+    if not (stored["playlists_enabled"] and conn and paths):
+        return {"skipped": "playlists off, no Emby server or no Emby root"}
+    if conn.type != "emby":
+        return {"skipped": "playlists are synced to Emby only"}
+    try:
+        with emby_lock():
+            media = media_paths(Manifest(paths.output_root, dry_run=True))
+    except LockBusy as err:
+        raise Defer(LOCK_RECHECK, str(err)) from err
+    try:
+        result = sync_playlists(MediaServerClient(conn), media)
+    except MediaServerError as err:
+        record_run(error=str(err))
+        raise JobError(str(err)) from err
+    record_run(result=result)
+    for warning in result.warnings[:20]:
+        print(f"[emby playlists] {warning}")
+    if result.errors:
+        raise JobError("; ".join(result.errors[:5]))
+    return result.summary()
 
 
 def request_emby_write(created_by: str = CreatedBy.USER) -> Job | None:

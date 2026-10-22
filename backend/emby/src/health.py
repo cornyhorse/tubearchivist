@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 from emby.models import EpisodeNumber, SeriesKind
 from emby.src.layout import safe_name
+from emby.src.playlist_sync import sync_state as playlist_state
 from emby.src.sync import (
     EmbyLayoutOutdated,
     EmbyPaths,
@@ -33,6 +34,7 @@ from emby.src.writer import (
     Manifest,
     ManifestTooNew,
 )
+from mediaserver.src import settings as media_settings
 
 # a name repaired after ENAMETOOLONG: well under any filesystem limit
 REPAIRED_NAME_BYTES = 60
@@ -79,6 +81,7 @@ def check_emby_health(
     except EmbyLayoutOutdated as err:
         report.problems.append(str(err))
     _check_runs(report, max_age_hours, failing_runs, repair)
+    _check_playlists(report, max_age_hours)
     _check_manifest(report, paths, stale_minutes, repair)
     return report
 
@@ -111,6 +114,21 @@ def _check_runs(
             f"{key} failed {entry['runs']} syncs in a row since "
             f"{entry['since']}: {entry['error']}"
         )
+
+
+def _check_playlists(report: HealthReport, max_age_hours: float) -> None:
+    """the Emby playlist sync, when it is switched on"""
+    if not media_settings.load()["playlists_enabled"]:
+        return
+    state = playlist_state()
+    last = state.get("last_success")
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+    if not last or datetime.fromisoformat(last) < cutoff:
+        report.problems.append(
+            f"no successful Emby playlist sync since {last or 'ever'}"
+        )
+    if error := state.get("last_error"):
+        report.problems.append(f"last Emby playlist sync failed: {error}")
 
 
 def _name_too_long(error: str) -> bool:

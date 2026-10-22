@@ -81,6 +81,7 @@ def test_initialize_and_list(mcp):
         "set_numbering",
         "set_emby_tags",
         "set_emby_show",
+        "set_emby_playlist",
         "list_queue",
         "download",
         "ignore",
@@ -544,4 +545,22 @@ def test_set_emby_show(mcp, app_config):
         ({"id": "nope", "show": "never"}, "not in the archive"),
     ]:
         result = mcp.tool("set_emby_show", **args)
+        assert result["isError"] and message in str(result)
+
+
+def test_set_emby_playlist(mcp, app_config):
+    # pylint: disable=unused-argument
+    Playlist.save_doc(playlist_doc("PLmcp", []))
+
+    done = mcp.tool("set_emby_playlist", id="PLmcp", enabled=False)
+    assert done["structuredContent"] == {
+        "id": "PLmcp",
+        "emby_playlist": False,
+    }
+    assert Playlist.objects.get().emby_playlist is False
+    for args, message in [
+        ({"id": "PLmcp", "enabled": "no"}, "give enabled"),
+        ({"id": "nope", "enabled": True}, "not in the archive"),
+    ]:
+        result = mcp.tool("set_emby_playlist", **args)
         assert result["isError"] and message in str(result)

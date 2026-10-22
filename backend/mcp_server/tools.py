@@ -31,6 +31,7 @@ from jobs.src.handlers import request_emby_write
 from jobs.src.present import filter_jobs, jobs_dicts, summary
 from jobs.src.schedules import schedule_dicts
 from mediaserver.src.jobs import manual_notify
+from playlist.models import Playlist
 from video.models import Video
 
 AGENT = CreatedBy.AGENT
@@ -223,6 +224,19 @@ def set_emby_tags(args: dict) -> dict:
         raise ToolError(f"{kind} {series_id} is not in the archive")
     request_emby_write(created_by=AGENT)
     return {"kind": kind, "id": series_id, "emby_tags": clean_tags(tags)}
+
+
+def set_emby_playlist(args: dict) -> dict:
+    """whether a playlist is kept as an Emby playlist"""
+    playlist_id, enabled = args.get("id"), args.get("enabled")
+    if not isinstance(enabled, bool):
+        raise ToolError("give enabled: true or false")
+    if not Playlist.objects.filter(pk=playlist_id).update(
+        emby_playlist=enabled
+    ):
+        raise ToolError(f"playlist {playlist_id} is not in the archive")
+    request_emby_write(created_by=AGENT)
+    return {"id": playlist_id, "emby_playlist": enabled}
 
 
 def set_emby_show(args: dict) -> dict:
@@ -540,6 +554,20 @@ TOOLS = [
         },
         set_emby_tags,
         required=["kind", "id", "tags"],
+        idempotent=True,
+    ),
+    _tool(
+        "set_emby_playlist",
+        "Keep a playlist as an Emby playlist",
+        "Whether a TA playlist is kept as a playlist in Emby (default on). "
+        "Turn it off for a channel's uploads playlist, which only repeats "
+        "the channel's show. The Emby playlist is removed on the next sync.",
+        {
+            "id": {"type": "string", "description": "playlist id"},
+            "enabled": {"type": "boolean"},
+        },
+        set_emby_playlist,
+        required=["id", "enabled"],
         idempotent=True,
     ),
     _tool(

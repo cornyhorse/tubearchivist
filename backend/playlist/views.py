@@ -285,6 +285,13 @@ class PlaylistApiView(ApiBaseView):
             )
             json_data = Playlist.load_doc(playlist_id)
 
+        if "emby_playlist" in validated_data:
+            Playlist.objects.filter(playlist_id=playlist_id).update(
+                emby_playlist=validated_data["emby_playlist"]
+            )
+            json_data = Playlist.load_doc(playlist_id)
+            request_emby_write()
+
         if "emby_tags" in validated_data:
             set_tags("playlist", [playlist_id], validated_data["emby_tags"])
             json_data = Playlist.load_doc(playlist_id)
@@ -294,7 +301,7 @@ class PlaylistApiView(ApiBaseView):
             error = ErrorResponseSerializer(
                 {
                     "error": "expect playlist_subscribed, playlist_sort_order,"
-                    + " emby_numbering, auto_download or emby_tags"
+                    + " emby_numbering, auto_download, emby_tags or emby_playlist"
                 }
             )
             return Response(error.data, status=400)

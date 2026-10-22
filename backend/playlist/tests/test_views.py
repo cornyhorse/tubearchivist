@@ -368,3 +368,17 @@ def test_emby_tags_read_update_filter(client):
     assert Playlist.objects.get(pk=PL).emby_tags == ["David"]
     assert ids(client.get(LIST, {"emby_tag": "David"})) == [PL]
     assert Playlist.objects.get(pk=PL).to_doc()["emby_tags"] == ["David"]
+
+
+def test_emby_playlist_read_and_update(client):
+    add_playlists()
+    assert client.get(f"{LIST}{PL}/").data["emby_playlist"] is True
+
+    response = client.post(
+        f"{LIST}{PL}/", {"emby_playlist": False}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert response.data["emby_playlist"] is False
+    assert Playlist.objects.get(pk=PL).emby_playlist is False
+    assert Playlist.objects.get(pk=PL).to_doc()["emby_playlist"] is False

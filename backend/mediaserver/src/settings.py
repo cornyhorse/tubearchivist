@@ -26,6 +26,8 @@ DEFAULTS = {
     "notify_enabled": True,
     "debounce_seconds": 30,
     "known_tags": ["David"],
+    "playlists_enabled": False,
+    "playlist_default_users": [],
     "last_notify": None,
 }
 EDITABLE = [
@@ -36,6 +38,8 @@ EDITABLE = [
     "notify_enabled",
     "debounce_seconds",
     "known_tags",
+    "playlists_enabled",
+    "playlist_default_users",
 ]
 
 
@@ -111,6 +115,8 @@ def public() -> dict:
         "notify_enabled": stored["notify_enabled"],
         "debounce_seconds": stored["debounce_seconds"],
         "known_tags": stored["known_tags"],
+        "playlists_enabled": stored["playlists_enabled"],
+        "playlist_default_users": stored["playlist_default_users"],
         "last_notify": stored["last_notify"],
     }
 

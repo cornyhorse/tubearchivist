@@ -2305,6 +2305,7 @@ paths:
           - post_download
           - emby_write
           - media_notify
+          - emby_playlists
           - media_refresh_items
           - media_refresh
           - reindex
@@ -2329,6 +2330,7 @@ paths:
           * `post_download` - post_download
           * `emby_write` - emby_write
           * `media_notify` - media_notify
+          * `emby_playlists` - emby_playlists
           * `media_refresh_items` - media_refresh_items
           * `media_refresh` - media_refresh
           * `reindex` - reindex
@@ -5805,6 +5807,7 @@ components:
       - post_download
       - emby_write
       - media_notify
+      - emby_playlists
       - media_refresh_items
       - media_refresh
       - reindex
@@ -5828,6 +5831,7 @@ components:
         * `post_download` - post_download
         * `emby_write` - emby_write
         * `media_notify` - media_notify
+        * `emby_playlists` - emby_playlists
         * `media_refresh_items` - media_refresh_items
         * `media_refresh` - media_refresh
         * `reindex` - reindex
@@ -6062,6 +6066,17 @@ components:
             type: string
             maxLength: 64
           description: Emby tags offered in the UI, e.g. ['David']
+          maxItems: 20
+        playlists_enabled:
+          type: boolean
+          description: keep Emby playlists in step with the TA playlists (Emby)
+        playlist_default_users:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+          description: Emby users who get every playlist, e.g. ['Matt']; users named
+            by a playlist's tags get it too
           maxItems: 20
         last_notify:
           allOf:
@@ -6411,6 +6426,9 @@ components:
           description: Emby tags written to the show; none hides it from Emby users
             limited to tagged items
           maxItems: 20
+        emby_playlist:
+          type: boolean
+          description: keep an Emby playlist for this playlist (default on)
         _index:
           type: string
           title: ' index'
@@ -6599,6 +6617,9 @@ components:
           description: Emby tags written to the show; none hides it from Emby users
             limited to tagged items
           maxItems: 20
+        emby_playlist:
+          type: boolean
+          description: keep an Emby playlist for this playlist (default on)
     PlaylistSortOrderEnum:
       enum:
       - top

@@ -19,6 +19,7 @@ from emby.src.health import (
     HealthReport,
     check_emby_health,
 )
+from emby.src.playlist_sync import PlaylistSyncResult, record_run
 from emby.src.sync import (
     LAYOUT_KEY,
     STATE_KEY,
@@ -29,6 +30,7 @@ from emby.src.sync import (
 )
 from emby.src.writer import MANIFEST_NAME, EmbyRootError
 from emby.tests.conftest import add_other_video
+from mediaserver.src import settings as media_settings
 
 pytestmark = pytest.mark.django_db
 CHANNEL_ID = channel_doc()["channel_id"]
@@ -293,3 +295,19 @@ def test_health_command_needs_emby_root(settings_env, monkeypatch):
 
 def test_report_defaults():
     assert HealthReport().healthy
+
+
+def test_playlist_sync_is_checked_when_on(library):
+    sync_all(library)
+    assert check_emby_health(library).healthy
+
+    media_settings.update({"playlists_enabled": True})
+    report = check_emby_health(library)
+    assert "no successful Emby playlist sync since ever" in report.problems[0]
+
+    record_run(error="down")
+    problems = check_emby_health(library).problems
+    assert any("playlist sync failed: down" in p for p in problems)
+
+    record_run(result=PlaylistSyncResult())
+    assert check_emby_health(library).healthy

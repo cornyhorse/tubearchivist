@@ -114,6 +114,7 @@ def playlist_doc(playlist_id: str, entries: list[str], **overrides) -> dict:
         "emby_numbering": "playlist_position",
         "auto_download": False,
         "emby_tags": [],
+        "emby_playlist": True,
         "playlist_entries": [
             {
                 "youtube_id": youtube_id,

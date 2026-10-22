@@ -66,6 +66,17 @@ class MediaServerSerializer(serializers.Serializer):
         max_length=20,
         help_text="Emby tags offered in the UI, e.g. ['David']",
     )
+    playlists_enabled = serializers.BooleanField(
+        required=False,
+        help_text="keep Emby playlists in step with the TA playlists (Emby)",
+    )
+    playlist_default_users = serializers.ListField(
+        child=serializers.CharField(max_length=64),
+        required=False,
+        max_length=20,
+        help_text="Emby users who get every playlist, e.g. ['Matt']; users "
+        "named by a playlist's tags get it too",
+    )
     last_notify = LastNotifySerializer(read_only=True, allow_null=True)
 
 

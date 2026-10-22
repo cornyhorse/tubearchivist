@@ -10,6 +10,30 @@ class SeriesKind(models.TextChoices):
     PLAYLIST = "playlist"
 
 
+class EmbyPlaylistLink(models.Model):
+    """
+    an Emby playlist TA created for a user; TA only ever changes or
+    deletes playlists in this table, never ones made by hand
+    """
+
+    playlist_id = models.CharField(max_length=64)
+    # the Emby user who owns this copy of the playlist
+    user_id = models.CharField(max_length=64)
+    emby_id = models.CharField(max_length=64)
+    name = models.TextField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["playlist_id", "user_id"],
+                name="emby_playlist_one_per_user",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.playlist_id} for {self.user_id}: {self.emby_id}"
+
+
 class EpisodeNumber(models.Model):
     """
     the season and episode assigned to a video within a series and scheme
