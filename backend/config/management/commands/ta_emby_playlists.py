@@ -25,6 +25,16 @@ class Command(BaseCommand):
             help="list what would change, change nothing in Emby",
         )
 
+    def _write(self, result, prefix: str) -> None:
+        for verb in ("created", "changed", "deleted"):
+            for label in getattr(result, verb):
+                self.stdout.write(f"{prefix}{verb} {label}")
+        for line in result.warnings:
+            self.stdout.write(f"warning: {line}")
+        for line in result.errors:
+            self.stdout.write(f"error: {line}")
+        self.stdout.write(f"{prefix}{result.summary()}")
+
     @with_emby_lock
     def handle(self, *args, **options):
         conn = settings.connection()
@@ -42,13 +52,6 @@ class Command(BaseCommand):
             raise CommandError(str(err)) from err
         if not dry_run:
             record_run(result=result)
-        for verb in ("created", "changed", "deleted"):
-            for label in getattr(result, verb):
-                self.stdout.write(f"{prefix}{verb} {label}")
-        for line in result.warnings:
-            self.stdout.write(f"warning: {line}")
-        for line in result.errors:
-            self.stdout.write(f"error: {line}")
-        self.stdout.write(f"{prefix}{result.summary()}")
+        self._write(result, prefix)
         if result.errors:
             raise CommandError(f"{len(result.errors)} playlists failed")

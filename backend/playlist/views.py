@@ -301,7 +301,8 @@ class PlaylistApiView(ApiBaseView):
             error = ErrorResponseSerializer(
                 {
                     "error": "expect playlist_subscribed, playlist_sort_order,"
-                    + " emby_numbering, auto_download, emby_tags or emby_playlist"
+                    + " emby_numbering, auto_download, emby_tags or"
+                    + " emby_playlist"
                 }
             )
             return Response(error.data, status=400)
