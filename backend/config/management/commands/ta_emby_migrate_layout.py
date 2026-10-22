@@ -5,15 +5,17 @@ the single sync that renames the files
 see docs/fork/emby-layout-migration.md
 """
 
-from common.src.env_settings import EnvironmentSettings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+
+from common.src.env_settings import EnvironmentSettings
 from emby.src.migrate_layout import AlreadyMigrated, migrate_layout
 from emby.src.shows_change import describe, watch_history_at_risk
 from emby.src.sync import paths_from_env, preflight, sync_all
 from emby.src.tags import known_tags
 from emby.src.visibility import before_state, compare, write_report
 from emby.src.writer import EmbyRootError, Manifest
+from jobs.src.handlers import after_sync
 from jobs.src.locks import with_emby_lock
 from mediaserver.src import settings
 from mediaserver.src.client import MediaServerClient, MediaServerError
@@ -77,7 +79,11 @@ class Command(BaseCommand):
         if options["no_sync"]:
             self.stdout.write("database migrated, not synced")
             return
-        self._write_report(sync_all(paths), "", options)
+        report = sync_all(paths)
+        self._write_report(report, "", options)
+        # the run that first writes new episode tags into existing items:
+        # Emby reads those only when told to
+        after_sync(report, paths)
 
     def _visibility_before(self, paths):
         """

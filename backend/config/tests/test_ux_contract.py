@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from django.core.management import call_command
+
 from download.serializers_found import AddSerializer, FoundActionSerializer
 from download.serializers_rules import EffectiveRuleQuerySerializer
 from mediaserver.serializers import NotifyQuerySerializer

@@ -1,6 +1,7 @@
 """Emby tag API urls, /api/emby/"""
 
 from django.urls import path
+
 from emby import views
 
 urlpatterns = [

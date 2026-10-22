@@ -132,6 +132,11 @@ def write_report(
     results: list[Visibility], write, prefix: str = "", limit: int = 30
 ) -> None:
     """lines for the dry runs; write is stdout.write"""
+    if results:
+        write(
+            f"{prefix}(now = the shows carrying the tag; tags on single "
+            "episodes and Emby's rating rule are not counted)"
+        )
     for result in results:
         write(f"{prefix}{result.line()}")
         names = titles(result.lost[:limit])

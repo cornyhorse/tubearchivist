@@ -135,8 +135,10 @@ channel show. Both `ta_emby_import_tags --dry-run` and `ta_emby_migrate_layout -
     visible to David: 3100 videos now, 3112 after, lost 0, gained 12, 4 Emby items outside the TA tree not compared
       LOST <youtube_id> <title>        (first 30)
 
-"now" is what Emby shows for the tag today (the shows carrying it, read only, matched to videos through the writer's
-manifest), "after" is what TA will tag. Anything on a LOST line is access the person has today and would lose: tag
+"now" is what Emby shows for the tag today: the shows carrying it, read only, matched to videos through the writer's
+manifest. It does not count tags on single episodes or Emby's rating rule (`AllowTagOrRating` with a maximum
+rating), so a rerun after layout 3 under-counts "now" and over-counts "gained"; LOST is reliable for today's
+show-tag access. "after" is what TA will tag. Anything on a LOST line is access the person has today and would lose: tag
 the channel or playlist (or `ta_emby_import_tags --map`) before the run. Items outside the TA tree (the hand made
 YT-Approved folder) can't be compared and are only counted.
 
@@ -184,9 +186,12 @@ gate message (a sync on layout 2 is refused on purpose) and the tree stays as it
    `already on Emby layout`; fix the cause and run `ta_emby_sync .../.emby --dry-run`, then without
    `--dry-run`. It finishes the same renames.
 8. **Idempotence:** `ta_emby_sync .../.emby --dry-run` reports `renamed 0, created 0, deleted 0`.
-9. **Tell Emby and check:** the notify and item-refresh jobs run after the sync; then in Emby (as admin and as
-   David) the YT library shows channel shows and "Other videos" for admin, David sees only tagged shows plus
-   tagged episodes (playlists), and "Other videos" is not in his list.
+9. **Tell Emby and check:** the real run itself queues the notify and the item refresh (the same step as the
+   `emby_write` job and `ta_emby_sync`: `after_sync`); the debounce is 30 s. Check the queue for `media_notify`
+   and `media_refresh_items` and that they finish. The refresh matters: Emby does not re-read an existing item's
+   NFO on a scan, so the new episode tags (a tagged playlist inside an untagged channel show) reach Emby only
+   through it. Then in Emby (as admin and as David) the YT library shows channel shows and "Other videos" for
+   admin, David sees only tagged shows plus tagged episodes (playlists), and "Other videos" is not in his list.
 10. **If wrong:** if the Emby playlist sync (PR 28) has run, undo it first (see docs/fork/emby-playlists.md:
     `playlists_enabled` off, then `ta_emby_playlists`), then restore the `pg_dump` and redeploy the previous
     image; the old image's next sync recreates the playlist shows and the one-off channel shows (one more change

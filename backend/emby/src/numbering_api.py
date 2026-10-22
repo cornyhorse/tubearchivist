@@ -8,9 +8,10 @@ Functionality:
 
 from zoneinfo import ZoneInfo
 
+from django.db import transaction
+
 from channel.models import Channel
 from common.src.env_settings import EnvironmentSettings
-from django.db import transaction
 from emby.models import EpisodeNumber
 from emby.src.numbering import FROZEN_SCHEMES
 from emby.src.sync import (

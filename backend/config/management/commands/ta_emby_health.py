@@ -1,6 +1,7 @@
 """check the Emby sync and repair what is safe, see emby/src/health.py"""
 
 from django.core.management.base import BaseCommand, CommandError
+
 from emby.src.health import check_emby_health
 from emby.src.sync import paths_from_env
 from jobs.src.locks import with_emby_lock

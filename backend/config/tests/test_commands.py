@@ -4,11 +4,12 @@ import io
 import json
 
 import pytest
+from django.core.management import CommandError, call_command
+
 from channel.models import Channel
 from common.src.env_settings import EnvironmentSettings
 from common.src.ta_redis import RedisBase
 from common.tests.docs import channel_doc, playlist_doc, video_doc
-from django.core.management import CommandError, call_command
 from playlist.models import Playlist
 from video.models import Video
 

@@ -3,9 +3,10 @@
 import io
 
 import pytest
+from django.core.management import call_command
+
 from channel.models import Channel
 from common.src.env_settings import EnvironmentSettings
-from django.core.management import call_command
 from emby.src import visibility
 from emby.src.sync import sync_all
 from emby.src.writer import Manifest
@@ -117,11 +118,16 @@ def test_write_report(library):
 
     visibility.write_report(results, lines.append, "[x] ", limit=1)
 
-    assert lines[0].startswith("[x] visible to David: 3 videos now, 1 after")
-    assert lines[1] == "[x]   LOST v1 " + Video.objects.get(pk="v1").title
-    assert lines[2] == "[x]   ... and 1 more"
+    assert lines[0].startswith("[x] (now = the shows carrying the tag;")
+    assert "not counted" in lines[0]
+    assert lines[1].startswith("[x] visible to David: 3 videos now, 1 after")
+    assert lines[2] == "[x]   LOST v1 " + Video.objects.get(pk="v1").title
+    assert lines[3] == "[x]   ... and 1 more"
     visibility.write_report(results, lines.append)
     assert lines[-1].endswith("LOST zz ")
+    count = len(lines)
+    visibility.write_report([], lines.append)
+    assert len(lines) == count  # no tags, no note
 
 
 def test_media_ids():

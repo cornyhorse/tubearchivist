@@ -2,8 +2,9 @@
 
 from pathlib import Path
 
-from common.src.env_settings import EnvironmentSettings
 from django.core.management.base import BaseCommand, CommandError
+
+from common.src.env_settings import EnvironmentSettings
 from emby.src.sync import (
     EmbyLayoutOutdated,
     EmbyPaths,

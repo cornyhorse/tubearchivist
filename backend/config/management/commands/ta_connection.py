@@ -8,9 +8,10 @@ import shutil
 import subprocess
 from time import sleep
 
-from common.src.ta_redis import RedisArchivist
 from django.core.management.base import BaseCommand, CommandError
 from django.db import OperationalError, connection
+
+from common.src.ta_redis import RedisArchivist
 
 TOPIC = """
 
