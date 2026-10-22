@@ -30,6 +30,7 @@ export type ChannelListQuery = {
   page: number;
   filter?: ChannelListFilter | null;
   q?: string;
+  embyTag?: string | null;
   sort?: ChannelSortKey;
   order?: 'asc' | 'desc';
   pageSize?: number;
@@ -55,6 +56,7 @@ const loadChannelList = async (
   } else if (query.filter) {
     searchParams.append(query.filter, 'true');
   }
+  if (query.embyTag) searchParams.append('emby_tag', query.embyTag);
   if (query.q?.trim()) searchParams.append('q', query.q.trim());
   if (query.sort) searchParams.append('sort', query.sort);
   if (query.order) searchParams.append('order', query.order);

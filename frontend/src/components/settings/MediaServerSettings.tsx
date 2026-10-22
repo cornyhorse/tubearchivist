@@ -26,6 +26,8 @@ type Draft = {
   pathTo: string;
   notifyEnabled: boolean;
   debounce: number;
+  /** comma separated */
+  knownTags: string;
 };
 
 const fromServer = (server: MediaServer): Draft => ({
@@ -36,6 +38,7 @@ const fromServer = (server: MediaServer): Draft => ({
   pathTo: server.path_to ?? '',
   notifyEnabled: server.notify_enabled ?? true,
   debounce: server.debounce_seconds ?? 30,
+  knownTags: (server.known_tags ?? []).join(', '),
 });
 
 /** Emby or Jellyfin connection: URL, write-only key, test, library, notify */
@@ -104,6 +107,10 @@ const MediaServerSettings = () => {
       path_to: draft.pathTo,
       notify_enabled: draft.notifyEnabled,
       debounce_seconds: draft.debounce,
+      known_tags: draft.knownTags
+        .split(',')
+        .map(tag => tag.trim())
+        .filter((tag, index, all) => tag && all.indexOf(tag) === index),
     };
     if (draft.apiKey) body.api_key = draft.apiKey;
     if (clearKey) body.api_key = null;
@@ -310,6 +317,21 @@ const MediaServerSettings = () => {
                 seconds to batch
               </label>
             </div>
+          </SettingRow>
+
+          <SettingRow
+            label="Emby tags to offer"
+            help="Channels and playlists can be tagged with these, comma separated. Emby users limited to tagged shows (like David) only see what is tagged for them."
+            htmlFor={`${id}-tags`}
+          >
+            <input
+              id={`${id}-tags`}
+              type="text"
+              className="ux-wide-input"
+              placeholder="David"
+              value={draft.knownTags}
+              onChange={event => update({ knownTags: event.target.value })}
+            />
           </SettingRow>
         </>
       )}

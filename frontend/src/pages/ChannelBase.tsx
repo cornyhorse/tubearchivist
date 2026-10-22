@@ -12,7 +12,10 @@ import NotFound from './NotFound';
 import loadDefaultDownloadRule from '../api/loader/loadDownloadRule';
 import { DownloadRuleType } from '../api/actions/updateDownloadRule';
 import { NumberingBadge, RuleBadge } from '../components/ux/Badges';
+import EmbyShowSelect, { EMBY_SHOW_HELP } from '../components/ux/EmbyShowSelect';
 import AutoDownloadSwitch, { AUTO_DOWNLOAD_HELP } from '../components/ux/AutoDownloadSwitch';
+import EmbyTagsSelect, { EMBY_TAGS_HELP } from '../components/ux/EmbyTagsSelect';
+import useEmbyTags from '../functions/useEmbyTags';
 
 type ChannelParams = {
   channelId: string;
@@ -22,6 +25,7 @@ const ChannelBase = () => {
   const { channelId } = useParams() as ChannelParams;
   const { currentPage, setCurrentPage } = useOutletContext() as OutletContextType;
   const isAdmin = useIsAdmin();
+  const embyTags = useEmbyTags();
 
   const [channelResponse, setChannelResponse] = useState<ApiResponseType<ChannelResponseType>>();
   const [channelNav, setChannelNav] = useState<ApiResponseType<ChannelNavResponseType>>();
@@ -100,6 +104,16 @@ const ChannelBase = () => {
               canEdit={isAdmin}
               onSaved={() => setRefreshChannel(current => current + 1)}
             />
+            <span className="ux-badge-label" title={EMBY_SHOW_HELP}>
+              Emby show
+            </span>
+            <EmbyShowSelect
+              id={channelId}
+              name={channel.channel_name}
+              value={channel.emby_show}
+              canEdit={isAdmin}
+              onSaved={() => setRefreshChannel(current => current + 1)}
+            />
             <span className="ux-badge-label" title={AUTO_DOWNLOAD_HELP}>
               Auto-download
             </span>
@@ -108,6 +122,18 @@ const ChannelBase = () => {
               id={channelId}
               name={channel.channel_name}
               value={channel.auto_download}
+              canEdit={isAdmin}
+              onSaved={() => setRefreshChannel(current => current + 1)}
+            />
+            <span className="ux-badge-label" title={EMBY_TAGS_HELP}>
+              Visible to
+            </span>
+            <EmbyTagsSelect
+              kind="channel"
+              id={channelId}
+              name={channel.channel_name}
+              value={channel.emby_tags}
+              knownTags={embyTags}
               canEdit={isAdmin}
               onSaved={() => setRefreshChannel(current => current + 1)}
             />

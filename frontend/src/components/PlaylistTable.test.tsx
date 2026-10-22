@@ -1,10 +1,14 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PlaylistTable from './PlaylistTable';
 import { PlaylistType } from '../api/loader/loadPlaylistById';
 
 vi.mock('../api/actions/updateAutoDownload', () => ({ default: vi.fn() }));
+const saveEmbyTags = vi.fn();
+vi.mock('../api/actions/updateEmbyTags', () => ({
+  default: (...args: unknown[]) => saveEmbyTags(...args),
+}));
 
 const playlist = (changes: Partial<PlaylistType>): PlaylistType => ({
   playlist_active: true,
@@ -58,6 +62,23 @@ describe('PlaylistTable', () => {
     expect(within(custom).queryByRole('switch')).toBeNull();
     expect(within(custom).getByText('Your playlist')).toBeTruthy();
     expect(within(custom).queryByRole('button', { name: /Subscribe/ })).toBeNull();
+  });
+
+  it('shows who sees each playlist and saves a tag switch', async () => {
+    saveEmbyTags.mockResolvedValue({ status: 200 });
+    const onChanged = vi.fn();
+    renderTable({ embyTags: ['David'], onChanged });
+    const [, first, second, custom] = screen.getAllByRole('row');
+    expect(screen.getByRole('columnheader', { name: /Visible to/ })).toBeTruthy();
+    expect(within(custom).queryByRole('switch', { name: /Visible to/ })).toBeNull();
+    const tagged = within(first).getByRole('switch', { name: 'Visible to David: Rides' });
+    const untagged = within(second).getByRole('switch', { name: 'Visible to David: Old' });
+    expect((tagged as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(untagged);
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(saveEmbyTags).toHaveBeenCalledWith('playlist', 'PL2', ['David']);
   });
 
   it('toggles subscription per row and selects rows for bulk actions', () => {

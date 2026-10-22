@@ -14,6 +14,7 @@ type LoadPlaylistListProps = {
   page?: number | undefined;
   subscribed?: boolean | null;
   autoDownload?: boolean | null;
+  embyTag?: string | null;
   type?: PlaylistCategoryType;
 };
 
@@ -22,6 +23,7 @@ const loadPlaylistList = async ({
   page,
   subscribed,
   autoDownload,
+  embyTag,
   type,
 }: LoadPlaylistListProps) => {
   const searchParams = new URLSearchParams();
@@ -32,6 +34,7 @@ const loadPlaylistList = async ({
     searchParams.append('subscribed', subscribed.toString());
   if (autoDownload !== undefined && autoDownload !== null)
     searchParams.append('auto_download', autoDownload.toString());
+  if (embyTag) searchParams.append('emby_tag', embyTag);
   if (type) searchParams.append('type', type);
 
   const endpoint = `/api/playlist/${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;

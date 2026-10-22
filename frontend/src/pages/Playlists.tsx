@@ -22,6 +22,7 @@ import { useUserConfigStore } from '../stores/UserConfigStore';
 import Notifications from '../components/Notifications';
 import updateUserConfig, { UserConfigType } from '../api/actions/updateUserConfig';
 import { ApiResponseType } from '../functions/APIClient';
+import useEmbyTags from '../functions/useEmbyTags';
 
 type AutoFilter = 'any' | 'on' | 'off';
 
@@ -31,6 +32,8 @@ const Playlists = () => {
   const { userConfig, setUserConfig } = useUserConfigStore();
   const { currentPage, setCurrentPage } = useOutletContext() as OutletContextType;
   const isAdmin = useIsAdmin();
+  const embyTags = useEmbyTags();
+  const [embyTag, setEmbyTag] = useState('');
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [refresh, setRefresh] = useState(false);
@@ -57,6 +60,7 @@ const Playlists = () => {
         page: currentPage,
         subscribed: showSubedOnly,
         autoDownload: AUTO_FILTER_VALUE[autoFilter],
+        embyTag,
       });
 
       setPlaylistReponse(playlist);
@@ -68,6 +72,7 @@ const Playlists = () => {
     refresh,
     userConfig.show_subed_only_playlists,
     autoFilter,
+    embyTag,
     currentPage,
     pagination?.current_page,
   ]);
@@ -210,6 +215,25 @@ const Playlists = () => {
               setCurrentPage(0);
             }}
           />
+          {embyTags.length > 0 && (
+            <FilterChips
+              label="Emby tag"
+              options={[
+                { value: '', label: 'Any tag' },
+                ...embyTags.map(tag => ({
+                  value: tag,
+                  label: `Visible to ${tag}`,
+                  help: `Playlists tagged ${tag} in Emby`,
+                })),
+              ]}
+              value={embyTag}
+              onChange={value => {
+                setEmbyTag(value);
+                setSelected(new Set());
+                setCurrentPage(0);
+              }}
+            />
+          )}
           <ViewToggle
             views={['table', 'grid', 'list']}
             value={viewStyle}
@@ -267,6 +291,7 @@ const Playlists = () => {
                 setRefresh(true);
               }}
               onChanged={() => setRefresh(true)}
+              embyTags={embyTags}
             />
           )
         ) : (

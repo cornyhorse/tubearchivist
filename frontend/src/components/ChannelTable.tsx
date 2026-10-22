@@ -7,6 +7,8 @@ import ChannelIcon from './ChannelIcon';
 import DataTable, { Column, SortState } from './ux/DataTable';
 import { NumberingBadge, RuleBadge } from './ux/Badges';
 import AutoDownloadSwitch from './ux/AutoDownloadSwitch';
+import EmbyShowSelect from './ux/EmbyShowSelect';
+import EmbyTagsSelect, { EMBY_TAGS_HELP } from './ux/EmbyTagsSelect';
 
 type ChannelTableProps = {
   channels: ChannelType[];
@@ -20,6 +22,8 @@ type ChannelTableProps = {
   onChanged: () => void;
   /** set when the server has the work queue */
   onCheckNow?: (channel: ChannelType) => void;
+  /** the Emby tags to offer */
+  embyTags?: string[];
 };
 
 /** a count, or a dash while the server doesn't send it yet */
@@ -40,6 +44,7 @@ const ChannelTable = ({
   onToggleSubscribe,
   onChanged,
   onCheckNow,
+  embyTags = [],
 }: ChannelTableProps) => {
   const columns: Column<ChannelType>[] = [
     {
@@ -150,6 +155,22 @@ const ChannelTable = ({
       ),
     },
     {
+      key: 'emby_tags',
+      header: 'Visible to',
+      help: EMBY_TAGS_HELP,
+      render: channel => (
+        <EmbyTagsSelect
+          kind="channel"
+          id={channel.channel_id}
+          name={channel.channel_name}
+          value={channel.emby_tags}
+          knownTags={embyTags}
+          canEdit={isAdmin}
+          onSaved={onChanged}
+        />
+      ),
+    },
+    {
       key: 'numbering',
       header: 'Numbering',
       help: 'How Emby numbers the episodes. Click to change it.',
@@ -160,6 +181,20 @@ const ChannelTable = ({
           name={channel.channel_name}
           value={channel.emby_numbering}
           options={['date', 'year_frozen', 'absolute_frozen']}
+          canEdit={isAdmin}
+          onSaved={onChanged}
+        />
+      ),
+    },
+    {
+      key: 'emby_show',
+      header: 'Emby show',
+      help: 'Whether this channel has its own show in Emby. Otherwise its videos are in the Other videos show.',
+      render: channel => (
+        <EmbyShowSelect
+          id={channel.channel_id}
+          name={channel.channel_name}
+          value={channel.emby_show}
           canEdit={isAdmin}
           onSaved={onChanged}
         />
