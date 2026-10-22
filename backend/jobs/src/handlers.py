@@ -411,13 +411,7 @@ def emby_write(ctx: JobContext) -> dict:
         print(f"[emby] {warning}")
     for error in report.errors[:20]:
         print(f"[emby] error: {error}")
-    folders = changed_folders(report)
-    queue_notify(folders, created_by=ctx.job.created_by, parent=ctx.job)
-    queue_item_refresh(
-        changed_items(report, _media_stems(paths)),
-        created_by=ctx.job.created_by,
-        parent=ctx.job,
-    )
+    after_sync(report, paths, ctx.job.created_by, ctx.job)
     result = {
         "created": len(report.created),
         "updated": len(report.updated),
@@ -428,6 +422,23 @@ def emby_write(ctx: JobContext) -> dict:
     if report.failed:
         result["failed"] = report.failed
     return result
+
+
+def after_sync(
+    report, paths, created_by: str = CreatedBy.USER, parent: Job | None = None
+) -> None:
+    """
+    tell the media server what a sync changed: a debounced notify for the
+    changed folders and a refresh of the items whose NFO changed (tags are
+    only read again on a refresh). The one step after every real sync:
+    the emby_write job and the ta_emby_* commands all end with it.
+    """
+    queue_notify(changed_folders(report), created_by=created_by, parent=parent)
+    queue_item_refresh(
+        changed_items(report, _media_stems(paths)),
+        created_by=created_by,
+        parent=parent,
+    )
 
 
 def _media_stems(paths) -> dict[str, str]:
