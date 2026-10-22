@@ -71,7 +71,6 @@ class Command(BaseCommand):
             raise CommandError("TA_EMBY_ROOT is not set; use --no-sync")
         before, unreadable = self._visibility_before(paths)
         self._guard(before, unreadable, options)
-        self._hand_set(paths, "[dry-run] " if options["dry_run"] else "")
         try:
             if paths and not (options["no_sync"] and not options["dry_run"]):
                 # before the database changes: a root that can't take the
@@ -89,6 +88,7 @@ class Command(BaseCommand):
 
         self._write_summary(summary, "")
         self._compare(before, "")
+        self._hand_set(paths, "")
         if options["no_sync"]:
             self.stdout.write("database migrated, not synced")
             return
@@ -182,6 +182,7 @@ class Command(BaseCommand):
                 )
                 self._write_summary(summary, prefix)
                 self._compare(before, prefix)
+                self._hand_set(paths, prefix)
                 if paths:
                     report = sync_all(paths, dry_run=True)
                     self._write_report(report, prefix, options, paths)

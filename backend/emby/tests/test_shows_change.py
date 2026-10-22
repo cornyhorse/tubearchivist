@@ -365,6 +365,9 @@ def test_hand_set_metadata_is_listed(layout2):
     output = run_dry("--dry-run")
 
     assert "hand-set metadata on 2 items" in output
+    # the summary (in layout 4 the UTC count) stays the first thing printed
+    assert output.splitlines()[0].startswith("[dry-run] ")
+    assert "hand-set" not in output.splitlines()[0]
     assert "[dry-run]   c/A/e.mkv: rating TV-Y" in output
 
     def down(client):
