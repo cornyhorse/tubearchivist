@@ -42,7 +42,7 @@ each with its own concurrency and rate limit:
 |---|---|---|
 | `scan` | `check_subscriptions`, `check_channel`, `check_playlist`, `fetch_video` | 2 |
 | `download` | `download_video` | 1 |
-| `postprocess` | `post_download`, `emby_write`, `media_notify`, `media_refresh_items`, `media_refresh` | 1 |
+| `postprocess` | `post_download`, `emby_write`, `media_notify`, `media_refresh_items`, `emby_playlists`, `media_refresh` | 1 |
 | `maintenance` | `reindex`, `backup`, `restore`, `filesystem_rescan`, `thumbnail_check`, `resync_metadata`, `manual_import`, `index_playlists`, `subscribe`, `version_check`, `snapshot` | 1 |
 
 A subscription check is one `check_subscriptions` job that queues one
@@ -255,6 +255,12 @@ manual number) queues an `emby_write` job when the Emby writer is on.
 
 The existing `emby_numbering` field on channel and playlist keeps working.
 
+### Emby playlists (fork-v0.5.0, docs/fork/emby-playlists.md)
+
+`emby_playlist` (bool, default true) on playlist read and `POST /api/playlist/<id>/`; MCP `set_emby_playlist`.
+`playlists_enabled` and `playlist_default_users` in `GET/PUT /api/mediaserver/`. Job type `emby_playlists`;
+`manage.py ta_emby_playlists [--dry-run]`.
+
 ### Emby show per channel (fork-v0.5.0)
 
 `emby_show` (`auto` | `always` | `never`) on channel read and `POST /api/channel/<id>/`; MCP `set_emby_show`. `auto`
@@ -318,7 +324,7 @@ the frontend.
 Tools (each calls the same service functions as the REST endpoints):
 `preview_url`, `add_url` (with `auto_download`), `set_rule` (also
 per-video overrides, and `auto_download` per channel or playlist),
-`set_numbering` (with `dry_run`), `set_emby_tags`, `set_emby_show`, `list_queue`, `list_found`, `download`,
+`set_numbering` (with `dry_run`), `set_emby_tags`, `set_emby_show`, `set_emby_playlist`, `list_queue`, `list_found`, `download`,
 `ignore`, `move_to_top`, `activity`, `stop_task`, `search_library`,
 `get_video`, `notify_media_server`. Errors an agent can fix come back as
 `isError: true` with a plain message saying what to send instead.

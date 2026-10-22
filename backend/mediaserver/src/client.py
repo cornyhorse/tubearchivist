@@ -12,10 +12,16 @@ TIMEOUT = 15
 CHUNK = 500
 # items per page when listing a user's items
 PAGE = 2000
+# ids per playlist call, keeps the url short
+IDS_PER_CALL = 100
 
 
 class MediaServerError(Exception):
     """the server could not be reached or refused, message is safe to show"""
+
+
+class MediaServerNotFound(MediaServerError):
+    """the server answered 404: the item is gone"""
 
 
 class MediaServerClient:
@@ -44,6 +50,8 @@ class MediaServerClient:
             ) from err
         if response.status_code in (401, 403):
             raise MediaServerError("the server rejected the API key")
+        if response.status_code == 404:
+            raise MediaServerNotFound(f"{method} {path}: not found")
         if response.status_code >= 400:
             raise MediaServerError(
                 f"{method} {path} failed: HTTP {response.status_code}"
@@ -93,7 +101,12 @@ class MediaServerClient:
         """the server's users: id and name"""
         data = self._request("GET", "/Users").json()
         return [
-            {"id": str(u.get("Id")), "name": u.get("Name") or ""} for u in data
+            {
+                "id": str(u.get("Id")),
+                "name": u.get("Name") or "",
+                "admin": bool((u.get("Policy") or {}).get("IsAdministrator")),
+            }
+            for u in data
         ]
 
     def watched_paths(self, user_id: str) -> set[str]:
@@ -269,3 +282,131 @@ class MediaServerClient:
         else:
             path, params = "/Library/Refresh", None
         return self._request("POST", path, params=params).status_code
+
+    # playlists (Emby; Jellyfin's API differs)
+
+    def episode_ids(self) -> dict[str, str]:
+        """{server path: item id} of every episode the server knows"""
+        ids: dict[str, str] = {}
+        start = 0
+        while True:
+            data = self._request(
+                "GET",
+                "/Items",
+                params={
+                    "Recursive": "true",
+                    "IncludeItemTypes": "Episode",
+                    "Fields": "Path",
+                    "StartIndex": start,
+                    "Limit": PAGE,
+                },
+            ).json()
+            for item in data.get("Items") or []:
+                if item.get("Path"):
+                    ids[item["Path"]] = str(item["Id"])
+            start += PAGE
+            if start >= data.get("TotalRecordCount", 0):
+                return ids
+
+    def playlist_items(
+        self, playlist_id: str, user_id: str
+    ) -> list[tuple[str, str]]:
+        """
+        [(entry id, item id)] in order, as user_id is allowed to see;
+        MediaServerNotFound if the playlist is gone
+        """
+        items: list[tuple[str, str]] = []
+        start = 0
+        while True:
+            try:
+                data = self._request(
+                    "GET",
+                    f"/Playlists/{playlist_id}/Items",
+                    params={
+                        "UserId": user_id,
+                        "StartIndex": start,
+                        "Limit": PAGE,
+                    },
+                ).json()
+            except MediaServerNotFound:
+                raise
+            except MediaServerError:
+                # Emby answers 500, not 404, for a playlist that is gone
+                if self.item_exists(playlist_id):
+                    raise
+                raise MediaServerNotFound(f"playlist {playlist_id} is gone")
+            items += [
+                (str(i["PlaylistItemId"]), str(i["Id"]))
+                for i in data.get("Items") or []
+            ]
+            start += PAGE
+            if start >= data.get("TotalRecordCount", 0):
+                return items
+
+    def item_exists(self, item_id: str) -> bool:
+        """the server holds an item with this id"""
+        data = self._request(
+            "GET", "/Items", params={"Ids": item_id, "Recursive": "true"}
+        ).json()
+        return bool(data.get("Items"))
+
+    def owned_item(self, user_id: str, item_id: str) -> dict | None:
+        """
+        {type, name} of an item as user_id sees it, None if they can't:
+        a playlist is visible to its owner only, so this tells whose it is
+        """
+        data = self._request(
+            "GET", f"/Users/{user_id}/Items", params={"Ids": item_id}
+        ).json()
+        items = data.get("Items") or []
+        if not items:
+            return None
+        return {"type": items[0].get("Type"), "name": items[0].get("Name")}
+
+    def create_playlist(
+        self, name: str, user_id: str, item_ids: list[str]
+    ) -> str:
+        """a playlist owned by user_id holding item_ids; its id"""
+        first, rest = item_ids[:IDS_PER_CALL], item_ids[IDS_PER_CALL:]
+        data = self._request(
+            "POST",
+            "/Playlists",
+            params={
+                "Name": name,
+                "Ids": ",".join(first),
+                "MediaType": "Video",
+                "UserId": user_id,
+            },
+        ).json()
+        playlist_id = str(data["Id"])
+        if rest:
+            self.add_to_playlist(playlist_id, user_id, rest)
+        return playlist_id
+
+    def add_to_playlist(
+        self, playlist_id: str, user_id: str, item_ids: list[str]
+    ) -> None:
+        """append items, in order"""
+        for start in range(0, len(item_ids), IDS_PER_CALL):
+            chunk = item_ids[start : start + IDS_PER_CALL]
+            self._request(
+                "POST",
+                f"/Playlists/{playlist_id}/Items",
+                params={"Ids": ",".join(chunk), "UserId": user_id},
+            )
+
+    def remove_from_playlist(
+        self, playlist_id: str, entry_ids: list[str]
+    ) -> None:
+        """remove entries (the PlaylistItemId, not the item id)"""
+        for start in range(0, len(entry_ids), IDS_PER_CALL):
+            chunk = entry_ids[start : start + IDS_PER_CALL]
+            self._request(
+                "DELETE",
+                f"/Playlists/{playlist_id}/Items",
+                params={"EntryIds": ",".join(chunk)},
+            )
+
+    def delete_item(self, item_id: str) -> None:
+        """delete an item (a playlist, never a media file here)"""
+        self._request("DELETE", f"/Items/{item_id}")

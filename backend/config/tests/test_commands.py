@@ -145,7 +145,9 @@ def test_emby_sync_tells_the_media_server(library, monkeypatch):
     )
     monkeypatch.setattr(EnvironmentSettings, "EMBY_ROOT", str(out))
     monkeypatch.setenv(media_settings.KEY_ENV, "k")
-    media_settings.update({"type": "emby", "url": "http://e:8096"})
+    media_settings.update(
+        {"type": "emby", "url": "http://e:8096", "playlists_enabled": True}
+    )
 
     run("ta_emby_sync", str(out), "--dry-run")
     assert not Job.objects.filter(type="media_notify").exists()
@@ -153,6 +155,8 @@ def test_emby_sync_tells_the_media_server(library, monkeypatch):
     run("ta_emby_sync", str(out))
     notify = Job.objects.get(type="media_notify")
     assert notify.created_by == "user"
+    # the playlists follow once Emby has scanned the files
+    assert Job.objects.filter(type="emby_playlists").exists()
     assert not Job.objects.filter(type="media_refresh_items").exists()
 
     # a tag taken away rewrites the tvshow.nfo: Emby must be told to read it

@@ -4,6 +4,7 @@ import { PlaylistType } from '../api/loader/loadPlaylistById';
 import formatDate from '../functions/formatDates';
 import DataTable, { Column } from './ux/DataTable';
 import AutoDownloadSwitch from './ux/AutoDownloadSwitch';
+import EmbyPlaylistSwitch, { EMBY_PLAYLIST_HELP } from './ux/EmbyPlaylistSwitch';
 import EmbyTagsSelect, { EMBY_TAGS_HELP } from './ux/EmbyTagsSelect';
 
 type PlaylistTableProps = {
@@ -86,6 +87,23 @@ const PlaylistTable = ({
             name={playlist.playlist_name}
             value={playlist.emby_tags}
             knownTags={embyTags}
+            canEdit={isAdmin}
+            onSaved={onChanged}
+          />
+        ),
+    },
+    {
+      key: 'emby_playlist',
+      header: 'Emby playlist',
+      help: EMBY_PLAYLIST_HELP,
+      render: playlist =>
+        isCustom(playlist) ? (
+          <span className="ux-muted">—</span>
+        ) : (
+          <EmbyPlaylistSwitch
+            id={playlist.playlist_id}
+            name={playlist.playlist_name}
+            value={playlist.emby_playlist}
             canEdit={isAdmin}
             onSaved={onChanged}
           />

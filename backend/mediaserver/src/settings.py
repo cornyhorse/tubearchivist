@@ -30,6 +30,8 @@ DEFAULTS = {
     "refresh_batch_size": 50,
     "refresh_pause_seconds": 60,
     "known_tags": ["David"],
+    "playlists_enabled": False,
+    "playlist_default_users": [],
     "last_notify": None,
 }
 EDITABLE = [
@@ -42,6 +44,8 @@ EDITABLE = [
     "refresh_batch_size",
     "refresh_pause_seconds",
     "known_tags",
+    "playlists_enabled",
+    "playlist_default_users",
 ]
 
 
@@ -119,6 +123,8 @@ def public() -> dict:
         "refresh_batch_size": stored["refresh_batch_size"],
         "refresh_pause_seconds": stored["refresh_pause_seconds"],
         "known_tags": stored["known_tags"],
+        "playlists_enabled": stored["playlists_enabled"],
+        "playlist_default_users": stored["playlist_default_users"],
         "last_notify": stored["last_notify"],
     }
 

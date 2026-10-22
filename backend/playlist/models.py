@@ -33,6 +33,8 @@ class Playlist(models.Model):
     # tags written to the Emby tvshow.nfo, see Channel.emby_tags; they also
     # name the Emby users who get this playlist
     emby_tags = ArrayField(models.TextField(), default=list, blank=True)
+    # synced to Emby as a playlist, see emby/src/playlist_sync.py
+    emby_playlist = models.BooleanField(default=True)
 
     search = models.GeneratedField(
         expression=WeightedSearchVector(
@@ -93,6 +95,11 @@ class Playlist(models.Model):
                 if "emby_tags" in doc
                 else {}
             ),
+            **(
+                {"emby_playlist": bool(doc["emby_playlist"])}
+                if "emby_playlist" in doc
+                else {}
+            ),
         }
 
     @classmethod
@@ -148,6 +155,7 @@ class Playlist(models.Model):
             "emby_numbering": self.emby_numbering,
             "auto_download": self.auto_download,
             "emby_tags": list(self.emby_tags),
+            "emby_playlist": self.emby_playlist,
         }
         if with_entries:
             entries = self.entries.with_downloaded().order_by("idx")

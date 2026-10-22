@@ -28,7 +28,16 @@ type Draft = {
   debounce: number;
   /** comma separated */
   knownTags: string;
+  playlistsEnabled: boolean;
+  /** comma separated */
+  playlistUsers: string;
 };
+
+const splitList = (text: string) =>
+  text
+    .split(',')
+    .map(item => item.trim())
+    .filter((item, index, all) => item && all.indexOf(item) === index);
 
 const fromServer = (server: MediaServer): Draft => ({
   type: server.type ?? '',
@@ -39,6 +48,8 @@ const fromServer = (server: MediaServer): Draft => ({
   notifyEnabled: server.notify_enabled ?? true,
   debounce: server.debounce_seconds ?? 30,
   knownTags: (server.known_tags ?? []).join(', '),
+  playlistsEnabled: server.playlists_enabled ?? false,
+  playlistUsers: (server.playlist_default_users ?? []).join(', '),
 });
 
 /** Emby or Jellyfin connection: URL, write-only key, test, library, notify */
@@ -107,10 +118,9 @@ const MediaServerSettings = () => {
       path_to: draft.pathTo,
       notify_enabled: draft.notifyEnabled,
       debounce_seconds: draft.debounce,
-      known_tags: draft.knownTags
-        .split(',')
-        .map(tag => tag.trim())
-        .filter((tag, index, all) => tag && all.indexOf(tag) === index),
+      known_tags: splitList(draft.knownTags),
+      playlists_enabled: draft.playlistsEnabled,
+      playlist_default_users: splitList(draft.playlistUsers),
     };
     if (draft.apiKey) body.api_key = draft.apiKey;
     if (clearKey) body.api_key = null;
@@ -333,6 +343,41 @@ const MediaServerSettings = () => {
               onChange={event => update({ knownTags: event.target.value })}
             />
           </SettingRow>
+
+          {draft.type === 'emby' && (
+            <>
+              <SettingRow
+                label="Sync Emby playlists"
+                help="Keeps TA playlists as playlists in Emby. An Emby playlist belongs to one user, so TA creates one copy per user: the users below and the users named by a playlist's tags."
+              >
+                <label className="ux-switch">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    aria-label="Sync Emby playlists"
+                    checked={draft.playlistsEnabled}
+                    onChange={event => update({ playlistsEnabled: event.target.checked })}
+                  />
+                  <span>{draft.playlistsEnabled ? 'On' : 'Off'}</span>
+                </label>
+              </SettingRow>
+
+              <SettingRow
+                label="Emby users who get every playlist"
+                help="Emby user names, comma separated. Each gets their own copy of every playlist that has Emby playlist switched on."
+                htmlFor={`${id}-playlist-users`}
+              >
+                <input
+                  id={`${id}-playlist-users`}
+                  type="text"
+                  className="ux-wide-input"
+                  placeholder="Matt"
+                  value={draft.playlistUsers}
+                  onChange={event => update({ playlistUsers: event.target.value })}
+                />
+              </SettingRow>
+            </>
+          )}
         </>
       )}
 

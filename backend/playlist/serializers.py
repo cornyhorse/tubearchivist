@@ -52,6 +52,10 @@ class PlaylistSerializer(serializers.Serializer):
             "limited to tagged items"
         ),
     )
+    emby_playlist = serializers.BooleanField(
+        required=False,
+        help_text="keep an Emby playlist for this playlist (default on)",
+    )
     _index = serializers.CharField(required=False)
     _score = serializers.IntegerField(required=False)
 
@@ -115,6 +119,10 @@ class PlaylistSingleUpdate(serializers.Serializer):
             "Emby tags written to the show; none hides it from Emby users "
             "limited to tagged items"
         ),
+    )
+    emby_playlist = serializers.BooleanField(
+        required=False,
+        help_text="keep an Emby playlist for this playlist (default on)",
     )
 
 

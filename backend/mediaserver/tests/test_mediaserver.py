@@ -364,6 +364,97 @@ def test_series_with_tag_and_find_item(http):
     assert http.calls[-1][0] == "GET"
 
 
+def test_playlist_calls(http, monkeypatch):
+    configure()
+    client = MediaServerClient(
+        Connection("emby", "http://emby.test:8096", SECRET)
+    )
+    http.responses[("GET", "/Items")] = (
+        200,
+        {
+            "Items": [{"Id": 7, "Path": "/a.mkv"}, {"Id": 8}],
+            "TotalRecordCount": 2,
+        },
+    )
+    assert client.episode_ids() == {"/a.mkv": "7"}
+    # more than one page
+    monkeypatch.setattr(client_mod, "PAGE", 1)
+    assert client.episode_ids() == {"/a.mkv": "7"}
+
+    http.responses[("GET", "/Playlists/p1/Items")] = (
+        200,
+        {
+            "Items": [{"PlaylistItemId": 3, "Id": 7}],
+            "TotalRecordCount": 1,
+        },
+    )
+    assert client.playlist_items("p1", "u1") == [("3", "7")]
+    http.responses[("GET", "/Playlists/p1/Items")] = (
+        200,
+        {
+            "Items": [{"PlaylistItemId": 3, "Id": 7}],
+            "TotalRecordCount": 2,
+        },
+    )
+    assert client.playlist_items("p1", "u1") == [("3", "7"), ("3", "7")]
+    assert http.calls[-1][3]["params"]["UserId"] == "u1"
+
+    # a 500 for a playlist that is gone is "not found", else it is an error
+    http.responses[("GET", "/Playlists/gone/Items")] = (500, None)
+    http.responses[("GET", "/Playlists/sick/Items")] = (500, None)
+    http.responses[("GET", "/Items")] = (200, {"Items": [{"Id": 1}]})
+    with pytest.raises(client_mod.MediaServerError, match="HTTP 500"):
+        client.playlist_items("sick", "u1")
+    http.responses[("GET", "/Items")] = (200, {"Items": []})
+    with pytest.raises(client_mod.MediaServerNotFound):
+        client.playlist_items("gone", "u1")
+    http.responses[("GET", "/Playlists/404/Items")] = (404, None)
+    with pytest.raises(client_mod.MediaServerNotFound):
+        client.playlist_items("404", "u1")
+
+    http.responses[("POST", "/Playlists")] = (200, {"Id": 55})
+    ids = [str(n) for n in range(250)]
+    assert client.create_playlist("Mix", "u1", ids) == "55"
+    posts = [c for c in http.calls if c[0] == "POST"]
+    assert posts[0][3]["params"]["Name"] == "Mix"
+    assert posts[0][3]["params"]["MediaType"] == "Video"
+    # 100 in the create call, 150 appended in two more calls
+    assert [len(c[3]["params"]["Ids"].split(",")) for c in posts] == [
+        100,
+        100,
+        50,
+    ]
+    assert posts[1][1].endswith("/Playlists/55/Items")
+
+    assert client.create_playlist("Small", "u1", ["1"]) == "55"
+    client.remove_from_playlist("p1", [str(n) for n in range(150)])
+    deletes = [c for c in http.calls if c[0] == "DELETE"]
+    assert [len(c[3]["params"]["EntryIds"].split(",")) for c in deletes] == [
+        100,
+        50,
+    ]
+    # a playlist is visible to its owner only
+    http.responses[("GET", "/Users/u1/Items")] = (
+        200,
+        {"Items": [{"Type": "Playlist", "Name": "Mix"}]},
+    )
+    assert client.owned_item("u1", "55") == {"type": "Playlist", "name": "Mix"}
+    assert http.calls[-1][3]["params"]["Ids"] == "55"
+    http.responses[("GET", "/Users/u2/Items")] = (200, {"Items": []})
+    assert client.owned_item("u2", "55") is None
+    client.delete_item("p1")
+    assert http.calls[-1][1].endswith("/Items/p1")
+
+    http.responses[("GET", "/Users")] = (
+        200,
+        [{"Id": 1, "Name": "A", "Policy": {"IsAdministrator": True}}],
+    )
+    assert client.users() == [{"id": "1", "name": "A", "admin": True}]
+    http.responses[("DELETE", "/Items/gone")] = (404, None)
+    with pytest.raises(client_mod.MediaServerNotFound):
+        client.delete_item("gone")
+
+
 def test_media_by_stem():
     files = {
         "c/A/S1/e.mp4": {"role": "media"},
