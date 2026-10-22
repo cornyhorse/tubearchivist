@@ -1701,6 +1701,12 @@ export interface components {
       channel_tags?: string[];
       channel_tabs: components['schemas']['ChannelTabsEnum'][];
       emby_numbering?: components['schemas']['NumberingSchemeEnum'];
+      /** @description own show in Emby: auto = subscribed channels only; never: its videos are in the Other videos show
+       *
+       *     * `auto` - auto
+       *     * `always` - always
+       *     * `never` - never */
+      emby_show?: components['schemas']['EmbyShowEnum'];
       download_rule?: components['schemas']['DownloadRule'] | null;
       /** @description a check downloads what the rules allow; off: found videos wait */
       auto_download?: boolean;
@@ -1758,6 +1764,12 @@ export interface components {
       channel_tags?: string[];
       channel_tabs: components['schemas']['ChannelTabsEnum'][];
       emby_numbering?: components['schemas']['NumberingSchemeEnum'];
+      /** @description own show in Emby: auto = subscribed channels only; never: its videos are in the Other videos show
+       *
+       *     * `auto` - auto
+       *     * `always` - always
+       *     * `never` - never */
+      emby_show?: components['schemas']['EmbyShowEnum'];
       download_rule?: components['schemas']['DownloadRule'] | null;
       /** @description a check downloads what the rules allow; off: found videos wait */
       auto_download?: boolean;
@@ -1815,6 +1827,12 @@ export interface components {
       channel_subscribed?: boolean;
       channel_overwrites?: components['schemas']['ChannelOverwrite'];
       emby_numbering?: components['schemas']['ChannelUpdateEmbyNumberingEnum'];
+      /** @description own show in Emby: auto = subscribed channels only; never: its videos are in the Other videos show
+       *
+       *     * `auto` - auto
+       *     * `always` - always
+       *     * `never` - never */
+      emby_show?: components['schemas']['EmbyShowEnum'];
       download_rule?: components['schemas']['DownloadRule'] | null;
       /** @description a check downloads what the rules allow; off: found videos wait */
       auto_download?: boolean;
@@ -1996,6 +2014,13 @@ export interface components {
         | (components['schemas']['VideoOverrideEnum'] | components['schemas']['NullEnum'])
         | null;
     };
+    /**
+     * @description * `auto` - auto
+     *     * `always` - always
+     *     * `never` - never
+     * @enum {string}
+     */
+    EmbyShowEnum: 'auto' | 'always' | 'never';
     /** @description GET /api/emby/tags/: the tags to offer on channels and playlists */
     EmbyTags: {
       tags: string[];

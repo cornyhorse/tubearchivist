@@ -12,6 +12,7 @@ import NotFound from './NotFound';
 import loadDefaultDownloadRule from '../api/loader/loadDownloadRule';
 import { DownloadRuleType } from '../api/actions/updateDownloadRule';
 import { NumberingBadge, RuleBadge } from '../components/ux/Badges';
+import EmbyShowSelect, { EMBY_SHOW_HELP } from '../components/ux/EmbyShowSelect';
 import AutoDownloadSwitch, { AUTO_DOWNLOAD_HELP } from '../components/ux/AutoDownloadSwitch';
 import EmbyTagsSelect, { EMBY_TAGS_HELP } from '../components/ux/EmbyTagsSelect';
 import useEmbyTags from '../functions/useEmbyTags';
@@ -100,6 +101,16 @@ const ChannelBase = () => {
               name={channel.channel_name}
               value={channel.emby_numbering}
               options={['date', 'year_frozen', 'absolute_frozen']}
+              canEdit={isAdmin}
+              onSaved={() => setRefreshChannel(current => current + 1)}
+            />
+            <span className="ux-badge-label" title={EMBY_SHOW_HELP}>
+              Emby show
+            </span>
+            <EmbyShowSelect
+              id={channelId}
+              name={channel.channel_name}
+              value={channel.emby_show}
               canEdit={isAdmin}
               onSaved={() => setRefreshChannel(current => current + 1)}
             />

@@ -80,6 +80,7 @@ def test_initialize_and_list(mcp):
         "set_rule",
         "set_numbering",
         "set_emby_tags",
+        "set_emby_show",
         "list_queue",
         "download",
         "ignore",
@@ -525,4 +526,22 @@ def test_set_emby_tags(mcp, app_config):
         ({"kind": "channel", "id": "nope", "tags": []}, "not in the archive"),
     ]:
         result = mcp.tool("set_emby_tags", **args)
+        assert result["isError"] and message in str(result)
+
+
+def test_set_emby_show(mcp, app_config):
+    # pylint: disable=unused-argument
+    Channel.save_doc(channel_doc())
+
+    done = mcp.tool("set_emby_show", id=CHANNEL_ID, show="always")
+    assert done["structuredContent"] == {
+        "id": CHANNEL_ID,
+        "emby_show": "always",
+    }
+    assert Channel.objects.get().emby_show == "always"
+    for args, message in [
+        ({"id": CHANNEL_ID, "show": "odd"}, "show is one of"),
+        ({"id": "nope", "show": "never"}, "not in the archive"),
+    ]:
+        result = mcp.tool("set_emby_show", **args)
         assert result["isError"] and message in str(result)

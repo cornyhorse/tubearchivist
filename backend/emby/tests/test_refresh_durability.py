@@ -58,7 +58,8 @@ def test_sync_remembers_tag_changes_for_refresh(library):
 
     entries = pending.entries()
     assert [e for e in entries if e.startswith("series:channels/")]
-    assert not [e for e in entries if e.startswith("episode:")]
+    # (a tagged playlist also tags the episodes of an untagged channel
+    # show, so episodes are remembered too from layout 3 on)
 
     # a changed episode NFO is remembered with the media file it belongs to
     Video.objects.filter(pk="v1").update(title="A new title")

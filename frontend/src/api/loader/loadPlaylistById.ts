@@ -1,4 +1,3 @@
-import { EmbyNumberingType } from '../actions/updateEmbyNumbering';
 import APIClient from '../../functions/APIClient';
 
 export type PlaylistEntryType = {
@@ -22,7 +21,6 @@ export type PlaylistType = {
   playlist_subscribed: boolean;
   playlist_thumbnail: string;
   playlist_type: string;
-  emby_numbering?: EmbyNumberingType;
   /** opted in: checks download new videos the rule allows; off by default */
   auto_download?: boolean;
   /** Emby tags on the show; none hides it from tag-restricted Emby users */

@@ -1,8 +1,11 @@
 """
 Functionality:
-- convert the stored Emby numbers and names from layout 1 to layout 2 in
-  one transaction, so Emby sees exactly one rename pass
-  (docs/fork/emby-layout-migration.md):
+- convert the stored Emby numbers and names to the current layout in one
+  transaction, so Emby sees exactly one change pass
+  (docs/fork/emby-layout-migration.md); layout 2 to 3 (playlists are no
+  longer shows, channels without a show move to "Other videos") changes
+  no stored number, the following sync does it
+- layout 1 to 2:
   - date scheme: MMDD*10+n becomes MMDD*100+n; numbers that spilled into
     the next day's block (an 11th upload on one day) move back to their
     own day
@@ -193,12 +196,16 @@ def migrate_layout(
     convert the stored numbers and names to the current layout; the
     caller syncs afterwards (in the same transaction for a dry run)
     """
-    if layout_version() >= LAYOUT_VERSION:
+    start = layout_version()
+    if start >= LAYOUT_VERSION:
         raise AlreadyMigrated(f"already on Emby layout {LAYOUT_VERSION}")
     summary = MigrationSummary()
     with transaction.atomic():
-        _migrate_dates(ZoneInfo(timezone), summary)
-        _freeze_playlists(set(keep_position or ()), summary)
-        _freeze_names(summary)
+        if start < 2:
+            _migrate_dates(ZoneInfo(timezone), summary)
+            _freeze_playlists(set(keep_position or ()), summary)
+            _freeze_names(summary)
+        # 2 -> 3 changes no stored number: the shows are chosen when the
+        # tree is built, and the writer removes what is no longer wanted
         set_layout_version()
     return summary

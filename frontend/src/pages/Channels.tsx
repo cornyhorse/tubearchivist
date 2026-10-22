@@ -75,6 +75,8 @@ export type ChannelType = {
   channel_thumb_url: string;
   channel_tvart_url: string;
   emby_numbering?: EmbyNumberingType;
+  /** own Emby show: auto = only while subscribed */
+  emby_show?: 'auto' | 'always' | 'never';
   download_rule?: DownloadRuleType | null;
   /** opted in: checks download new videos the rule allows; off by default */
   auto_download?: boolean;

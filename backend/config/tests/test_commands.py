@@ -83,13 +83,13 @@ def test_emby_sync_modes(library):
     out = library / "emby"
 
     channel = run("ta_emby_sync", str(out), "--channel", CHANNEL_ID)
-    playlist = run("ta_emby_sync", str(out), "--playlist", "PL1")
+    other = run("ta_emby_sync", str(out), "--other")
     everything = run("ta_emby_sync", str(out))
 
     assert "created 3," in channel and "warning:" in channel
-    assert "created 3," in playlist
+    assert "created 0," in other
     assert (
-        "created 0, updated 0, renamed 0, deleted 0, unchanged 6" in everything
+        "created 0, updated 0, renamed 0, deleted 0, unchanged 3" in everything
     )
 
 
@@ -97,7 +97,6 @@ def test_emby_sync_verbose_dry_run(library):
     out = library / "emby"
     run("ta_emby_sync", str(out))
     Video.objects.update(title="Renamed")
-    Playlist.objects.all().delete()
     Channel.objects.update(description="changed")
 
     output = run("ta_emby_sync", str(out), "--dry-run", "--verbose-changes")
@@ -110,8 +109,12 @@ def test_emby_sync_verbose_dry_run(library):
 
     assert "[dry-run] rename " in output
     assert "[dry-run] update " in output
-    assert "[dry-run] delete " in output
     assert "[dry-run] created 0" in output
+
+    Channel.objects.update(emby_show="never")
+    output = run("ta_emby_sync", str(out), "--dry-run", "--verbose-changes")
+
+    assert "[dry-run] delete " in output
 
     Video.objects.all().delete()
     Channel.objects.all().delete()
@@ -122,7 +125,7 @@ def test_emby_sync_verbose_dry_run(library):
 def test_emby_sync_verbose_create(library):
     output = run("ta_emby_sync", str(library / "emby"), "--verbose-changes")
 
-    assert output.count("create ") >= 6
+    assert output.count("create ") >= 3
 
 
 def test_emby_sync_refuses_media_dir(library):

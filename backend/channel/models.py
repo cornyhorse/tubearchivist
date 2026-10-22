@@ -28,6 +28,14 @@ class EmbyNumbering(models.TextChoices):
     PLAYLIST_POSITION = "playlist_position", "Playlist position (renumbers)"
 
 
+class EmbyShow(models.TextChoices):
+    """whether a channel gets its own show in the Emby library"""
+
+    AUTO = "auto", "Subscribed channels only"
+    ALWAYS = "always", "Always"
+    NEVER = "never", "Never: its videos go to Other videos"
+
+
 class Channel(models.Model):
     """a youtube channel, indexed or subscribed"""
 
@@ -61,6 +69,11 @@ class Channel(models.Model):
         max_length=32,
         choices=EmbyNumbering.choices,
         default=EmbyNumbering.DATE,
+    )
+    emby_show = models.CharField(
+        max_length=8,
+        choices=EmbyShow.choices,
+        default=EmbyShow.AUTO,
     )
     # opt in: a check of this channel downloads what the rules allow
     auto_download = models.BooleanField(default=False)
@@ -123,6 +136,8 @@ class Channel(models.Model):
         # fork setting: only in docs written by the fork, ES docs keep default
         if doc.get("emby_numbering"):
             fields["emby_numbering"] = doc["emby_numbering"]
+        if doc.get("emby_show"):
+            fields["emby_show"] = doc["emby_show"]
         if "auto_download" in doc:
             fields["auto_download"] = bool(doc["auto_download"])
         if "emby_tags" in doc:
@@ -167,6 +182,7 @@ class Channel(models.Model):
             "channel_tags": list(self.tags),
             "channel_tabs": list(self.tabs),
             "emby_numbering": self.emby_numbering,
+            "emby_show": self.emby_show,
             "auto_download": self.auto_download,
             "emby_tags": list(self.emby_tags),
         }

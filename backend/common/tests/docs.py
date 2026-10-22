@@ -16,6 +16,7 @@ BASE_CHANNEL = {
     "channel_tags": ["trains", "coasters"],
     "channel_tabs": ["videos", "shorts"],
     "emby_numbering": "date",
+    "emby_show": "auto",
     "auto_download": False,
     "emby_tags": [],
 }

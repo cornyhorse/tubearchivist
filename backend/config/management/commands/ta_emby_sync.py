@@ -9,7 +9,7 @@ from emby.src.sync import (
     EmbyPaths,
     sync_all,
     sync_channel,
-    sync_playlist,
+    sync_other,
     validate_output_root,
 )
 from emby.src.writer import EmbyRootError
@@ -24,14 +24,18 @@ def _env_root() -> Path | None:
 
 
 class Command(BaseCommand):
-    """sync channels and playlists into an Emby library root"""
+    """sync channels and the Other videos show into an Emby library root"""
 
     help = "Write <episodedetails> NFOs, thumbs and media links for Emby"
 
     def add_arguments(self, parser):
         parser.add_argument("output_root", type=Path)
         parser.add_argument("--channel", help="only this channel id")
-        parser.add_argument("--playlist", help="only this playlist id")
+        parser.add_argument(
+            "--other",
+            action="store_true",
+            help="only the Other videos show",
+        )
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--verbose-changes", action="store_true")
 
@@ -64,7 +68,7 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
         try:
             report = self._sync(paths, options)
-        except (EmbyLayoutOutdated, EmbyRootError) as err:
+        except (EmbyLayoutOutdated, EmbyRootError, ValueError) as err:
             raise CommandError(str(err)) from err
 
         if not dry_run and output_root == _env_root():
@@ -93,6 +97,6 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
         if options["channel"]:
             return sync_channel(options["channel"], paths, dry_run)
-        if options["playlist"]:
-            return sync_playlist(options["playlist"], paths, dry_run)
+        if options["other"]:
+            return sync_other(paths, dry_run)
         return sync_all(paths, dry_run)

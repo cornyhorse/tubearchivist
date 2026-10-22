@@ -105,3 +105,132 @@ because the tree stays as it is.
 - A second sync changes nothing, and later title changes rename nothing.
 - A spilled number goes back to its own day.
 - The dry run leaves the database and the disk untouched.
+
+
+# Layout 3: shows are channels, the rest is in "Other videos" (fork-v0.5.0)
+
+Design: `emby-v050-design.md` sections 4 and 6. The same command, `manage.py ta_emby_migrate_layout`, takes a
+database on layout 2 to layout 3 (and one on layout 1 through both).
+
+| | Layout 2 | Layout 3 |
+|---|---|---|
+| Shows in `.emby/` | one per channel **and** one per playlist (`playlists/`) | one per channel that has a show, plus **Other videos** |
+| Which channel has a show | all | `Channel.emby_show`: `auto` = subscribed (default), `always`, `never` |
+| Videos of channels without a show | a one-off show named after the channel | `channels/Other videos [other]/`, Season = upload year, numbering `year_frozen`; each episode's studio is the uploader and its plot starts "From <channel>." |
+| Access tags | none | channel shows carry `emby_tags` in `tvshow.nfo`; the Other videos show carries none; episodes (in every show) carry the tags of their playlists and channel that the show's tag does not give |
+| Playlists | shows | not written to `.emby/`; Emby playlists come from a later change |
+
+The gate is the same: until the command has run, `emby_sync` and the API-triggered syncs refuse
+(`EmbyLayoutOutdated`). 2 to 3 changes no stored number. The sync that follows removes `playlists/*` and the
+shows of channels without a show, and creates Other videos. Stored numbers of those channels are kept, so
+switching a channel back to `always` returns its show with the same names.
+
+## Who can see what (tags in layout 3)
+
+A video is visible to a tag's users when its channel carries the tag or any playlist it is in does. The channel show
+carries the channel's tags; every episode also carries the tags of its playlists (and, in Other videos, of its
+channel) that the show's own tag does not give, so a tagged playlist approves its videos even inside an untagged
+channel show. Both `ta_emby_import_tags --dry-run` and `ta_emby_migrate_layout --dry-run` print, per tag:
+
+    visible to David: 3100 videos now, 3112 after, lost 0, gained 12, 4 Emby items outside the TA tree not compared
+      LOST <youtube_id> <title>        (first 30)
+
+"now" is what Emby shows for the tag today: the shows carrying it, read only, matched to videos through the writer's
+manifest. It does not count tags on single episodes or Emby's rating rule (`AllowTagOrRating` with a maximum
+rating), so a rerun after layout 3 under-counts "now" and over-counts "gained"; LOST is reliable for today's
+show-tag access. "after" is what TA will tag. Anything on a LOST line is access the person has today and would lose: tag
+the channel or playlist (or `ta_emby_import_tags --map`) before the run. Items outside the TA tree (the hand made
+YT-Approved folder) can't be compared and are only counted.
+
+## What the dry run prints
+
+`ta_emby_migrate_layout --dry-run` runs the whole thing in a transaction, prints, and rolls back:
+
+- the visibility lines above;
+- `show removed: <folder> (N files)` for every playlist show and every channel show that goes;
+- `playlist shows removed N, channel shows moved to Other videos N, episodes created in Other videos N`;
+- **watch history** (read only, uses the media server settings): for each Emby user, the removed media files they
+  have played or started, listed by path. A removed file is a new item in Emby, so that state is lost (Matt has
+  accepted that loss; the list is printed for the record). The playlist-show copies of channel episodes are separate
+  items from the channel-show ones; the channel-show copy keeps its state. Files that are only **renamed** are
+  counted separately (`renamed files with watch history`): Emby normally keeps the state of a renamed file, so
+  check a few after the run. If the server can't be read it says `watch history not read: <why>`;
+- the usual `renamed/created/updated/deleted` counts.
+
+## First production run (needs Matt's OK at each step)
+
+Prerequisites: the images of PRs 26, 27, 29 and 28 deployed together (merge order below), Matt's OK to deploy, and
+the Emby tags set on the channels David may see. Until the migration runs, the hourly `emby_write` fails with the
+gate message (a sync on layout 2 is refused on purpose) and the tree stays as it is.
+
+1. **Snapshot:** `pg_dump`, and `find .../.emby -type f -printf "%i %p\n" > emby-tree-before.txt`.
+2. **No sync running** (TA task list). Expect the counts to **drift**: the CoasterFan2105 indexing (about 156
+   files) and the orphan videos being indexed (about 534) change the library while you work. Run the preview
+   right before the real run, pause those jobs if you can, and compare the real run with that preview, not an
+   older one.
+3. **Import the tags** from Emby: `ta_emby_import_tags --dry-run`, check every show maps (the YT-Approved
+   CoasterFan2105 maps to the TA channel) and read the visibility lines, then run it. Do not sync before the
+   migration: the image refuses on layout 2.
+4. **CoasterFan2105:** check the channel is subscribed (else its videos land in Other videos; set `emby_show` to
+   `always` if it should keep its show). After the run, remove the hand-made YT-Approved CoasterFan show/folder
+   in Emby (its videos now come from the TA channel show).
+5. **Preview:** `ta_emby_migrate_layout --dry-run --verbose-changes > preview.txt`. Check:
+   - `errors 0`;
+   - **no LOST lines** for any tag (or each one is intended);
+   - the removed shows are exactly the playlist shows and the channels expected to lose their show;
+   - `episodes created in Other videos` equals the media in the removed channel shows plus the videos of
+     unfollowed channels;
+   - the watch history lists (for the record);
+   - **hand-set metadata**: the list `hand-set metadata on N items that the item refresh after the run clears`
+     (ratings, genres, tags TA does not use, on items in the TA tree). The refresh after the run replaces an
+     item's metadata with its NFO, which TA writes with tags, title, dates and plot only, so those are dropped.
+     A rating can be an access route for a user with `AllowTagOrRating`, and the visibility lines do not see it.
+     Move what matters into TA (tags) or accept the loss;
+   - `item refreshes queued: N (S shows, E episodes), 50 per run, R runs 60 s apart`: only NFOs updated in place are
+     refreshed, shows first, never the whole show; a renamed file is a new item the scan reads anyway.
+6. **Run it, in a quiet window** (nobody watching, no other Emby scan or refresh running, no TA rebuild churn):
+   `ta_emby_migrate_layout --verbose-changes > run.txt`; counts match the preview (within the drift). The real run
+   **refuses before touching the database** if anyone would lose access they have now (the LOST lines), or if Emby
+   can't be read to check; the fix is to tag the channels/playlists in TA (`ta_emby_import_tags`), `--accept-lost`
+   only when the loss is intended. This matters because the item refresh sets an item's tags to exactly what TA
+   writes: a tag only set by hand in Emby on a show whose TA channel does not carry it is taken away.
+7. **If the sync fails after the database part committed** (the 2026-10-21 case): the command reports
+   `already on Emby layout`; fix the cause and run `ta_emby_sync .../.emby --dry-run`, then without
+   `--dry-run`. It finishes the same renames. The NFOs the stopped sync had already rewritten are not lost for
+   Emby: the writer puts each rewritten NFO in the media server's pending set (Redis) the moment it writes it, and
+   the set is emptied only by refreshing the item, so the rerun, the next `emby_write` and the hourly
+   `emby_health` all queue the refresh job for what waits (health reports it after 6 hours). If Redis itself was
+   lost, the rerun cannot know which NFOs changed: refresh the tagged channels' shows from Emby's dashboard
+   (Refresh metadata, replace existing metadata).
+8. **Idempotence:** `ta_emby_sync .../.emby --dry-run` reports `renamed 0, created 0, deleted 0`.
+9. **Tell Emby and check:** the real run itself queues the notify and the item refreshes (the same step as the
+   `emby_write` job and `ta_emby_sync`: `after_sync`); the notify debounce is 30 s. Expect Emby to work for a
+   while: first the library scan of the moved and new files (about 1,000+ items move into Other videos and the
+   renamed ones are new items), then the item refreshes from the preview line, 50 per run a minute apart, so
+   roughly `N / 50` minutes for N refreshes (a few hundred take under ten minutes of queueing, and Emby then
+   re-reads each item's files over CIFS). Do not start other scans meanwhile. Check the queue for `media_notify`
+   and `media_refresh_items` and that they finish; `refresh_batch_size` and `refresh_pause_seconds` in the media
+   server settings pace it. The refresh matters: Emby does not re-read an existing item's NFO on a scan, so the
+   new episode tags (a tagged playlist inside an untagged channel show) reach Emby only through it. Then in Emby
+   (as admin and as David) the YT library shows channel shows and "Other videos" for admin, David sees only
+   tagged shows plus tagged episodes (playlists), and "Other videos" is not in his list.
+10. **If wrong:** if the Emby playlist sync (PR 28) has run, undo it first (see docs/fork/emby-playlists.md:
+    `playlists_enabled` off, then `ta_emby_playlists`), then restore the `pg_dump` and redeploy the previous
+    image; the old image's next sync recreates the playlist shows and the one-off channel shows (one more change
+    pass; ask Matt first).
+
+## Tags set in Emby but not in TA, and the reverse
+
+An item refresh sets a show's tags in Emby to exactly the tags TA writes. A tag that exists only in Emby (set by hand
+on a show whose TA channel or playlist does not carry it) is therefore **taken away at that show's next refresh**,
+i.e. at its next NFO change. The hourly `emby_health` job reports every such show (`tagged X by hand but TA does not
+tag channel Y: ... tag it in TA`), skipping shows whose refresh is already waiting; fix it with
+`ta_emby_import_tags`. The reverse (tagged in TA, not yet in Emby) is normal for a few minutes after a change: the
+item refresh applies it, and the health check reports a refresh that has waited over 6 hours.
+
+## Merge and deploy order of the v0.5.0 PRs
+
+`delete_branch_on_merge` is off, so a merged parent does not retarget its children. Use merge commits (no squash):
+#26 into main; `gh pr edit 27 --base main`, check its diff, merge; the same for #29 and then #28 (its base
+is the UTC branch). Run the tests on main with all four before building the image, and deploy all four together:
+the layout migration (2 to 3 to 4) must run once, on the image that has all of them.

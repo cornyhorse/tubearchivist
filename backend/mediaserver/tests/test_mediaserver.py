@@ -334,6 +334,7 @@ def test_series_with_tag_and_find_item(http):
         {
             "Items": [
                 {
+                    "Id": 7,
                     "Name": "Show",
                     "Path": "/x/Show [UC1]",
                     "ProviderIds": {"youtube": "UC1"},
@@ -350,12 +351,13 @@ def test_series_with_tag_and_find_item(http):
 
     assert shows == [
         {
+            "id": "7",
             "name": "Show",
             "path": "/x/Show [UC1]",
             "provider_ids": {"youtube": "UC1"},
             "tags": ["David", "Kids"],
         },
-        {"name": "", "path": "", "provider_ids": {}, "tags": []},
+        {"id": "", "name": "", "path": "", "provider_ids": {}, "tags": []},
     ]
     query = http.calls[-1][3]["params"]
     assert query["Tags"] == "David" and query["IncludeItemTypes"] == "Series"
@@ -369,6 +371,26 @@ def test_media_by_stem():
         "c/A/S1/e-thumb.jpg": {"role": "thumb"},
     }
     assert ms_jobs.media_by_stem(files) == {"c/A/S1/e": "c/A/S1/e.mp4"}
+
+
+def test_series_episode_paths(http, monkeypatch):
+    configure()
+    client = MediaServerClient(
+        Connection("emby", "http://emby.test:8096", SECRET)
+    )
+    http.responses[("GET", "/Items")] = (
+        200,
+        {"Items": [{"Path": "/a.mkv"}, {"Id": 1}], "TotalRecordCount": 3},
+    )
+    monkeypatch.setattr(client_mod, "PAGE", 2)
+    assert client.series_episode_paths("7") == ["/a.mkv", "/a.mkv"]
+    assert http.calls[-1][3]["params"]["ParentId"] == "7"
+
+
+def test_from_server_path():
+    configure()
+    assert settings.from_server_path("/mnt/media/.emby/c/e.mkv") == "c/e.mkv"
+    assert settings.from_server_path("/elsewhere/e.mkv") is None
 
 
 def test_changed_items():
@@ -666,6 +688,42 @@ def test_media_refresh_items_keeps_what_it_did_not_reach(http):
     assert RedisBase().conn.smembers(key) == {"series:s2"}
 
 
+def test_library_metadata(http, monkeypatch):
+    configure()
+    client = MediaServerClient(
+        Connection("emby", "http://emby.test:8096", SECRET)
+    )
+    http.responses[("GET", "/Items")] = (
+        200,
+        {
+            "Items": [
+                {
+                    "Path": "/a/e.mkv",
+                    "OfficialRating": "TV-Y",
+                    "Genres": ["Kids"],
+                    "TagItems": [{"Name": "x"}, {"Name": None}],
+                },
+                {"CustomRating": "G"},
+            ],
+            "TotalRecordCount": 3,
+        },
+    )
+    monkeypatch.setattr(client_mod, "PAGE", 2)
+
+    items = client.library_metadata()
+
+    assert items[0] == {
+        "path": "/a/e.mkv",
+        "rating": "TV-Y",
+        "genres": ["Kids"],
+        "tags": ["x"],
+    }
+    assert items[1] == {"path": "", "rating": "G", "genres": [], "tags": []}
+    assert len(items) == 4  # two pages of two
+    fields = http.calls[-1][3]["params"]["Fields"]
+    assert "OfficialRating" in fields and "TagItems" in fields
+
+
 def test_pending_set_remembers_since_when():
     assert pending.since() is None and pending.count() == 0
     pending.add("series:a")
@@ -678,9 +736,3 @@ def test_pending_set_remembers_since_when():
     assert pending.since() == first
     pending.done("episode:b")
     assert pending.since() is None
-
-
-def test_from_server_path():
-    configure()
-    assert settings.from_server_path("/mnt/media/.emby/c/e.mkv") == "c/e.mkv"
-    assert settings.from_server_path("/elsewhere/e.mkv") is None

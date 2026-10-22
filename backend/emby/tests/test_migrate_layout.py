@@ -7,6 +7,7 @@ import io
 import os
 import shutil
 from datetime import date
+from zoneinfo import ZoneInfo
 
 import pytest
 from appsettings.models import ConfigDocument
@@ -24,7 +25,12 @@ from emby.src.migrate_layout import (
     place_spilled,
 )
 from emby.src.numbering import NumberingError
-from emby.src.sync import LAYOUT_KEY, layout_version, sync_all
+from emby.src.sync import (
+    LAYOUT_KEY,
+    layout_version,
+    playlist_numbers,
+    sync_all,
+)
 from emby.tests.conftest import add_video
 from emby.tests.test_sync import numbers
 from emby.tests.test_writer_noserverino import noserverino
@@ -45,6 +51,8 @@ def old_layout(paths, monkeypatch):
     with monkeypatch.context() as patch:
         patch.setattr(numbering, "DATE_SLOTS_PER_DAY", 10)
         sync_all(paths)
+        # the playlist was a show of its own, numbered by position
+        playlist_numbers(Playlist.objects.get(), ZoneInfo("UTC"))
     EpisodeNumber.objects.update(name="", series_name="")
     ConfigDocument.objects.filter(key=LAYOUT_KEY).delete()
 
@@ -80,13 +88,12 @@ def test_migration_renames_once(library, monkeypatch):
     assert summary.playlists_frozen == ["PL1"]
     assert summary.names_frozen == 7
     assert numbers(root / "channels")["v1"] == (2023, 111400)
-    assert numbers(root / "playlists") == {"v3": (1, 1), "v1": (1, 3)}
-    # channel: 3 episodes x (media, nfo, thumb); the playlist keeps its
-    # numbers, so it doesn't move
+    assert not (root / "playlists").exists()
+    # channel: 3 episodes x (media, nfo, thumb)
     assert len(report.renamed) == 9
     assert not report.created and not report.errors
     assert media_inodes(root) == inodes
-    assert layout_version() == 2
+    assert layout_version() == 3
 
     assert sync_all(library).changed == 0
     Video.objects.update(title="Renamed later")
@@ -237,7 +244,7 @@ def test_command_no_sync(library, monkeypatch, settings_env):
     output = run("ta_emby_migrate_layout", "--no-sync")
 
     assert "not synced" in output
-    assert layout_version() == 2
+    assert layout_version() == 3
 
 
 def test_command_needs_emby_root(library, monkeypatch, settings_env):
@@ -262,14 +269,14 @@ def test_commands_report_failed_series(library, monkeypatch, settings_env):
     old_layout(library, monkeypatch)
 
     def broken(*_):
-        raise NumberingError("duplicate playlist positions")
+        raise NumberingError("duplicate positions")
 
-    monkeypatch.setattr(sync_module, "playlist_series", broken)
+    monkeypatch.setattr(sync_module, "other_series", broken)
 
     output = run("ta_emby_migrate_layout")
 
     assert f"back to its own day: {CHANNEL_ID}/v1" in output
-    assert "error: playlists/PL1: duplicate playlist positions" in output
+    assert "error: channels/other: duplicate positions" in output
     with pytest.raises(CommandError, match="1 series failed"):
         run("ta_emby_sync", str(library.output_root))
 

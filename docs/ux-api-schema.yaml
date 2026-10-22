@@ -4378,6 +4378,15 @@ components:
             $ref: '#/components/schemas/ChannelTabsEnum'
         emby_numbering:
           $ref: '#/components/schemas/NumberingSchemeEnum'
+        emby_show:
+          allOf:
+          - $ref: '#/components/schemas/EmbyShowEnum'
+          description: |-
+            own show in Emby: auto = subscribed channels only; never: its videos are in the Other videos show
+
+            * `auto` - auto
+            * `always` - always
+            * `never` - never
         download_rule:
           allOf:
           - $ref: '#/components/schemas/DownloadRule'
@@ -4518,6 +4527,15 @@ components:
             $ref: '#/components/schemas/ChannelTabsEnum'
         emby_numbering:
           $ref: '#/components/schemas/NumberingSchemeEnum'
+        emby_show:
+          allOf:
+          - $ref: '#/components/schemas/EmbyShowEnum'
+          description: |-
+            own show in Emby: auto = subscribed channels only; never: its videos are in the Other videos show
+
+            * `auto` - auto
+            * `always` - always
+            * `never` - never
         download_rule:
           allOf:
           - $ref: '#/components/schemas/DownloadRule'
@@ -4655,6 +4673,15 @@ components:
           $ref: '#/components/schemas/ChannelOverwrite'
         emby_numbering:
           $ref: '#/components/schemas/ChannelUpdateEmbyNumberingEnum'
+        emby_show:
+          allOf:
+          - $ref: '#/components/schemas/EmbyShowEnum'
+          description: |-
+            own show in Emby: auto = subscribed channels only; never: its videos are in the Other videos show
+
+            * `auto` - auto
+            * `always` - always
+            * `never` - never
         download_rule:
           allOf:
           - $ref: '#/components/schemas/DownloadRule'
@@ -5046,6 +5073,16 @@ components:
       - override
       - rule
       - source
+    EmbyShowEnum:
+      enum:
+      - auto
+      - always
+      - never
+      type: string
+      description: |-
+        * `auto` - auto
+        * `always` - always
+        * `never` - never
     EmbyTags:
       type: object
       description: 'GET /api/emby/tags/: the tags to offer on channels and playlists'

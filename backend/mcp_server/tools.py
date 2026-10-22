@@ -7,6 +7,7 @@ Functionality:
 
 from datetime import timedelta
 
+from channel.models import Channel, EmbyShow
 from common.src.searching import SearchForm
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
@@ -222,6 +223,17 @@ def set_emby_tags(args: dict) -> dict:
         raise ToolError(f"{kind} {series_id} is not in the archive")
     request_emby_write(created_by=AGENT)
     return {"kind": kind, "id": series_id, "emby_tags": clean_tags(tags)}
+
+
+def set_emby_show(args: dict) -> dict:
+    """whether a channel has its own show in Emby"""
+    channel_id, show = args.get("id"), args.get("show")
+    if show not in EmbyShow.values:
+        raise ToolError(f"show is one of {EmbyShow.values}")
+    if not Channel.objects.filter(pk=channel_id).update(emby_show=show):
+        raise ToolError(f"channel {channel_id} is not in the archive")
+    request_emby_write(created_by=AGENT)
+    return {"id": channel_id, "emby_show": show}
 
 
 def list_queue(args: dict) -> dict:
@@ -528,6 +540,20 @@ TOOLS = [
         },
         set_emby_tags,
         required=["kind", "id", "tags"],
+        idempotent=True,
+    ),
+    _tool(
+        "set_emby_show",
+        "Set a channel's Emby show",
+        "Whether a channel has its own show in Emby. auto (default): only "
+        "subscribed channels; always; never: its videos are in the single "
+        "Other videos show, reached through playlists.",
+        {
+            "id": {"type": "string", "description": "channel id"},
+            "show": {"enum": EmbyShow.values},
+        },
+        set_emby_show,
+        required=["id", "show"],
         idempotent=True,
     ),
     _tool(
