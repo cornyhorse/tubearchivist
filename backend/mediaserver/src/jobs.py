@@ -14,11 +14,11 @@ from jobs.models import CreatedBy, Job, Priority
 from jobs.src.context import JobContext
 from jobs.src.engine import enqueue
 from jobs.src.registry import JobError, register
-from mediaserver.src import settings
+from mediaserver.src import pending, settings
 from mediaserver.src.client import MediaServerClient, MediaServerError
 
 PENDING_KEY = "mediaserver:pending"
-REFRESH_KEY = "mediaserver:refresh_pending"
+REFRESH_KEY = pending.REFRESH_KEY
 
 
 def _conn(key: str = PENDING_KEY):
@@ -52,6 +52,8 @@ def changed_items(report, media: dict[str, str]) -> set[str]:
     an NFO of a known item on a media update, and access tags live in NFOs
     - "series:<folder>": a show whose tvshow.nfo changed
     - "episode:<media relpath>": an episode whose NFO changed
+    (the writer records these itself as it rewrites the NFOs, see
+    mediaserver/src/pending.py; this is for a preview of the count)
     only NFOs that were updated in place: a renamed file is a new item to
     the server, which reads its NFO on the scan (refreshing it as well
     would only make the server read it twice)
@@ -68,21 +70,22 @@ def changed_items(report, media: dict[str, str]) -> set[str]:
 
 
 def queue_item_refresh(
-    items: set[str] | list[str],
     created_by: str = CreatedBy.SYSTEM,
     parent: Job | None = None,
     priority: int = Priority.LOW,
 ) -> Job | None:
     """
-    add items (changed_items) to the refresh set and queue the refresh job
-    behind the notify (same debounce, so new items are known first); None
-    if the server is off
+    queue the refresh job behind the notify (same debounce, so new items
+    are known first) if any item waits in the pending set, whoever put
+    it there: a sync that stopped halfway, or an earlier run of the job
+    that could not reach the server. None if nothing waits or the server
+    is off.
     """
     stored = settings.load()
-    if not stored["type"] or not stored["notify_enabled"] or not items:
+    if not stored["type"] or not stored["notify_enabled"]:
         return None
-    conn, key = _conn(REFRESH_KEY)
-    conn.sadd(key, *sorted(items))
+    if not pending.count():
+        return None
     delay = timedelta(seconds=stored["debounce_seconds"] + 5)
     job, _ = enqueue(
         "media_refresh_items",
@@ -194,16 +197,11 @@ def media_refresh_items(ctx: JobContext) -> dict:
     conn = settings.connection()
     if not conn:
         return {"skipped": "no media server configured"}
-    redis_conn, key = _conn(REFRESH_KEY)
-    pending = sorted(
-        (e.decode() if isinstance(e, bytes) else e)
-        for e in redis_conn.smembers(key)
-    )
-    pending.sort(key=_refresh_order)
-    if not pending:
+    waiting = sorted(pending.entries(), key=_refresh_order)
+    if not waiting:
         return {"items": 0}
     stored = settings.load()
-    batch = pending[: stored["refresh_batch_size"]]
+    batch = waiting[: stored["refresh_batch_size"]]
     client = MediaServerClient(conn)
     refreshed = unknown = 0
     try:
@@ -218,10 +216,10 @@ def media_refresh_items(ctx: JobContext) -> dict:
             else:
                 client.refresh_item(item_id)
                 refreshed += 1
-            redis_conn.srem(key, entry)
+            pending.done(entry)
     except MediaServerError as err:
         raise JobError(str(err)) from err
-    left = len(pending) - len(batch)
+    left = len(waiting) - len(batch)
     if left:
         enqueue(
             "media_refresh_items",

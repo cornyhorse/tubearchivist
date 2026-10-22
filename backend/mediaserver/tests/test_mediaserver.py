@@ -16,7 +16,7 @@ from jobs.src.engine import enqueue
 from jobs.src.registry import JobError
 from mediaserver.src import client as client_mod
 from mediaserver.src import jobs as ms_jobs
-from mediaserver.src import settings
+from mediaserver.src import pending, settings
 from mediaserver.src.client import MediaServerClient, MediaServerError
 from mediaserver.src.settings import Connection
 
@@ -36,6 +36,7 @@ def fixture_env(monkeypatch, tmp_path):
     keys = [
         RedisBase.NAME_SPACE + ms_jobs.PENDING_KEY,
         RedisBase.NAME_SPACE + ms_jobs.REFRESH_KEY,
+        RedisBase.NAME_SPACE + pending.SINCE_KEY,
     ]
     conn.delete(*keys)
     yield
@@ -397,16 +398,27 @@ def test_many_changed_episodes_stay_single_refreshes():
 
 
 def test_queue_refresh_debounced():
-    assert ms_jobs.queue_item_refresh({"series:A"}) is None  # not configured
+    assert queue({"series:A"}) is None  # not configured
     configure()
-    first = ms_jobs.queue_item_refresh({"series:A"})
-    second = ms_jobs.queue_item_refresh({"series:B"})
+    first = queue({"series:A"})
+    second = queue({"series:B"})
 
     assert first.pk == second.pk
     settings.update({"notify_enabled": False})
-    assert ms_jobs.queue_item_refresh({"series:C"}) is None
+    assert queue({"series:C"}) is None
     configure(notify_enabled=True)
-    assert ms_jobs.queue_item_refresh(set()) is None
+    # whoever put them there, waiting items get a job; none waiting, none
+    assert ms_jobs.queue_item_refresh() is not None
+    for entry in pending.entries():
+        pending.done(entry)
+    assert queue(set()) is None
+
+
+def queue(entries):
+    """put items in the pending set and queue the refresh job"""
+    for entry in entries:
+        pending.add(entry)
+    return ms_jobs.queue_item_refresh()
 
 
 def found(path, item_id=42):
@@ -420,7 +432,7 @@ def test_media_refresh_items(http):
     configure()
     assert run("media_refresh_items")[0] == {"items": 0}
 
-    ms_jobs.queue_item_refresh({"episode:o/e.mp4", "series:channels/A [x]"})
+    queue({"episode:o/e.mp4", "series:channels/A [x]"})
     paths = {"channels/A [x]": "Series", "o/e.mp4": "Episode"}
     seen = []
 
@@ -459,9 +471,7 @@ def test_media_refresh_items(http):
 
 def test_media_refresh_items_is_paced(http):
     configure(refresh_batch_size=2, refresh_pause_seconds=120)
-    ms_jobs.queue_item_refresh(
-        {"series:s2", "series:s1", "episode:e1.mp4", "episode:e2.mp4"}
-    )
+    queue({"series:s2", "series:s1", "episode:e1.mp4", "episode:e2.mp4"})
     Job.objects.all().delete()
     http.responses[("GET", "/Items")] = (200, {"Items": []})
 
@@ -486,7 +496,7 @@ def test_media_refresh_items_is_paced(http):
 
 def test_media_refresh_items_unknown_and_failure(http):
     configure()
-    ms_jobs.queue_item_refresh({"series:channels/A"})
+    queue({"series:channels/A"})
     http.responses[("GET", "/Items")] = (200, {"Items": []})
     assert run("media_refresh_items")[0] == {
         "refreshed": 0,
@@ -495,7 +505,7 @@ def test_media_refresh_items_unknown_and_failure(http):
     }
 
     # the server ignores the Path filter and answers with another item
-    ms_jobs.queue_item_refresh({"series:channels/A"})
+    queue({"series:channels/A"})
     http.responses[("GET", "/Items")] = found("/somewhere/else")
     assert run("media_refresh_items")[0] == {
         "refreshed": 0,
@@ -503,7 +513,7 @@ def test_media_refresh_items_unknown_and_failure(http):
         "left": 0,
     }
 
-    ms_jobs.queue_item_refresh({"series:channels/A", "series:channels/B"})
+    queue({"series:channels/A", "series:channels/B"})
     http.responses[("GET", "/Items")] = (500, None)
     with pytest.raises(JobError, match="HTTP 500"):
         run("media_refresh_items")
@@ -521,7 +531,6 @@ def test_emby_write_queues_notify(monkeypatch, http):
     report = SyncReport(created=["channels/A/Season 1/e.nfo"])
     monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
     monkeypatch.setattr(handlers, "sync_all", lambda paths: report)
-    monkeypatch.setattr(handlers, "_media_stems", lambda paths: {})
     job, _ = enqueue("emby_write", dispatch=False)
 
     handlers.emby_write(JobContext(job))
@@ -640,7 +649,7 @@ def test_secret_never_in_env_dump():
 
 def test_media_refresh_items_keeps_what_it_did_not_reach(http):
     configure()
-    ms_jobs.queue_item_refresh({"series:s1", "series:s2"})
+    queue({"series:s1", "series:s2"})
     answers = iter([found("/mnt/media/.emby/s1"), (500, None)])
 
     def flaky(method, url, headers=None, timeout=None, **kwargs):
@@ -655,3 +664,23 @@ def test_media_refresh_items_keeps_what_it_did_not_reach(http):
 
     key = RedisBase.NAME_SPACE + ms_jobs.REFRESH_KEY
     assert RedisBase().conn.smembers(key) == {"series:s2"}
+
+
+def test_pending_set_remembers_since_when():
+    assert pending.since() is None and pending.count() == 0
+    pending.add("series:a")
+    first = pending.since()
+    pending.add("episode:b")
+    assert pending.since() == first and pending.count() == 2
+    assert pending.entries() == ["episode:b", "series:a"]
+
+    pending.done("series:a")
+    assert pending.since() == first
+    pending.done("episode:b")
+    assert pending.since() is None
+
+
+def test_from_server_path():
+    configure()
+    assert settings.from_server_path("/mnt/media/.emby/c/e.mkv") == "c/e.mkv"
+    assert settings.from_server_path("/elsewhere/e.mkv") is None

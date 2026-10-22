@@ -21,6 +21,7 @@ import os
 import re
 import secrets
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -368,8 +369,13 @@ class EmbyWriter:
         file_mode: int = 0o644,
         dir_mode: int = 0o755,
         media_root: Path | None = None,
+        on_update: Callable[[DesiredFile], None] | None = None,
     ):
         self.root = Path(root)
+        # called with each existing data file the moment it was rewritten
+        # (a real run only), before the sync goes on: whoever needs to know
+        # about it is told even if the sync stops halfway
+        self.on_update = on_update
         # where the preflight puts its probe; defaults to a source's dir
         self.media_root = Path(media_root) if media_root else None
         self.dry_run = dry_run
@@ -655,6 +661,8 @@ class EmbyWriter:
         self._record(item)
         if exists:
             self.report.updated.append(item.relpath)
+            if self.on_update and not self.dry_run:
+                self.on_update(item)
         else:
             self.report.created.append(item.relpath)
 
