@@ -139,11 +139,10 @@ class MediaServerClient:
                 return str(item["Id"])
         return None
 
-    def refresh_item(self, item_id: str, recursive: bool = False) -> int:
+    def refresh_item(self, item_id: str) -> int:
         """
-        read the item's NFO again (and those below it if recursive), and
-        replace what the server holds with it. The default refresh mode
-        only fills in what is empty: a tag taken out of the NFO, or
+        read the item's NFO again and replace what the server holds with
+        it. The default refresh mode only fills in what is empty: a tag taken out of the NFO, or
         another one put in its place, stayed as it was (tested on Emby
         4.9.5.0), which would leave a user with access that was withdrawn.
         TA owns these NFOs; images are sidecar files (ReplaceAllImages
@@ -153,7 +152,7 @@ class MediaServerClient:
             "POST",
             f"/Items/{item_id}/Refresh",
             params={
-                "Recursive": "true" if recursive else "false",
+                "Recursive": "false",
                 "MetadataRefreshMode": "FullRefresh",
                 "ReplaceAllMetadata": "true",
                 "ReplaceAllImages": "false",

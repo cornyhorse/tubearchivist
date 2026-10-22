@@ -8,6 +8,7 @@ import requests
 from appsettings.models import ConfigDocument
 from common.src.env_settings import EnvironmentSettings
 from common.src.ta_redis import RedisBase
+from django.utils import timezone
 from emby.src.writer import SyncReport
 from jobs.models import Job, JobStatus
 from jobs.src.context import JobContext
@@ -379,29 +380,20 @@ def test_changed_items():
             "c/A/Season 1/unknown.nfo",
             "c/A/Season 1/e-thumb.jpg",
         ],
+        # a renamed file is a new item for the server: no refresh
         renamed=[("playlists/P/tvshow.nfo", "channels/B/tvshow.nfo")],
     )
     assert ms_jobs.changed_items(report, media) == {
         "series:channels/A",
-        "series:channels/B",
         "episode:c/A/Season 1/e.mp4",
     }
 
 
-def test_changed_items_past_the_limit_refreshes_the_show(monkeypatch):
-    monkeypatch.setattr(ms_jobs, "EPISODE_REFRESH_LIMIT", 2)
-    media = {
-        f"c/A [x]/Season 1/e{n}": f"c/A [x]/Season 1/e{n}.mp4"
-        for n in range(3)
-    }
-    report = SyncReport(
-        updated=[f"c/A [x]/Season 1/e{n}.nfo" for n in range(3)]
-        + ["channels/B/tvshow.nfo"]
-    )
-    assert ms_jobs.changed_items(report, media) == {
-        "tree:c/A [x]",
-        "series:channels/B",
-    }
+def test_many_changed_episodes_stay_single_refreshes():
+    media = {f"c/A/S1/e{n}": f"c/A/S1/e{n}.mp4" for n in range(300)}
+    report = SyncReport(updated=[f"c/A/S1/e{n}.nfo" for n in range(300)])
+    items = ms_jobs.changed_items(report, media)
+    assert len(items) == 300 and all(i.startswith("episode:") for i in items)
 
 
 def test_queue_refresh_debounced():
@@ -428,14 +420,8 @@ def test_media_refresh_items(http):
     configure()
     assert run("media_refresh_items")[0] == {"items": 0}
 
-    ms_jobs.queue_item_refresh(
-        {"series:channels/A [x]", "episode:o/e.mp4", "tree:channels/T [t]"}
-    )
-    paths = {
-        "channels/A [x]": "Series",
-        "o/e.mp4": "Episode",
-        "channels/T [t]": "Series",
-    }
+    ms_jobs.queue_item_refresh({"episode:o/e.mp4", "series:channels/A [x]"})
+    paths = {"channels/A [x]": "Series", "o/e.mp4": "Episode"}
     seen = []
 
     def lookup(method, url, headers=None, timeout=None, **kwargs):
@@ -452,29 +438,70 @@ def test_media_refresh_items(http):
     client_mod.requests.request = lookup
     result, _ = run("media_refresh_items")
 
-    assert result == {"refreshed": 3, "unknown": 0}
-    gets = {p["Path"]: p["IncludeItemTypes"] for m, u, p in seen if m == "GET"}
-    assert gets == {f"/mnt/media/.emby/{k}": v for k, v in paths.items()}
+    assert result == {"refreshed": 2, "unknown": 0, "left": 0}
+    asked = [
+        (p["Path"], p["IncludeItemTypes"]) for m, u, p in seen if m == "GET"
+    ]
+    # shows before episodes
+    assert asked == [
+        (f"/mnt/media/.emby/{k}", v)
+        for k, v in sorted(paths.items(), key=lambda i: i[1] != "Series")
+    ]
     posts = [(u, p) for m, u, p in seen if m == "POST"]
     assert all(u.endswith("/Items/42/Refresh") for u, _ in posts)
-    recursive = sorted(p["Recursive"] for _, p in posts)
-    assert recursive == ["false", "false", "true"]
     # a removed or replaced tag only goes if the NFO replaces what Emby holds
     assert all(p["MetadataRefreshMode"] == "FullRefresh" for _, p in posts)
     assert all(p["ReplaceAllMetadata"] == "true" for _, p in posts)
     assert all(p["ReplaceAllImages"] == "false" for _, p in posts)
+    assert all(p["Recursive"] == "false" for _, p in posts)
+    assert not Job.objects.filter(type="media_refresh_items", status="queued")
+
+
+def test_media_refresh_items_is_paced(http):
+    configure(refresh_batch_size=2, refresh_pause_seconds=120)
+    ms_jobs.queue_item_refresh(
+        {"series:s2", "series:s1", "episode:e1.mp4", "episode:e2.mp4"}
+    )
+    Job.objects.all().delete()
+    http.responses[("GET", "/Items")] = (200, {"Items": []})
+
+    result, job = run("media_refresh_items")
+
+    # the two shows first, then a follow-up run for the episodes
+    assert result == {"refreshed": 0, "unknown": 2, "left": 2}
+    asked = [c[3]["params"]["Path"] for c in http.calls if c[0] == "GET"]
+    assert asked == ["/mnt/media/.emby/s1", "/mnt/media/.emby/s2"]
+    follow = Job.objects.get(type="media_refresh_items", status="queued")
+    assert follow.created_by == job.created_by
+    waits = (follow.not_before - timezone.now()).total_seconds()
+    assert 100 < waits <= 120
+
+    conn = RedisBase().conn
+    key = RedisBase.NAME_SPACE + ms_jobs.REFRESH_KEY
+    assert conn.smembers(key) == {"episode:e1.mp4", "episode:e2.mp4"}
+    Job.objects.filter(pk=follow.pk).delete()
+    result, _ = run("media_refresh_items")
+    assert result["left"] == 0 and not conn.smembers(key)
 
 
 def test_media_refresh_items_unknown_and_failure(http):
     configure()
     ms_jobs.queue_item_refresh({"series:channels/A"})
     http.responses[("GET", "/Items")] = (200, {"Items": []})
-    assert run("media_refresh_items")[0] == {"refreshed": 0, "unknown": 1}
+    assert run("media_refresh_items")[0] == {
+        "refreshed": 0,
+        "unknown": 1,
+        "left": 0,
+    }
 
     # the server ignores the Path filter and answers with another item
     ms_jobs.queue_item_refresh({"series:channels/A"})
     http.responses[("GET", "/Items")] = found("/somewhere/else")
-    assert run("media_refresh_items")[0] == {"refreshed": 0, "unknown": 1}
+    assert run("media_refresh_items")[0] == {
+        "refreshed": 0,
+        "unknown": 1,
+        "left": 0,
+    }
 
     ms_jobs.queue_item_refresh({"series:channels/A", "series:channels/B"})
     http.responses[("GET", "/Items")] = (500, None)
@@ -609,3 +636,22 @@ def test_notify_and_refresh_api(api):
 def test_secret_never_in_env_dump():
     configure()
     assert SECRET not in str(os.environ)
+
+
+def test_media_refresh_items_keeps_what_it_did_not_reach(http):
+    configure()
+    ms_jobs.queue_item_refresh({"series:s1", "series:s2"})
+    answers = iter([found("/mnt/media/.emby/s1"), (500, None)])
+
+    def flaky(method, url, headers=None, timeout=None, **kwargs):
+        if method == "POST":
+            return SimpleNamespace(status_code=204, json=lambda: None)
+        status, body = next(answers)
+        return SimpleNamespace(status_code=status, json=lambda: body)
+
+    client_mod.requests.request = flaky
+    with pytest.raises(JobError, match="HTTP 500"):
+        run("media_refresh_items")
+
+    key = RedisBase.NAME_SPACE + ms_jobs.REFRESH_KEY
+    assert RedisBase().conn.smembers(key) == {"series:s2"}
