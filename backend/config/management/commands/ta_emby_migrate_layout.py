@@ -11,8 +11,12 @@ from django.db import transaction
 from emby.src.migrate_layout import AlreadyMigrated, migrate_layout
 from emby.src.shows_change import describe, watch_history_at_risk
 from emby.src.sync import paths_from_env, preflight, sync_all
-from emby.src.writer import EmbyRootError
+from emby.src.tags import known_tags
+from emby.src.visibility import before_state, compare, write_report
+from emby.src.writer import EmbyRootError, Manifest
 from jobs.src.locks import with_emby_lock
+from mediaserver.src import settings
+from mediaserver.src.client import MediaServerClient, MediaServerError
 
 
 class _DryRun(Exception):
@@ -52,6 +56,7 @@ class Command(BaseCommand):
         paths = paths_from_env()
         if not paths and not (options["no_sync"] or options["dry_run"]):
             raise CommandError("TA_EMBY_ROOT is not set; use --no-sync")
+        before = self._visibility_before(paths)
         try:
             if paths and not (options["no_sync"] and not options["dry_run"]):
                 # before the database changes: a root that can't take the
@@ -59,7 +64,7 @@ class Command(BaseCommand):
                 # dry run checks exactly what the real run checks
                 preflight(paths)
             if options["dry_run"]:
-                self._dry_run(paths, options)
+                self._dry_run(paths, options, before)
                 return
             summary = migrate_layout(
                 EnvironmentSettings.TZ, set(options["keep_playlist_position"])
@@ -68,12 +73,33 @@ class Command(BaseCommand):
             raise CommandError(str(err)) from err
 
         self._write_summary(summary, "")
+        self._compare(before, "")
         if options["no_sync"]:
             self.stdout.write("database migrated, not synced")
             return
         self._write_report(sync_all(paths), "", options)
 
-    def _dry_run(self, paths, options) -> None:
+    def _visibility_before(self, paths):
+        """
+        what each Emby tag opens now (read only), taken before anything
+        changes because a real sync rewrites the manifest it is matched by
+        """
+        conn = settings.connection()
+        if not (paths and conn):
+            return None
+        try:
+            files = Manifest(paths.output_root, dry_run=True).files
+            return before_state(MediaServerClient(conn), known_tags(), files)
+        except MediaServerError as err:
+            self.stdout.write(f"visibility not compared: {err}")
+            return None
+
+    def _compare(self, before, prefix: str) -> None:
+        """who sees what, now against after the change"""
+        if before is not None:
+            write_report(compare(before), self.stdout.write, prefix)
+
+    def _dry_run(self, paths, options, before) -> None:
         prefix = "[dry-run] "
         try:
             with transaction.atomic():
@@ -82,6 +108,7 @@ class Command(BaseCommand):
                     set(options["keep_playlist_position"]),
                 )
                 self._write_summary(summary, prefix)
+                self._compare(before, prefix)
                 if paths:
                     report = sync_all(paths, dry_run=True)
                     self._write_report(report, prefix, options)
@@ -124,6 +151,19 @@ class Command(BaseCommand):
                 self.stdout.write(f"{prefix}  {path}")
         if not error and not at_risk:
             self.stdout.write(f"{prefix}no watch history on removed items")
+        self._write_renamed(change, prefix)
+
+    def _write_renamed(self, change, prefix: str) -> None:
+        """watch state on files that only move: kept if Emby sees the move"""
+        at_risk, error = watch_history_at_risk(change.renamed_media)
+        if error or not at_risk:
+            return
+        self.stdout.write(
+            f"{prefix}renamed files with watch history (Emby normally keeps "
+            "it when a file is renamed; check a few after the run):"
+        )
+        for user, paths in at_risk.items():
+            self.stdout.write(f"{prefix}  {user}: {len(paths)} items")
 
     def _write_report(self, report, prefix: str, options) -> None:
         self._write_shows(report, prefix)

@@ -117,7 +117,7 @@ database on layout 2 to layout 3 (and one on layout 1 through both).
 | Shows in `.emby/` | one per channel **and** one per playlist (`playlists/`) | one per channel that has a show, plus **Other videos** |
 | Which channel has a show | all | `Channel.emby_show`: `auto` = subscribed (default), `always`, `never` |
 | Videos of channels without a show | a one-off show named after the channel | `channels/Other videos [other]/`, Season = upload year, numbering `year_frozen`; each episode's studio is the uploader and its plot starts "From <channel>." |
-| Access tags | none | channel shows carry `emby_tags` in `tvshow.nfo`; the Other videos show carries none, its episodes carry the tags of their playlists and channel |
+| Access tags | none | channel shows carry `emby_tags` in `tvshow.nfo`; the Other videos show carries none; episodes (in every show) carry the tags of their playlists and channel that the show's tag does not give |
 | Playlists | shows | not written to `.emby/`; Emby playlists come from a later change |
 
 The gate is the same: until the command has run, `emby_sync` and the API-triggered syncs refuse
@@ -125,39 +125,76 @@ The gate is the same: until the command has run, `emby_sync` and the API-trigger
 shows of channels without a show, and creates Other videos. Stored numbers of those channels are kept, so
 switching a channel back to `always` returns its show with the same names.
 
+## Who can see what (tags in layout 3)
+
+A video is visible to a tag's users when its channel carries the tag or any playlist it is in does. The channel show
+carries the channel's tags; every episode also carries the tags of its playlists (and, in Other videos, of its
+channel) that the show's own tag does not give, so a tagged playlist approves its videos even inside an untagged
+channel show. Both `ta_emby_import_tags --dry-run` and `ta_emby_migrate_layout --dry-run` print, per tag:
+
+    visible to David: 3100 videos now, 3112 after, lost 0, gained 12, 4 Emby items outside the TA tree not compared
+      LOST <youtube_id> <title>        (first 30)
+
+"now" is what Emby shows for the tag today (the shows carrying it, read only, matched to videos through the writer's
+manifest), "after" is what TA will tag. Anything on a LOST line is access the person has today and would lose: tag
+the channel or playlist (or `ta_emby_import_tags --map`) before the run. Items outside the TA tree (the hand made
+YT-Approved folder) can't be compared and are only counted.
+
 ## What the dry run prints
 
 `ta_emby_migrate_layout --dry-run` runs the whole thing in a transaction, prints, and rolls back:
 
+- the visibility lines above;
 - `show removed: <folder> (N files)` for every playlist show and every channel show that goes;
 - `playlist shows removed N, channel shows moved to Other videos N, episodes created in Other videos N`;
 - **watch history** (read only, uses the media server settings): for each Emby user, the removed media files they
-  have played or started, listed by path. A removed file is a new item in Emby, so that state is lost. The
-  playlist-show copies of channel episodes are separate items from the channel-show ones; the channel-show copy
-  keeps its state. If the server can't be read it says `watch history not read: <why>`;
+  have played or started, listed by path. A removed file is a new item in Emby, so that state is lost (Matt has
+  accepted that loss; the list is printed for the record). The playlist-show copies of channel episodes are separate
+  items from the channel-show ones; the channel-show copy keeps its state. Files that are only **renamed** are
+  counted separately (`renamed files with watch history`): Emby normally keeps the state of a renamed file, so
+  check a few after the run. If the server can't be read it says `watch history not read: <why>`;
 - the usual `renamed/created/updated/deleted` counts.
 
 ## First production run (needs Matt's OK at each step)
 
-Prerequisites: PR 1 (tags) and PR 2 (this) deployed, Matt's OK to deploy, and `emby_tags` set on the channels David
-may see (`ta_emby_import_tags --dry-run`, then without). Until the migration runs, the hourly `emby_write` fails with
-the gate message and the tree stays as it is.
+Prerequisites: the images of PRs 26, 27, 29 and 28 deployed together (merge order below), Matt's OK to deploy, and
+the Emby tags set on the channels David may see. Until the migration runs, the hourly `emby_write` fails with the
+gate message (a sync on layout 2 is refused on purpose) and the tree stays as it is.
 
 1. **Snapshot:** `pg_dump`, and `find .../.emby -type f -printf "%i %p\n" > emby-tree-before.txt`.
-2. **No sync running** (TA task list).
+2. **No sync running** (TA task list). Expect the counts to **drift**: the CoasterFan2105 indexing (about 156
+   files) and the orphan videos being indexed (about 534) change the library while you work. Run the preview
+   right before the real run, pause those jobs if you can, and compare the real run with that preview, not an
+   older one.
 3. **Import the tags** from Emby: `ta_emby_import_tags --dry-run`, check every show maps (the YT-Approved
-   CoasterFan2105 maps to the TA channel), then run it. A sync now (layout 2 is still active, tags are written
-   into the existing `tvshow.nfo` files) is optional.
-4. **Preview:** `ta_emby_migrate_layout --dry-run --verbose-changes > preview.txt`. Check:
+   CoasterFan2105 maps to the TA channel) and read the visibility lines, then run it. Do not sync before the
+   migration: the image refuses on layout 2.
+4. **CoasterFan2105:** check the channel is subscribed (else its videos land in Other videos; set `emby_show` to
+   `always` if it should keep its show). After the run, remove the hand-made YT-Approved CoasterFan show/folder
+   in Emby (its videos now come from the TA channel show).
+5. **Preview:** `ta_emby_migrate_layout --dry-run --verbose-changes > preview.txt`. Check:
    - `errors 0`;
-   - the removed shows are exactly the playlist shows and the channels Matt expects to lose their show;
-   - `episodes created in Other videos` equals the number of media files in the removed channel shows plus the
-     playlist-only videos (videos of unfollowed channels);
-   - the **watch history list**: decide per item whether the loss is acceptable (Matt's decision).
-5. **Run it:** `ta_emby_migrate_layout --verbose-changes > run.txt`; counts match the preview.
-6. **Idempotence:** `ta_emby_sync .../.emby --dry-run` reports `renamed 0, created 0, deleted 0`.
-7. **Tell Emby and check:** the notify job runs after the sync; then in Emby (as admin and as David) the YT library
-   shows channel shows and "Other videos" for admin, and David sees only tagged shows; "Other videos" is not in his
-   list.
-8. **If wrong:** restore the `pg_dump`, redeploy the previous image; files stay as they are, the old image's next
-   sync recreates the playlist shows and the one-off channel shows (one more change pass; ask Matt first).
+   - **no LOST lines** for any tag (or each one is intended);
+   - the removed shows are exactly the playlist shows and the channels expected to lose their show;
+   - `episodes created in Other videos` equals the media in the removed channel shows plus the videos of
+     unfollowed channels;
+   - the watch history lists (for the record).
+6. **Run it:** `ta_emby_migrate_layout --verbose-changes > run.txt`; counts match the preview (within the drift).
+7. **If the sync fails after the database part committed** (the 2026-10-21 case): the command reports
+   `already on Emby layout`; fix the cause and run `ta_emby_sync .../.emby --dry-run`, then without
+   `--dry-run`. It finishes the same renames.
+8. **Idempotence:** `ta_emby_sync .../.emby --dry-run` reports `renamed 0, created 0, deleted 0`.
+9. **Tell Emby and check:** the notify and item-refresh jobs run after the sync; then in Emby (as admin and as
+   David) the YT library shows channel shows and "Other videos" for admin, David sees only tagged shows plus
+   tagged episodes (playlists), and "Other videos" is not in his list.
+10. **If wrong:** if the Emby playlist sync (PR 28) has run, undo it first (see docs/fork/emby-playlists.md:
+    `playlists_enabled` off, then `ta_emby_playlists`), then restore the `pg_dump` and redeploy the previous
+    image; the old image's next sync recreates the playlist shows and the one-off channel shows (one more change
+    pass; ask Matt first).
+
+## Merge and deploy order of the v0.5.0 PRs
+
+`delete_branch_on_merge` is off, so a merged parent does not retarget its children. Use merge commits (no squash):
+#26 into main; `gh pr edit 27 --base main`, check its diff, merge; the same for #29 and then #28 (its base
+is the UTC branch). Run the tests on main with all four before building the image, and deploy all four together:
+the layout migration (2 to 3 to 4) must run once, on the image that has all of them.

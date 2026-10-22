@@ -332,6 +332,7 @@ def test_series_with_tag_and_find_item(http):
         {
             "Items": [
                 {
+                    "Id": 7,
                     "Name": "Show",
                     "Path": "/x/Show [UC1]",
                     "ProviderIds": {"youtube": "UC1"},
@@ -348,12 +349,13 @@ def test_series_with_tag_and_find_item(http):
 
     assert shows == [
         {
+            "id": "7",
             "name": "Show",
             "path": "/x/Show [UC1]",
             "provider_ids": {"youtube": "UC1"},
             "tags": ["David", "Kids"],
         },
-        {"name": "", "path": "", "provider_ids": {}, "tags": []},
+        {"id": "", "name": "", "path": "", "provider_ids": {}, "tags": []},
     ]
     query = http.calls[-1][3]["params"]
     assert query["Tags"] == "David" and query["IncludeItemTypes"] == "Series"
@@ -367,6 +369,26 @@ def test_media_by_stem():
         "c/A/S1/e-thumb.jpg": {"role": "thumb"},
     }
     assert ms_jobs.media_by_stem(files) == {"c/A/S1/e": "c/A/S1/e.mp4"}
+
+
+def test_series_episode_paths(http, monkeypatch):
+    configure()
+    client = MediaServerClient(
+        Connection("emby", "http://emby.test:8096", SECRET)
+    )
+    http.responses[("GET", "/Items")] = (
+        200,
+        {"Items": [{"Path": "/a.mkv"}, {"Id": 1}], "TotalRecordCount": 3},
+    )
+    monkeypatch.setattr(client_mod, "PAGE", 2)
+    assert client.series_episode_paths("7") == ["/a.mkv", "/a.mkv"]
+    assert http.calls[-1][3]["params"]["ParentId"] == "7"
+
+
+def test_from_server_path():
+    configure()
+    assert settings.from_server_path("/mnt/media/.emby/c/e.mkv") == "c/e.mkv"
+    assert settings.from_server_path("/elsewhere/e.mkv") is None
 
 
 def test_changed_items():

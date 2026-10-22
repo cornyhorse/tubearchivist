@@ -165,6 +165,14 @@ def to_server_path(relpath: str) -> str:
     return f"{base.rstrip('/')}/{relpath.lstrip('/')}"
 
 
+def from_server_path(path: str) -> str | None:
+    """the same file as a path below TA's Emby root, None if outside"""
+    base = (load()["path_to"] or EnvironmentSettings.EMBY_ROOT).rstrip("/")
+    if base and path.startswith(base + "/"):
+        return path[len(base) + 1 :]
+    return None
+
+
 def from_ta_path(path: str) -> str:
     """TA-side path under TA_EMBY_ROOT -> relpath; ValueError outside"""
     root = EnvironmentSettings.EMBY_ROOT.rstrip("/")

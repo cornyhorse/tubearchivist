@@ -472,7 +472,28 @@ def channel_series(
         banner=paths.channel_art(channel.channel_id, "banner"),
         name=found.series_name,
     )
-    return series, _episodes(videos, found, paths, tz), found.warnings
+    episodes = _episodes(
+        videos, found, paths, tz, tags=extra_tags(videos, info.tags)
+    )
+    return series, episodes, found.warnings
+
+
+def extra_tags(
+    videos: list[Video], series_tags: tuple[str, ...]
+) -> dict[str, tuple[str, ...]]:
+    """
+    the tags of each video's playlists (and channel) that the show's own
+    tag doesn't give: whatever a tagged playlist holds is approved for the
+    tag's users, in an untagged channel show too. An episode tag is
+    enough for Emby, and only the differing ones keep the NFOs small.
+    """
+    inherited = {t.casefold() for t in series_tags}
+    extra = {}
+    for youtube_id, tags in video_tags(videos).items():
+        rest = tuple(t for t in tags if t.casefold() not in inherited)
+        if rest:
+            extra[youtube_id] = rest
+    return extra
 
 
 def playlist_numbers(
