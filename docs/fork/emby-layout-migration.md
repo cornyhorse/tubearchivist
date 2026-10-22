@@ -196,7 +196,12 @@ gate message (a sync on layout 2 is refused on purpose) and the tree stays as it
    writes: a tag only set by hand in Emby on a show whose TA channel does not carry it is taken away.
 7. **If the sync fails after the database part committed** (the 2026-10-21 case): the command reports
    `already on Emby layout`; fix the cause and run `ta_emby_sync .../.emby --dry-run`, then without
-   `--dry-run`. It finishes the same renames.
+   `--dry-run`. It finishes the same renames. The NFOs the stopped sync had already rewritten are not lost for
+   Emby: the writer puts each rewritten NFO in the media server's pending set (Redis) the moment it writes it, and
+   the set is emptied only by refreshing the item, so the rerun, the next `emby_write` and the hourly
+   `emby_health` all queue the refresh job for what waits (health reports it after 6 hours). If Redis itself was
+   lost, the rerun cannot know which NFOs changed: refresh the tagged channels' shows from Emby's dashboard
+   (Refresh metadata, replace existing metadata).
 8. **Idempotence:** `ta_emby_sync .../.emby --dry-run` reports `renamed 0, created 0, deleted 0`.
 9. **Tell Emby and check:** the real run itself queues the notify and the item refreshes (the same step as the
    `emby_write` job and `ta_emby_sync`: `after_sync`); the notify debounce is 30 s. Expect Emby to work for a
@@ -213,6 +218,15 @@ gate message (a sync on layout 2 is refused on purpose) and the tree stays as it
     `playlists_enabled` off, then `ta_emby_playlists`), then restore the `pg_dump` and redeploy the previous
     image; the old image's next sync recreates the playlist shows and the one-off channel shows (one more change
     pass; ask Matt first).
+
+## Tags set in Emby but not in TA, and the reverse
+
+An item refresh sets a show's tags in Emby to exactly the tags TA writes. A tag that exists only in Emby (set by hand
+on a show whose TA channel or playlist does not carry it) is therefore **taken away at that show's next refresh**,
+i.e. at its next NFO change. The hourly `emby_health` job reports every such show (`tagged X by hand but TA does not
+tag channel Y: ... tag it in TA`), skipping shows whose refresh is already waiting; fix it with
+`ta_emby_import_tags`. The reverse (tagged in TA, not yet in Emby) is normal for a few minutes after a change: the
+item refresh applies it, and the health check reports a refresh that has waited over 6 hours.
 
 ## Merge and deploy order of the v0.5.0 PRs
 

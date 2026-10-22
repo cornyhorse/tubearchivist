@@ -34,6 +34,8 @@ from download.src.yt_dlp_handler import DownloadPostProcess, VideoDownloader
 from emby.src.health import check_emby_health
 from emby.src.playlist_sync import media_paths, record_run, sync_playlists
 from emby.src.sync import EmbyLayoutOutdated, paths_from_env, sync_all
+from emby.src.tag_import import tag_drift
+from emby.src.tags import known_tags
 from emby.src.writer import EmbyRootError, Manifest
 from jobs.models import ACTIVE, CreatedBy, Job, Priority
 from jobs.src.context import JobContext
@@ -44,8 +46,6 @@ from mediaserver.src import settings as media_settings
 from mediaserver.src.client import MediaServerClient, MediaServerError
 from mediaserver.src.jobs import (
     changed_folders,
-    changed_items,
-    media_by_stem,
     queue_item_refresh,
     queue_notify,
 )
@@ -410,6 +410,9 @@ def emby_write(ctx: JobContext) -> dict:
     except (EmbyLayoutOutdated, EmbyRootError) as err:
         # needs a person (ta_emby_migrate_layout, mounts); no retry
         raise JobError(str(err)) from err
+    finally:
+        # NFOs a sync rewrote before it stopped are in the pending set
+        queue_item_refresh(created_by=ctx.job.created_by, parent=ctx.job)
     for warning in report.warnings[:20]:
         print(f"[emby] {warning}")
     for error in report.errors[:20]:
@@ -497,21 +500,25 @@ def after_sync(
     tell the media server what a sync changed: a debounced notify for the
     changed folders and a refresh of the items whose NFO changed (tags are
     only read again on a refresh). The one step after every real sync:
-    the emby_write job and the ta_emby_* commands all end with it; it also
-    queues the Emby playlist sync when that is on.
+    the emby_write job and the ta_emby_* commands all end with it. The
+    writer records the items to refresh itself while it writes (so a sync
+    that stopped halfway is not forgotten); this only queues the job, and
+    the Emby playlist sync when that is on.
     """
     queue_notify(changed_folders(report), created_by=created_by, parent=parent)
-    queue_item_refresh(
-        changed_items(report, _media_stems(paths)),
-        created_by=created_by,
-        parent=parent,
-    )
+    queue_item_refresh(created_by=created_by, parent=parent)
     queue_playlist_sync(created_by, parent)
 
 
-def _media_stems(paths) -> dict[str, str]:
-    """media files of the Emby tree by path without extension"""
-    return media_by_stem(Manifest(paths.output_root, dry_run=True).files)
+def tag_drift_problems() -> list[str]:
+    """Emby shows tagged by hand that TA does not tag, if Emby can be read"""
+    conn = media_settings.connection()
+    if not conn:
+        return []
+    try:
+        return tag_drift(MediaServerClient(conn), known_tags())
+    except MediaServerError as err:
+        return [f"can't read the Emby tags to check them against TA: {err}"]
 
 
 def request_emby_write(created_by: str = CreatedBy.USER) -> Job | None:
@@ -543,6 +550,9 @@ def emby_health(ctx: JobContext) -> dict:
         raise Defer(LOCK_RECHECK, str(err)) from err
     if report.rerun_sync:
         _child(ctx, "emby_write")
+    # refreshes a stopped sync or an unreachable server left waiting
+    queue_item_refresh(created_by=ctx.job.created_by, parent=ctx.job)
+    report.problems.extend(tag_drift_problems())
     if not report.healthy:
         raise JobError(report.message())
     return {"healthy": True, "repaired": report.repaired}

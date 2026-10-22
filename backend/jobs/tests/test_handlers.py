@@ -380,7 +380,6 @@ def test_emby_write(monkeypatch, capsys):
     )
     monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
     monkeypatch.setattr(handlers, "sync_all", lambda paths: report)
-    monkeypatch.setattr(handlers, "_media_stems", lambda paths: {})
     assert handlers.emby_write(ctx) == {
         "created": 2,
         "updated": 1,
@@ -443,6 +442,7 @@ def test_emby_health(monkeypatch):
         healthy=True,
         repaired=["channels/X: name too long, 3 names shortened"],
         rerun_sync=True,
+        problems=[],
         message=lambda: "repaired: channels/X",
     )
     monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
@@ -741,7 +741,6 @@ def test_emby_write_queues_the_playlist_sync(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
     monkeypatch.setattr(handlers, "sync_all", lambda paths: report)
-    monkeypatch.setattr(handlers, "_media_stems", lambda paths: {})
     _, ctx = running("emby_write")
 
     handlers.emby_write(ctx)
@@ -760,22 +759,56 @@ def test_emby_write_queues_the_playlist_sync(monkeypatch, tmp_path):
     assert child.parent_id == ctx.job.pk and child.not_before
 
 
-def test_media_stems_reads_the_manifest(tmp_path):
+@pytest.mark.django_db
+def test_emby_health_reports_tag_drift_and_queues_waiting_refreshes(
+    monkeypatch, tmp_path
+):
     # pylint: disable=import-outside-toplevel
-    from emby.src.writer import DesiredFile, EmbyWriter
+    from common.src.env_settings import EnvironmentSettings
+    from emby.src.health import HealthReport
+    from mediaserver.src import pending
+    from mediaserver.src import settings as media_settings
 
-    EmbyWriter(tmp_path).sync(
-        [
-            DesiredFile(
-                "c/A/S1/e.mp4", "data", "channels/c/v1", "media", data=b"x"
-            ),
-            DesiredFile(
-                "c/A/S1/e.nfo", "data", "channels/c/v1", "nfo", data=b"n"
-            ),
-        ],
-        scope=None,
+    monkeypatch.setattr(EnvironmentSettings, "CACHE_DIR", str(tmp_path))
+    media_settings.update(
+        {"type": "emby", "url": "http://e:8096", "api_key": "k"}
     )
+    monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
+    monkeypatch.setattr(
+        handlers, "check_emby_health", lambda paths, repair: HealthReport()
+    )
+    monkeypatch.setattr(
+        handlers, "tag_drift", lambda client, tags: ["Emby show X: drift"]
+    )
+    pending.add("series:channels/X")
+    _, ctx = running("emby_health")
 
-    stems = handlers._media_stems(SimpleNamespace(output_root=tmp_path))
+    with pytest.raises(JobError, match="Emby show X: drift"):
+        handlers.emby_health(ctx)
 
-    assert stems == {"c/A/S1/e": "c/A/S1/e.mp4"}
+    # a stopped sync or an unreachable server left refreshes waiting
+    assert Job.objects.filter(type="media_refresh_items").exists()
+    monkeypatch.setattr(handlers, "tag_drift", lambda client, tags: [])
+    assert handlers.emby_health(ctx)["healthy"] is True
+
+
+@pytest.mark.django_db
+def test_tag_drift_problems(monkeypatch, tmp_path):
+    # pylint: disable=import-outside-toplevel
+    from common.src.env_settings import EnvironmentSettings
+    from mediaserver.src import settings as media_settings
+
+    monkeypatch.setattr(EnvironmentSettings, "CACHE_DIR", str(tmp_path))
+    assert handlers.tag_drift_problems() == []
+
+    media_settings.update(
+        {"type": "emby", "url": "http://e:8096", "api_key": "k"}
+    )
+    monkeypatch.setattr(handlers, "tag_drift", lambda client, tags: ["x"])
+    assert handlers.tag_drift_problems() == ["x"]
+
+    def down(client, tags):
+        raise handlers.MediaServerError("down")
+
+    monkeypatch.setattr(handlers, "tag_drift", down)
+    assert "can't read the Emby tags" in handlers.tag_drift_problems()[0]

@@ -34,6 +34,7 @@ from emby.src.writer import (
     Manifest,
     ManifestTooNew,
 )
+from mediaserver.src import pending
 from mediaserver.src import settings as media_settings
 
 # a playlist held back for a large removal is a problem after this long
@@ -83,6 +84,7 @@ def check_emby_health(
     except EmbyLayoutOutdated as err:
         report.problems.append(str(err))
     _check_runs(report, max_age_hours, failing_runs, repair)
+    _check_refreshes(report, max_age_hours)
     _check_playlists(report, max_age_hours)
     _check_manifest(report, paths, stale_minutes, repair)
     return report
@@ -115,6 +117,18 @@ def _check_runs(
         report.problems.append(
             f"{key} failed {entry['runs']} syncs in a row since "
             f"{entry['since']}: {entry['error']}"
+        )
+
+
+def _check_refreshes(report: HealthReport, max_age_hours: float) -> None:
+    """item refreshes that wait too long: a withdrawn tag is still in Emby"""
+    since = pending.since()
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+    if since and since < cutoff:
+        report.problems.append(
+            f"{pending.count()} Emby item refreshes have waited since "
+            f"{since.isoformat()}: tags changed in TA are not applied "
+            "in Emby until they run (is Emby reachable?)"
         )
 
 
