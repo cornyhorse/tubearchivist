@@ -23,8 +23,10 @@ from download.src.rules_api import (
     target_exists,
 )
 from emby.src.numbering_api import preview_scheme, set_scheme, video_numbers
+from emby.src.tags import clean_tags, set_tags
 from jobs.models import ACTIVE, CreatedBy, Job, JobStatus, Priority
 from jobs.src.engine import ActionNotAllowed, active_jobs, apply_action
+from jobs.src.handlers import request_emby_write
 from jobs.src.present import filter_jobs, jobs_dicts, summary
 from jobs.src.schedules import schedule_dicts
 from mediaserver.src.jobs import manual_notify
@@ -206,6 +208,20 @@ def set_numbering(args: dict) -> dict:
         raise ToolError(str(err)) from err
     except ObjectDoesNotExist as err:
         raise ToolError(f"{kind} {series_id} is not in the archive") from err
+
+
+def set_emby_tags(args: dict) -> dict:
+    """set the Emby access tags of a channel or playlist"""
+    kind, series_id = args.get("kind"), args.get("id")
+    tags = args.get("tags")
+    if kind not in ("channel", "playlist") or not series_id:
+        raise ToolError("give kind (channel or playlist) and id")
+    if not isinstance(tags, list):
+        raise ToolError("give tags: a list of tag names, [] to hide it")
+    if not set_tags(kind, [series_id], tags):
+        raise ToolError(f"{kind} {series_id} is not in the archive")
+    request_emby_write(created_by=AGENT)
+    return {"kind": kind, "id": series_id, "emby_tags": clean_tags(tags)}
 
 
 def list_queue(args: dict) -> dict:
@@ -496,6 +512,22 @@ TOOLS = [
         },
         set_numbering,
         required=["kind", "id", "scheme"],
+        idempotent=True,
+    ),
+    _tool(
+        "set_emby_tags",
+        "Set Emby access tags",
+        "Set the Emby tags of a channel or playlist, written to the show's "
+        "NFO. Emby users limited to tagged items (David) see a show only "
+        "if it carries one of their tags; [] hides it from them. Replaces "
+        "the tags. A playlist's tags also name the Emby users who get it.",
+        {
+            "kind": {"enum": ["channel", "playlist"]},
+            "id": {"type": "string"},
+            "tags": {"type": "array", "items": {"type": "string"}},
+        },
+        set_emby_tags,
+        required=["kind", "id", "tags"],
         idempotent=True,
     ),
     _tool(

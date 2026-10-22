@@ -32,10 +32,13 @@ def fixture_env(monkeypatch, tmp_path):
     monkeypatch.setattr(EnvironmentSettings, "EMBY_ROOT", ROOT)
     monkeypatch.delenv(settings.KEY_ENV, raising=False)
     conn = RedisBase().conn
-    key = RedisBase.NAME_SPACE + ms_jobs.PENDING_KEY
-    conn.delete(key)
+    keys = [
+        RedisBase.NAME_SPACE + ms_jobs.PENDING_KEY,
+        RedisBase.NAME_SPACE + ms_jobs.REFRESH_KEY,
+    ]
+    conn.delete(*keys)
     yield
-    conn.delete(key)
+    conn.delete(*keys)
 
 
 class FakeHttp:
@@ -320,6 +323,100 @@ def test_media_refresh(http):
     http.responses[("POST", "/Library/Refresh")] = (401, None)
     with pytest.raises(JobError, match="rejected"):
         run("media_refresh")
+
+
+def test_series_with_tag_and_find_item(http):
+    configure()
+    http.responses[("GET", "/Items")] = (
+        200,
+        {
+            "Items": [
+                {
+                    "Name": "Show",
+                    "Path": "/x/Show [UC1]",
+                    "ProviderIds": {"youtube": "UC1"},
+                    "TagItems": [{"Name": "David"}, {"Name": None}],
+                    "Tags": ["Kids"],
+                },
+                {"Name": None, "Path": None},
+            ]
+        },
+    )
+    shows = MediaServerClient(
+        Connection("emby", "http://emby.test:8096", SECRET)
+    ).series_with_tag("David")
+
+    assert shows == [
+        {
+            "name": "Show",
+            "path": "/x/Show [UC1]",
+            "provider_ids": {"youtube": "UC1"},
+            "tags": ["David", "Kids"],
+        },
+        {"name": "", "path": "", "provider_ids": {}, "tags": []},
+    ]
+    query = http.calls[-1][3]["params"]
+    assert query["Tags"] == "David" and query["IncludeItemTypes"] == "Series"
+    assert http.calls[-1][0] == "GET"
+
+
+def test_changed_series():
+    report = SyncReport(
+        created=["channels/N/tvshow.nfo"],
+        updated=["channels/A/tvshow.nfo", "channels/A/Season 1/e.nfo"],
+        renamed=[("playlists/P/tvshow.nfo", "channels/B/tvshow.nfo")],
+    )
+    assert ms_jobs.changed_series(report) == {"channels/A", "channels/B"}
+
+
+def test_queue_refresh_debounced():
+    assert ms_jobs.queue_item_refresh({"channels/A"}) is None  # not configured
+    configure()
+    first = ms_jobs.queue_item_refresh({"channels/A"})
+    second = ms_jobs.queue_item_refresh({"channels/B"})
+
+    assert first.pk == second.pk
+    settings.update({"notify_enabled": False})
+    assert ms_jobs.queue_item_refresh({"channels/C"}) is None
+    configure(notify_enabled=True)
+    assert ms_jobs.queue_item_refresh(set()) is None
+
+
+def test_media_refresh_items(http):
+    assert run("media_refresh_items")[0] == {
+        "skipped": "no media server configured"
+    }
+    configure()
+    assert run("media_refresh_items")[0] == {"folders": 0}
+
+    ms_jobs.queue_item_refresh({"channels/A [x]", "channels/B [y]"})
+    http.responses[("GET", "/Items")] = (200, {"Items": [{"Id": 42}]})
+    result, _ = run("media_refresh_items")
+
+    assert result == {"refreshed": 2, "unknown": 0}
+    lookup = [c for c in http.calls if c[0] == "GET"][0]
+    assert lookup[3]["params"]["Path"] == "/mnt/media/.emby/channels/A [x]"
+    assert lookup[3]["params"]["IncludeItemTypes"] == "Series"
+    refresh = http.calls[-1]
+    assert refresh[1].endswith("/Items/42/Refresh")
+    assert refresh[3]["params"]["MetadataRefreshMode"] == "Default"
+    assert refresh[3]["params"]["ReplaceAllMetadata"] == "false"
+
+
+def test_media_refresh_items_unknown_and_failure(http):
+    configure()
+    ms_jobs.queue_item_refresh({"channels/A"})
+    http.responses[("GET", "/Items")] = (200, {"Items": []})
+    assert run("media_refresh_items")[0] == {"refreshed": 0, "unknown": 1}
+
+    ms_jobs.queue_item_refresh({"channels/A", "channels/B"})
+    http.responses[("GET", "/Items")] = (500, None)
+    with pytest.raises(JobError, match="HTTP 500"):
+        run("media_refresh_items")
+
+    # nothing was lost
+    http.responses[("GET", "/Items")] = (200, {"Items": []})
+    assert run("media_refresh_items")[0]["unknown"] == 2
 
 
 def test_emby_write_queues_notify(monkeypatch, http):

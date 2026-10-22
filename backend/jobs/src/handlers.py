@@ -39,7 +39,12 @@ from jobs.src.context import JobContext
 from jobs.src.engine import enqueue
 from jobs.src.locks import LockBusy, emby_lock
 from jobs.src.registry import Defer, JobError, register
-from mediaserver.src.jobs import changed_folders, queue_notify
+from mediaserver.src.jobs import (
+    changed_folders,
+    changed_series,
+    queue_item_refresh,
+    queue_notify,
+)
 from playlist.models import Playlist
 from playlist.src.index import YoutubePlaylist
 from video.models import Video
@@ -407,6 +412,9 @@ def emby_write(ctx: JobContext) -> dict:
         print(f"[emby] error: {error}")
     folders = changed_folders(report)
     queue_notify(folders, created_by=ctx.job.created_by, parent=ctx.job)
+    queue_item_refresh(
+        changed_series(report), created_by=ctx.job.created_by, parent=ctx.job
+    )
     result = {
         "created": len(report.created),
         "updated": len(report.updated),

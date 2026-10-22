@@ -2,6 +2,7 @@
 
 from channel.models import Channel, EmbyNumbering
 from common.src.db import WeightedSearchVector, from_epoch, to_epoch
+from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVectorField
 from django.db import models, transaction
@@ -29,6 +30,9 @@ class Playlist(models.Model):
     )
     # opt in: a check of this playlist downloads what the rules allow
     auto_download = models.BooleanField(default=False)
+    # tags written to the Emby tvshow.nfo, see Channel.emby_tags; they also
+    # name the Emby users who get this playlist
+    emby_tags = ArrayField(models.TextField(), default=list, blank=True)
 
     search = models.GeneratedField(
         expression=WeightedSearchVector(
@@ -82,6 +86,11 @@ class Playlist(models.Model):
             **(
                 {"auto_download": bool(doc["auto_download"])}
                 if "auto_download" in doc
+                else {}
+            ),
+            **(
+                {"emby_tags": list(doc["emby_tags"] or [])}
+                if "emby_tags" in doc
                 else {}
             ),
         }
@@ -138,6 +147,7 @@ class Playlist(models.Model):
             "playlist_type": self.playlist_type,
             "emby_numbering": self.emby_numbering,
             "auto_download": self.auto_download,
+            "emby_tags": list(self.emby_tags),
         }
         if with_entries:
             entries = self.entries.with_downloaded().order_by("idx")

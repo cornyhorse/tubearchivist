@@ -79,6 +79,7 @@ def test_initialize_and_list(mcp):
         "add_url",
         "set_rule",
         "set_numbering",
+        "set_emby_tags",
         "list_queue",
         "download",
         "ignore",
@@ -497,3 +498,31 @@ def test_auto_download_tools(mcp, app_config, no_broker):
     for name in ("set_rule", "add_url"):
         schema = tools[name]["inputSchema"]["properties"]
         assert schema["auto_download"]["type"] == "boolean"
+
+
+def test_set_emby_tags(mcp, app_config):
+    # pylint: disable=unused-argument
+    Channel.save_doc(channel_doc())
+    done = mcp.tool(
+        "set_emby_tags", kind="channel", id=CHANNEL_ID, tags=["David", "david"]
+    )["structuredContent"]
+    assert done == {
+        "kind": "channel",
+        "id": CHANNEL_ID,
+        "emby_tags": ["David"],
+    }
+    assert Channel.objects.get().emby_tags == ["David"]
+    assert (
+        mcp.tool("set_emby_tags", kind="channel", id=CHANNEL_ID, tags=[])[
+            "structuredContent"
+        ]["emby_tags"]
+        == []
+    )
+
+    for args, message in [
+        ({"kind": "odd", "id": "x", "tags": []}, "give kind"),
+        ({"kind": "channel", "id": "x", "tags": "David"}, "give tags"),
+        ({"kind": "channel", "id": "nope", "tags": []}, "not in the archive"),
+    ]:
+        result = mcp.tool("set_emby_tags", **args)
+        assert result["isError"] and message in str(result)

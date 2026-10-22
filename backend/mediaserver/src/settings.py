@@ -25,6 +25,7 @@ DEFAULTS = {
     "path_to": "",
     "notify_enabled": True,
     "debounce_seconds": 30,
+    "known_tags": ["David"],
     "last_notify": None,
 }
 EDITABLE = [
@@ -34,6 +35,7 @@ EDITABLE = [
     "path_to",
     "notify_enabled",
     "debounce_seconds",
+    "known_tags",
 ]
 
 
@@ -108,6 +110,7 @@ def public() -> dict:
         "path_to": stored["path_to"],
         "notify_enabled": stored["notify_enabled"],
         "debounce_seconds": stored["debounce_seconds"],
+        "known_tags": stored["known_tags"],
         "last_notify": stored["last_notify"],
     }
 

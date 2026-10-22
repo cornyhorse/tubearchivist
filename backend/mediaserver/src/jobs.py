@@ -18,10 +18,11 @@ from mediaserver.src import settings
 from mediaserver.src.client import MediaServerClient, MediaServerError
 
 PENDING_KEY = "mediaserver:pending"
+REFRESH_KEY = "mediaserver:refresh_pending"
 
 
-def _conn():
-    return RedisBase().conn, RedisBase.NAME_SPACE + PENDING_KEY
+def _conn(key: str = PENDING_KEY):
+    return RedisBase().conn, RedisBase.NAME_SPACE + key
 
 
 def changed_folders(report) -> set[str]:
@@ -34,6 +35,46 @@ def changed_folders(report) -> set[str]:
     paths += [new for _, new in report.renamed]
     paths += [p.rstrip("/") for p in report.deleted]
     return {str(PurePosixPath(p).parent) for p in paths if p}
+
+
+def changed_series(report) -> set[str]:
+    """
+    series folders whose tvshow.nfo changed; the server doesn't re-read an
+    NFO of a known show on a media update, so these get an item refresh
+    """
+    nfos = list(report.updated) + [new for _, new in report.renamed]
+    return {
+        str(PurePosixPath(p).parent)
+        for p in nfos
+        if PurePosixPath(p).name == "tvshow.nfo"
+    }
+
+
+def queue_item_refresh(
+    folders: set[str] | list[str],
+    created_by: str = CreatedBy.SYSTEM,
+    parent: Job | None = None,
+    priority: int = Priority.LOW,
+) -> Job | None:
+    """
+    add series folders to the refresh set and queue the refresh job behind
+    the notify (same debounce, so new items are known first); None if the
+    server is off
+    """
+    stored = settings.load()
+    if not stored["type"] or not stored["notify_enabled"] or not folders:
+        return None
+    conn, key = _conn(REFRESH_KEY)
+    conn.sadd(key, *sorted(folders))
+    delay = timedelta(seconds=stored["debounce_seconds"] + 5)
+    job, _ = enqueue(
+        "media_refresh_items",
+        priority=priority,
+        created_by=created_by,
+        parent=parent,
+        not_before=timezone.now() + delay,
+    )
+    return job
 
 
 def queue_notify(
@@ -111,6 +152,44 @@ def media_notify(ctx: JobContext) -> dict:
         raise JobError(str(err)) from err
     settings.record_notify({**result, "status_code": status, "error": None})
     return {"status_code": status, "paths": len(updates)}
+
+
+@register(
+    "media_refresh_items",
+    "postprocess",
+    "Refresh changed shows in the media server",
+    max_attempts=3,
+    notify=False,
+)
+def media_refresh_items(ctx: JobContext) -> dict:
+    """
+    refresh the shows whose tvshow.nfo changed (tags), found by their path;
+    a show the server doesn't know yet is skipped, its first scan reads
+    the NFO
+    """
+    conn = settings.connection()
+    if not conn:
+        return {"skipped": "no media server configured"}
+    redis_conn, key = _conn(REFRESH_KEY)
+    folders = sorted(redis_conn.spop(key, 10_000) or [])
+    if not folders:
+        return {"folders": 0}
+    client = MediaServerClient(conn)
+    refreshed = unknown = 0
+    try:
+        for index, folder in enumerate(folders):
+            item_id = client.find_item(
+                settings.to_server_path(folder), "Series"
+            )
+            if item_id is None:
+                unknown += 1
+                continue
+            client.refresh_item(item_id)
+            refreshed += 1
+    except MediaServerError as err:
+        redis_conn.sadd(key, *folders[index:])
+        raise JobError(str(err)) from err
+    return {"refreshed": refreshed, "unknown": unknown}
 
 
 @register(

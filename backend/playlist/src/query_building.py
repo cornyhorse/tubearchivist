@@ -27,6 +27,10 @@ class QueryBuilder:
         if auto_download is not None:
             queryset = queryset.filter(auto_download=auto_download)
 
+        emby_tag = self.request_params.get("emby_tag")
+        if emby_tag:
+            queryset = queryset.filter(emby_tags__contains=[emby_tag])
+
         playlist_type = self.request_params.get("type")
         if playlist_type:
             queryset = queryset.filter(

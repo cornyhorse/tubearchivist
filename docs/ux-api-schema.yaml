@@ -573,6 +573,12 @@ paths:
           type: boolean
           nullable: true
       - in: query
+        name: emby_tag
+        schema:
+          type: string
+          minLength: 1
+        description: only those with this Emby tag
+      - in: query
         name: filter
         schema:
           enum:
@@ -1261,6 +1267,22 @@ paths:
       responses:
         '204':
           description: deleted
+  /api/emby/tags/:
+    get:
+      operationId: emby_tags_retrieve
+      description: list tags
+      tags:
+      - emby
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmbyTags'
+          description: ''
   /api/found/:
     get:
       operationId: found_retrieve
@@ -1962,6 +1984,12 @@ paths:
           type: string
           minLength: 1
       - in: query
+        name: emby_tag
+        schema:
+          type: string
+          minLength: 1
+        description: only those with this Emby tag
+      - in: query
         name: page
         schema:
           type: integer
@@ -2277,6 +2305,7 @@ paths:
           - post_download
           - emby_write
           - media_notify
+          - media_refresh_items
           - media_refresh
           - reindex
           - backup
@@ -2300,6 +2329,7 @@ paths:
           * `post_download` - post_download
           * `emby_write` - emby_write
           * `media_notify` - media_notify
+          * `media_refresh_items` - media_refresh_items
           * `media_refresh` - media_refresh
           * `reindex` - reindex
           * `backup` - backup
@@ -4356,6 +4386,14 @@ components:
           type: boolean
           description: 'a check downloads what the rules allow; off: found videos
             wait'
+        emby_tags:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+          description: Emby tags written to the show; none hides it from Emby users
+            limited to tagged items
+          maxItems: 20
         _index:
           type: string
           title: ' index'
@@ -4488,6 +4526,14 @@ components:
           type: boolean
           description: 'a check downloads what the rules allow; off: found videos
             wait'
+        emby_tags:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+          description: Emby tags written to the show; none hides it from Emby users
+            limited to tagged items
+          maxItems: 20
         _index:
           type: string
           title: ' index'
@@ -4617,6 +4663,14 @@ components:
           type: boolean
           description: 'a check downloads what the rules allow; off: found videos
             wait'
+        emby_tags:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+          description: Emby tags written to the show; none hides it from Emby users
+            limited to tagged items
+          maxItems: 20
     ChannelUpdateEmbyNumberingEnum:
       enum:
       - date
@@ -4992,6 +5046,16 @@ components:
       - override
       - rule
       - source
+    EmbyTags:
+      type: object
+      description: 'GET /api/emby/tags/: the tags to offer on channels and playlists'
+      properties:
+        tags:
+          type: array
+          items:
+            type: string
+      required:
+      - tags
     EpisodeName:
       type: object
       description: a video's place in a series and its Emby name
@@ -5704,6 +5768,7 @@ components:
       - post_download
       - emby_write
       - media_notify
+      - media_refresh_items
       - media_refresh
       - reindex
       - backup
@@ -5726,6 +5791,7 @@ components:
         * `post_download` - post_download
         * `emby_write` - emby_write
         * `media_notify` - media_notify
+        * `media_refresh_items` - media_refresh_items
         * `media_refresh` - media_refresh
         * `reindex` - reindex
         * `backup` - backup
@@ -5953,6 +6019,13 @@ components:
           type: integer
           maximum: 3600
           minimum: 0
+        known_tags:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+          description: Emby tags offered in the UI, e.g. ['David']
+          maxItems: 20
         last_notify:
           allOf:
           - $ref: '#/components/schemas/LastNotify'
@@ -6293,6 +6366,14 @@ components:
           type: boolean
           description: 'a check downloads what the rules allow; off: found videos
             wait'
+        emby_tags:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+          description: Emby tags written to the show; none hides it from Emby users
+            limited to tagged items
+          maxItems: 20
         _index:
           type: string
           title: ' index'
@@ -6473,6 +6554,14 @@ components:
           type: boolean
           description: 'a check downloads what the rules allow; off: found videos
             wait'
+        emby_tags:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+          description: Emby tags written to the show; none hides it from Emby users
+            limited to tagged items
+          maxItems: 20
     PlaylistSortOrderEnum:
       enum:
       - top

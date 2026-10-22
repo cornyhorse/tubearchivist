@@ -87,6 +87,67 @@ class MediaServerClient:
             status = response.status_code
         return status
 
+    def series_with_tag(self, tag: str) -> list[dict]:
+        """
+        shows that carry a tag (a read only query): name, server path,
+        provider ids and all their tags
+        """
+        data = self._request(
+            "GET",
+            "/Items",
+            params={
+                "Tags": tag,
+                "Recursive": "true",
+                "IncludeItemTypes": "Series",
+                "Fields": "Path,ProviderIds,Tags,TagItems",
+            },
+        ).json()
+        return [
+            {
+                "name": item.get("Name") or "",
+                "path": item.get("Path") or "",
+                "provider_ids": item.get("ProviderIds") or {},
+                "tags": sorted(
+                    (
+                        {t.get("Name") for t in item.get("TagItems") or []}
+                        | set(item.get("Tags") or [])
+                    )
+                    - {None}
+                ),
+            }
+            for item in data.get("Items") or []
+        ]
+
+    def find_item(self, server_path: str, item_type: str) -> str | None:
+        """id of the item of this type at an exact server path, if any"""
+        data = self._request(
+            "GET",
+            "/Items",
+            params={
+                "Path": server_path,
+                "Recursive": "true",
+                "IncludeItemTypes": item_type,
+                "Limit": 1,
+            },
+        ).json()
+        items = data.get("Items") or []
+        return str(items[0]["Id"]) if items else None
+
+    def refresh_item(self, item_id: str) -> int:
+        """
+        read the item's NFO again; the default mode keeps what the server
+        holds and only fills in what changed on disk (tags, titles)
+        """
+        return self._request(
+            "POST",
+            f"/Items/{item_id}/Refresh",
+            params={
+                "Recursive": "false",
+                "MetadataRefreshMode": "Default",
+                "ReplaceAllMetadata": "false",
+            },
+        ).status_code
+
     def refresh(self, library_id: str | None = None) -> int:
         """full refresh of one library, or of all of them"""
         if library_id:

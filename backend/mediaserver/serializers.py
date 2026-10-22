@@ -60,6 +60,12 @@ class MediaServerSerializer(serializers.Serializer):
     debounce_seconds = serializers.IntegerField(
         required=False, min_value=0, max_value=3600
     )
+    known_tags = serializers.ListField(
+        child=serializers.CharField(max_length=64),
+        required=False,
+        max_length=20,
+        help_text="Emby tags offered in the UI, e.g. ['David']",
+    )
     last_notify = LastNotifySerializer(read_only=True, allow_null=True)
 
 

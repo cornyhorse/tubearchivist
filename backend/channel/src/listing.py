@@ -94,6 +94,8 @@ def channel_list(filters: dict) -> QuerySet:
             queryset = queryset.filter(
                 condition if filters[key] else ~condition
             )
+    if filters.get("emby_tag"):
+        queryset = queryset.filter(emby_tags__contains=[filters["emby_tag"]])
     sort = SORTS[filters.get("sort", "name")]
     if filters.get("order", "asc") == "desc":
         order = sort.desc(nulls_last=True)

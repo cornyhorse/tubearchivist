@@ -407,6 +407,7 @@ def channel_numbers(
         plot=channel.description or "",
         premiered=items[0].published if items else None,
         studio=channel.name,
+        tags=tuple(channel.emby_tags),
     )
     found = ensure_numbers(
         SeriesKind.CHANNEL,
@@ -463,6 +464,7 @@ def playlist_numbers(
         title=playlist.name,
         plot=playlist.description or "",
         studio=playlist.channel_name,
+        tags=tuple(playlist.emby_tags),
     )
     found = ensure_numbers(
         SeriesKind.PLAYLIST,
