@@ -21,10 +21,11 @@ from emby.src.sync import (
     layout_version,
     sync_all,
     sync_channel,
-    sync_playlist,
+    sync_other,
     validate_output_root,
 )
-from emby.tests.test_sync import numbers
+from emby.tests.conftest import add_other_video
+from emby.tests.test_sync import numbers, playlist_assign
 from playlist.models import Playlist
 from video.models import Video
 
@@ -46,7 +47,6 @@ def test_renamed_titles_never_move_files(library):
     before = files(library.output_root)
     Video.objects.filter(pk="v1").update(title="A brand new title")
     Channel.objects.update(name="Renamed Channel")
-    Playlist.objects.update(name="Renamed Playlist")
 
     report = sync_all(library)
 
@@ -56,7 +56,7 @@ def test_renamed_titles_never_move_files(library):
     media = [p for p in before if p.endswith(".mp4")]
     assert [after[p] for p in media] == [before[p] for p in media]
     nfos = [p.read_text() for p in library.output_root.rglob("*.nfo")]
-    assert sum("A brand new title" in n for n in nfos) == 2
+    assert sum("A brand new title" in n for n in nfos) == 1
     assert sum("<title>Renamed Channel</title>" in n for n in nfos) == 1
 
 
@@ -98,48 +98,26 @@ def test_unnamed_rows_are_named_on_the_next_sync(library):
     ) == {"Test Channel"}
 
 
-def test_playlist_position_keeps_names_across_renumbering(library):
-    Playlist.objects.update(emby_numbering="playlist_position")
-    sync_playlist("PL1", library)
-    Video.objects.update(title="Changed")
-    playlist = Playlist.objects.get()
-    playlist.entries.all().delete()
-    playlist.entries.create(idx=0, youtube_id="v1")
-    playlist.entries.create(idx=1, youtube_id="v3")
-
-    report = sync_playlist("PL1", library)
-
-    assert numbers(library.output_root) == {"v1": (1, 1), "v3": (1, 2)}
-    assert all("Changed" not in new for _, new in report.renamed)
-
-
 def test_playlists_default_to_frozen_order(library):
     field = Playlist._meta.get_field("emby_numbering")
     assert field.default == "playlist_frozen"
     Playlist.objects.update(emby_numbering=field.default)
-    sync_playlist("PL1", library)
-    assert numbers(library.output_root) == {"v3": (1, 1), "v1": (1, 2)}
+    assert playlist_assign() == {"v3": (1, 1), "v1": (1, 2)}
     playlist = Playlist.objects.get()
     playlist.entries.all().delete()
     playlist.entries.create(idx=0, youtube_id="v2")
     playlist.entries.create(idx=1, youtube_id="v1")
     playlist.entries.create(idx=2, youtube_id="v3")
 
-    report = sync_playlist("PL1", library)
-
-    assert numbers(library.output_root) == {
-        "v3": (1, 1),
-        "v1": (1, 2),
-        "v2": (1, 3),
-    }
-    assert not report.renamed
+    assert playlist_assign() == {"v3": (1, 1), "v1": (1, 2), "v2": (1, 3)}
 
 
 def test_dry_run_stores_nothing(library):
     """E9"""
     sync_all(library, dry_run=True)
     sync_channel(CHANNEL_ID, library, dry_run=True)
-    sync_playlist("PL1", library, dry_run=True)
+    sync_other(library, dry_run=True)
+    playlist_assign(dry_run=True)
 
     assert not EpisodeNumber.objects.exists()
     assert not ConfigDocument.objects.filter(key=LAYOUT_KEY).exists()
@@ -147,14 +125,14 @@ def test_dry_run_stores_nothing(library):
 
 def test_dry_run_of_a_scheme_switch_keeps_stored_numbers(library):
     Playlist.objects.update(emby_numbering="playlist_position")
-    sync_playlist("PL1", library)
+    playlist_assign()
     before = list(EpisodeNumber.objects.values_list("pk", "episode"))
     Playlist.objects.update(emby_numbering="playlist_position")
     playlist = Playlist.objects.get()
     playlist.entries.all().delete()
     playlist.entries.create(idx=5, youtube_id="v1")
 
-    sync_playlist("PL1", library, dry_run=True)
+    playlist_assign(dry_run=True)
 
     assert list(EpisodeNumber.objects.values_list("pk", "episode")) == before
 
@@ -189,23 +167,29 @@ def test_long_titles_fit_the_name_limit(library):
 
 def test_failing_series_is_left_and_others_sync(library, monkeypatch):
     """E1: one bad series no longer stops sync_all"""
+    add_other_video(library, "o1", 1700000000)
     sync_all(library)
-    playlist_dir = next((library.output_root / "playlists").iterdir())
-    before = files(playlist_dir)
-    real = sync_module.playlist_series
+    other_dir = next(
+        p
+        for p in (library.output_root / "channels").iterdir()
+        if p.name.startswith("Other")
+    )
+    before = files(other_dir)
+    real = sync_module.other_series
 
     def broken(*_):
-        raise NumberingError("duplicate playlist positions")
+        raise NumberingError("duplicate positions")
 
-    monkeypatch.setattr(sync_module, "playlist_series", broken)
+    monkeypatch.setattr(sync_module, "other_series", broken)
     Video.objects.filter(pk="v2").update(active=False)
+    Video.objects.filter(pk="o1").update(active=False)
 
     report = sync_all(library)
 
-    assert report.errors == ["playlists/PL1: duplicate playlist positions"]
-    assert files(playlist_dir) == before
-    assert len(numbers(library.output_root / "channels")) == 2
-    monkeypatch.setattr(sync_module, "playlist_series", real)
+    assert report.errors == ["channels/other: duplicate positions"]
+    assert files(other_dir) == before
+    assert len(numbers(library.output_root / "channels")) == 3
+    monkeypatch.setattr(sync_module, "other_series", real)
     assert not sync_all(library).errors
 
 
@@ -236,7 +220,7 @@ def test_old_layout_numbers_block_sync(library):
     for run in (
         lambda: sync_all(library),
         lambda: sync_channel(CHANNEL_ID, library),
-        lambda: sync_playlist("PL1", library, dry_run=True),
+        lambda: sync_other(library, dry_run=True),
     ):
         with pytest.raises(EmbyLayoutOutdated, match="ta_emby_migrate"):
             run()
@@ -247,6 +231,6 @@ def test_fresh_database_starts_on_the_current_layout(library):
 
     sync_all(library)
 
-    assert layout_version() == 2
+    assert layout_version() == 3
     ConfigDocument.objects.filter(key=LAYOUT_KEY).update(value={})
     assert layout_version() == 1

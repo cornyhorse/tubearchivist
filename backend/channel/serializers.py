@@ -2,7 +2,7 @@
 
 # pylint: disable=abstract-method
 
-from channel.models import EmbyNumbering
+from channel.models import EmbyNumbering, EmbyShow
 from common.serializers import PaginationSerializer, ValidateUnknownFieldsMixin
 from download.serializers import DownloadRuleSerializer
 from rest_framework import serializers
@@ -55,6 +55,14 @@ class ChannelSerializer(serializers.Serializer):
     )
     emby_numbering = serializers.ChoiceField(
         choices=EmbyNumbering.values, required=False
+    )
+    emby_show = serializers.ChoiceField(
+        choices=EmbyShow.values,
+        required=False,
+        help_text=(
+            "own show in Emby: auto = subscribed channels only; never: its "
+            "videos are in the Other videos show"
+        ),
     )
     download_rule = DownloadRuleSerializer(required=False, allow_null=True)
     auto_download = serializers.BooleanField(
@@ -155,6 +163,14 @@ class ChannelUpdateSerializer(serializers.Serializer):
             EmbyNumbering.ABSOLUTE_FROZEN,
         ],
         required=False,
+    )
+    emby_show = serializers.ChoiceField(
+        choices=EmbyShow.values,
+        required=False,
+        help_text=(
+            "own show in Emby: auto = subscribed channels only; never: its "
+            "videos are in the Other videos show"
+        ),
     )
     download_rule = DownloadRuleSerializer(required=False, allow_null=True)
     auto_download = serializers.BooleanField(

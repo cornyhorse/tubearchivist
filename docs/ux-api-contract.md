@@ -255,6 +255,12 @@ manual number) queues an `emby_write` job when the Emby writer is on.
 
 The existing `emby_numbering` field on channel and playlist keeps working.
 
+### Emby show per channel (fork-v0.5.0)
+
+`emby_show` (`auto` | `always` | `never`) on channel read and `POST /api/channel/<id>/`; MCP `set_emby_show`. `auto`
+gives subscribed channels their own show; the videos of the others are in the single "Other videos" show. Playlists
+are no longer shows; `emby_numbering` on a playlist has no effect on Emby.
+
 ### Emby access tags (fork-v0.5.0, docs/fork/emby-v050-design.md section 3)
 
 - `emby_tags: string[]` on channel and playlist read, `POST /api/channel/<id>/`
@@ -312,7 +318,7 @@ the frontend.
 Tools (each calls the same service functions as the REST endpoints):
 `preview_url`, `add_url` (with `auto_download`), `set_rule` (also
 per-video overrides, and `auto_download` per channel or playlist),
-`set_numbering` (with `dry_run`), `set_emby_tags`, `list_queue`, `list_found`, `download`,
+`set_numbering` (with `dry_run`), `set_emby_tags`, `set_emby_show`, `list_queue`, `list_found`, `download`,
 `ignore`, `move_to_top`, `activity`, `stop_task`, `search_library`,
 `get_video`, `notify_media_server`. Errors an agent can fix come back as
 `isError: true` with a plain message saying what to send instead.

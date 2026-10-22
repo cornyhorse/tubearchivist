@@ -505,3 +505,18 @@ def test_emby_tags_read_update_filter(client):
     client.post(URL, {"emby_tags": []}, format="json")
     assert Channel.objects.get(pk=CH).emby_tags == []
     assert table(client, emby_tag="Kids") == []
+
+
+def test_emby_show_read_and_update(client):
+    add_channels()
+    assert client.get(URL).data["emby_show"] == "auto"
+
+    response = client.post(URL, {"emby_show": "never"}, format="json")
+
+    assert response.status_code == 200
+    assert Channel.objects.get(pk=CH).emby_show == "never"
+    assert client.get(URL).data["emby_show"] == "never"
+    assert (
+        client.post(URL, {"emby_show": "odd"}, format="json").status_code
+        == 400
+    )

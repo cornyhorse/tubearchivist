@@ -45,10 +45,10 @@ def fixture_paths(tmp_path):
     return paths
 
 
-def add_video(paths, youtube_id, published):
+def add_video(paths, youtube_id, published, channel=None):
     """video with placeholder media and thumb"""
     video = Video.from_doc(
-        video_doc(youtube_id=youtube_id, published=published)
+        video_doc(channel=channel, youtube_id=youtube_id, published=published)
     )
     video.save()
     media = paths.media_root / video.media_url
@@ -82,3 +82,18 @@ def fixture_settings_env(library, monkeypatch):
     monkeypatch.setattr(env, "EMBY_ROOT", str(library.output_root))
     monkeypatch.setattr(env, "TZ", "UTC")
     return env
+
+
+OTHER_CHANNEL = channel_doc(
+    channel_id="UCunfollowed00000000001",
+    channel_name="Unfollowed Channel",
+    channel_subscribed=False,
+)
+
+
+def add_other_video(paths, youtube_id, published, channel=None):
+    """a video of a channel that is not subscribed (no show of its own)"""
+    doc = channel or OTHER_CHANNEL
+    if not Channel.objects.filter(pk=doc["channel_id"]).exists():
+        Channel.objects.create(**Channel.fields_from_doc(doc))
+    return add_video(paths, youtube_id, published, channel=doc)

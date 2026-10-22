@@ -10,6 +10,8 @@ from mediaserver.src.settings import Connection
 TIMEOUT = 15
 # Emby and Jellyfin accept at most this many updates per call comfortably
 CHUNK = 500
+# items per page when listing a user's items
+PAGE = 2000
 
 
 class MediaServerError(Exception):
@@ -86,6 +88,41 @@ class MediaServerClient:
             )
             status = response.status_code
         return status
+
+    def users(self) -> list[dict]:
+        """the server's users: id and name"""
+        data = self._request("GET", "/Users").json()
+        return [
+            {"id": str(u.get("Id")), "name": u.get("Name") or ""} for u in data
+        ]
+
+    def watched_paths(self, user_id: str) -> set[str]:
+        """
+        server paths of the episodes a user has played or started (a read
+        only query of the user's data); pages of PAGE items
+        """
+        paths: set[str] = set()
+        for state in ("IsPlayed", "IsResumable"):
+            start = 0
+            while True:
+                data = self._request(
+                    "GET",
+                    f"/Users/{user_id}/Items",
+                    params={
+                        "Recursive": "true",
+                        "IncludeItemTypes": "Episode",
+                        "Filters": state,
+                        "Fields": "Path",
+                        "StartIndex": start,
+                        "Limit": PAGE,
+                    },
+                ).json()
+                items = data.get("Items") or []
+                paths.update(i["Path"] for i in items if i.get("Path"))
+                start += PAGE
+                if start >= data.get("TotalRecordCount", 0):
+                    break
+        return paths
 
     def series_with_tag(self, tag: str) -> list[dict]:
         """

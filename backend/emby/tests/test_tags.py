@@ -58,15 +58,14 @@ def test_tvshow_nfo_tags():
 
 def test_sync_writes_tags(library):
     Channel.objects.update(emby_tags=["David"])
-    Playlist.objects.update(emby_tags=["Kids"])
 
     sync_all(library)
 
     tags = {}
     for path in library.output_root.rglob("tvshow.nfo"):
         root = ET.parse(path).getroot()
-        tags[path.parent.parent.name] = [t.text for t in root.findall("tag")]
-    assert tags == {"channels": ["David"], "playlists": ["Kids"]}
+        tags[path.parent.name] = [t.text for t in root.findall("tag")]
+    assert list(tags.values()) == [["David"]]
 
     # a tag change is an update of the tvshow.nfo, nothing else
     Channel.objects.update(emby_tags=["David", "Kids"])

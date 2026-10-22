@@ -1,22 +1,32 @@
 """tests for building the Emby tree from the database"""
 
 import xml.etree.ElementTree as ET
+from zoneinfo import ZoneInfo
 
 import pytest
+from channel.models import Channel
 from common.src.env_settings import EnvironmentSettings
 from common.tests.docs import channel_doc
 from emby.models import EpisodeNumber
 from emby.src.sync import (
     paths_from_env,
+    playlist_numbers,
     sync_all,
     sync_channel,
-    sync_playlist,
     validate_output_root,
 )
 from playlist.models import Playlist
 from video.models import Video
 
 pytestmark = pytest.mark.django_db
+
+
+def playlist_assign(dry_run=False):
+    """numbers of the playlist; playlists are no Emby shows, but keep them"""
+    _, _, found = playlist_numbers(
+        Playlist.objects.get(), ZoneInfo("UTC"), dry_run=dry_run
+    )
+    return found.numbers
 
 
 def numbers(root):
@@ -32,26 +42,21 @@ def numbers(root):
     return result
 
 
-def test_playlist_position(library):
-    report = sync_playlist("PL1", library)
+def test_playlist_position_numbers(library):
+    Playlist.objects.update(emby_numbering="playlist_position")
 
-    root = library.output_root / "playlists"
-    assert numbers(root) == {"v3": (1, 1), "v1": (1, 3)}
-    assert (next(root.iterdir()) / "poster.jpg").read_bytes() == b"playlist"
-    assert not report.conflicts
+    assert playlist_assign() == {"v3": (1, 1), "v1": (1, 3)}
 
 
 def test_playlist_reorder_renumbers(library):
-    sync_playlist("PL1", library)
+    Playlist.objects.update(emby_numbering="playlist_position")
+    playlist_assign()
     playlist = Playlist.objects.get()
     playlist.entries.all().delete()
     playlist.entries.create(idx=0, youtube_id="v1")
     playlist.entries.create(idx=1, youtube_id="v3")
 
-    report = sync_playlist("PL1", library)
-
-    assert numbers(library.output_root) == {"v1": (1, 1), "v3": (1, 2)}
-    assert len(report.renamed) == 6
+    assert playlist_assign() == {"v1": (1, 1), "v3": (1, 2)}
     stored = EpisodeNumber.objects.filter(series_id="PL1")
     assert {(n.youtube_id, n.episode) for n in stored} == {
         ("v1", 1),
@@ -72,15 +77,14 @@ def test_sync_all_and_removed_series(library):
     report = sync_all(library)
 
     assert len(numbers(library.output_root / "channels")) == 3
-    assert len(numbers(library.output_root / "playlists")) == 2
+    assert not (library.output_root / "playlists").exists()
     assert not report.conflicts
 
-    Playlist.objects.all().delete()
+    Channel.objects.update(emby_show="never")
     report = sync_all(library)
 
-    assert not (library.output_root / "playlists").exists() or not any(
-        (library.output_root / "playlists").iterdir()
-    )
+    shows = [p.name for p in (library.output_root / "channels").iterdir()]
+    assert shows == ["Other videos [other]"]
     assert any(p.endswith("/") for p in report.deleted)
     assert sync_all(library).changed == 0
 

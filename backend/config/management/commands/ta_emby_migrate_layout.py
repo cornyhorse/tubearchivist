@@ -1,6 +1,7 @@
 """
 one-time Emby layout migration: frozen names, MMDD*100+n dates and
-frozen playlists, then the single sync that renames the files
+frozen playlists, then shows = channels with an "Other videos" show, then
+the single sync that renames the files
 see docs/fork/emby-layout-migration.md
 """
 
@@ -8,6 +9,7 @@ from common.src.env_settings import EnvironmentSettings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from emby.src.migrate_layout import AlreadyMigrated, migrate_layout
+from emby.src.shows_change import describe, watch_history_at_risk
 from emby.src.sync import paths_from_env, preflight, sync_all
 from emby.src.writer import EmbyRootError
 from jobs.src.locks import with_emby_lock
@@ -98,7 +100,33 @@ class Command(BaseCommand):
             f"names frozen {summary.names_frozen}"
         )
 
+    def _write_shows(self, report, prefix: str) -> None:
+        """the shows that go, what is created, and who loses watch state"""
+        change = describe(report)
+        for folder, count in change.removed_shows.items():
+            self.stdout.write(
+                f"{prefix}show removed: {folder} ({count} files)"
+            )
+        self.stdout.write(
+            f"{prefix}playlist shows removed {change.removed_playlist_shows},"
+            f" channel shows moved to Other videos "
+            f"{change.removed_channel_shows}, episodes created in Other "
+            f"videos {change.other_created}"
+        )
+        at_risk, error = watch_history_at_risk(change.removed_media)
+        if error:
+            self.stdout.write(f"{prefix}watch history not read: {error}")
+        for user, paths in at_risk.items():
+            self.stdout.write(
+                f"{prefix}watch history lost for {user}: {len(paths)} items"
+            )
+            for path in paths:
+                self.stdout.write(f"{prefix}  {path}")
+        if not error and not at_risk:
+            self.stdout.write(f"{prefix}no watch history on removed items")
+
     def _write_report(self, report, prefix: str, options) -> None:
+        self._write_shows(report, prefix)
         if options["verbose_changes"]:
             for old, new in report.renamed:
                 self.stdout.write(f"{prefix}rename {old} -> {new}")

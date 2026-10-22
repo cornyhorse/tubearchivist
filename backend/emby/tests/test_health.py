@@ -28,6 +28,7 @@ from emby.src.sync import (
     sync_state,
 )
 from emby.src.writer import MANIFEST_NAME, EmbyRootError
+from emby.tests.conftest import add_other_video
 
 pytestmark = pytest.mark.django_db
 CHANNEL_ID = channel_doc()["channel_id"]
@@ -60,16 +61,16 @@ def test_sync_all_records_runs_and_failing_series(library, monkeypatch):
     assert first["last_error"] is None and first["failing"] == {}
 
     def broken(*_):
-        raise ValueError("bad playlist")
+        raise ValueError("bad show")
 
-    monkeypatch.setattr(sync_module, "playlist_series", broken)
+    monkeypatch.setattr(sync_module, "other_series", broken)
     sync_all(library)
     sync_all(library)
 
     state = sync_state()
-    assert state["failing"]["playlists/PL1"]["runs"] == 2
-    assert state["failing"]["playlists/PL1"]["error"] == "bad playlist"
-    assert state["failing"]["playlists/PL1"]["since"] > first["last_run"]
+    assert state["failing"]["channels/other"]["runs"] == 2
+    assert state["failing"]["channels/other"]["error"] == "bad show"
+    assert state["failing"]["channels/other"]["since"] > first["last_run"]
 
 
 def test_writer_failures_are_keyed_by_series(library, monkeypatch):
@@ -81,14 +82,15 @@ def test_writer_failures_are_keyed_by_series(library, monkeypatch):
         raise OSError(errno.ENAMETOOLONG, os.strerror(errno.ENAMETOOLONG))
 
     monkeypatch.setattr(writer_module, "atomic_write", too_long)
+    add_other_video(library, "o1", 1700000000)
 
     report = sync_all(library)
 
     assert set(report.failed) == {
         f"channels/{CHANNEL_ID}",
-        "playlists/PL1",
+        "channels/other",
     }
-    assert sync_state()["failing"]["playlists/PL1"]["runs"] == 1
+    assert sync_state()["failing"]["channels/other"]["runs"] == 1
 
 
 def test_series_key():
@@ -154,6 +156,15 @@ def test_too_long_names_are_shortened(library):
     sync_all(library)
     EpisodeNumber.objects.filter(series_kind="channel").update(
         name="x" * 120, series_name="Long channel " * 9
+    )
+    EpisodeNumber.objects.create(
+        series_kind="playlist",
+        series_id="PL1",
+        scheme="playlist_frozen",
+        youtube_id="v1",
+        season=1,
+        episode=1,
+        name="Riding the Big Coaster",
     )
     error = f"[Errno {errno.ENAMETOOLONG}] {os.strerror(errno.ENAMETOOLONG)}"
     set_state(

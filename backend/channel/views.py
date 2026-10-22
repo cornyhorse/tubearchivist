@@ -164,6 +164,12 @@ class ChannelApiView(ApiBaseView):
             )
             request_emby_write()
 
+        if show := validated_data.get("emby_show"):
+            Channel.objects.filter(channel_id=channel_id).update(
+                emby_show=show
+            )
+            request_emby_write()
+
         if "download_rule" in validated_data:
             set_rule(channel_id, validated_data["download_rule"])
 

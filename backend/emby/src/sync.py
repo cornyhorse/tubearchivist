@@ -16,8 +16,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from appsettings.models import ConfigDocument
-from channel.models import Channel
+from channel.models import Channel, EmbyNumbering, EmbyShow
 from django.db import transaction
+from django.db.models import Q
 from emby.models import EpisodeNumber, SeriesKind
 from emby.src.layout import (
     EpisodeSource,
@@ -29,14 +30,22 @@ from emby.src.layout import (
 from emby.src.nfo import EpisodeInfo, SeriesInfo
 from emby.src.numbering import FROZEN_SCHEMES, NumberingItem, assign_numbers
 from emby.src.writer import EmbyWriter, SyncReport, check_hardlinks
-from playlist.models import Playlist
+from playlist.models import Playlist, PlaylistEntry
 from video.models import Video
 
 # ConfigDocument key recording which Emby layout the stored numbers use:
 # 1 (no document) MMDD*10+n numbers and live names, 2 frozen names,
-# MMDD*100+n numbers and frozen playlists
+# MMDD*100+n numbers and frozen playlists, 3 shows are channels only, the
+# videos of channels without a show are in one "Other videos" show
 LAYOUT_KEY = "emby_layout"
-LAYOUT_VERSION = 2
+LAYOUT_VERSION = 3
+# the show of videos whose channel has none; "other" can't be a channel id
+OTHER_ID = "other"
+OTHER_TITLE = "Other videos"
+OTHER_PLOT = (
+    "Videos from channels that have no show of their own. They are reached "
+    "through playlists."
+)
 # ConfigDocument key of the last sync_all outcomes, read by health.py
 STATE_KEY = "emby_sync_state"
 _FOLDER = re.compile(r"(channels|playlists)/.* \[([^\]/]+)\]")
@@ -353,7 +362,13 @@ def _episodes(
     found: SeriesNumbers,
     paths: EmbyPaths,
     tz: ZoneInfo,
+    tags: dict[str, tuple[str, ...]] | None = None,
+    name_channel: bool = False,
 ) -> list[EpisodeSource]:
+    """
+    episodes of videos; tags are per video (youtube_id: tags), name_channel
+    puts the uploader in front of the plot, for a show of many channels
+    """
     episodes = []
     for video in videos:
         media = _media_path(video, paths)
@@ -371,9 +386,10 @@ def _episodes(
             season=season,
             episode=episode,
             aired=_local_date(video.published, tz),
-            plot=video.description or "",
+            plot=_plot(video, name_channel),
             runtime_seconds=video.duration,
             studio=video.channel.name,
+            tags=(tags or {}).get(video.youtube_id, ()),
         )
         episodes.append(
             EpisodeSource(
@@ -384,6 +400,28 @@ def _episodes(
             )
         )
     return episodes
+
+
+def _plot(video: Video, name_channel: bool) -> str:
+    plot = video.description or ""
+    if name_channel:
+        return f"From {video.channel.name}.\n\n{plot}".strip()
+    return plot
+
+
+def has_show(channel: Channel) -> bool:
+    """the channel gets its own show (emby_show)"""
+    if channel.emby_show == EmbyShow.ALWAYS:
+        return True
+    return channel.emby_show == EmbyShow.AUTO and channel.subscribed
+
+
+def _other_filter() -> Q:
+    """videos of channels without a show of their own"""
+    return ~(
+        Q(channel__emby_show=EmbyShow.ALWAYS)
+        | Q(channel__emby_show=EmbyShow.AUTO, channel__subscribed=True)
+    )
 
 
 def channel_numbers(
@@ -477,19 +515,58 @@ def playlist_numbers(
     return videos, info, found
 
 
-def playlist_series(
-    playlist: Playlist, paths: EmbyPaths, dry_run: bool = False
+def video_tags(videos: list[Video]) -> dict[str, tuple[str, ...]]:
+    """
+    access tags per video for episodes outside any tagged show: those of
+    its channel and of every playlist it is in
+    """
+    tags: dict[str, set[str]] = {
+        v.youtube_id: set(v.channel.emby_tags) for v in videos
+    }
+    rows = PlaylistEntry.objects.filter(
+        youtube_id__in=tags, playlist__emby_tags__len__gt=0
+    ).values_list("youtube_id", "playlist__emby_tags")
+    for youtube_id, playlist_tags in rows:
+        tags[youtube_id].update(playlist_tags)
+    return {k: tuple(sorted(v)) for k, v in tags.items() if v}
+
+
+def other_series(
+    paths: EmbyPaths, dry_run: bool = False
 ) -> tuple[SeriesSource, list[EpisodeSource], list[str]]:
-    """series and numbered episodes of a playlist, downloaded entries only"""
+    """
+    the "Other videos" show: every video of a channel without a show, by
+    upload year; the show itself carries no tag (so a tag restricted user
+    never sees it), its episodes carry the tags of their playlists
+    """
     tz = ZoneInfo(paths.timezone)
-    videos, info, found = playlist_numbers(playlist, tz, dry_run=dry_run)
-    series = SeriesSource(
-        kind="playlists",
-        info=info,
-        poster=paths.playlist_thumb(playlist.playlist_id),
-        name=found.series_name,
+    videos = list(
+        Video.objects.select_related("channel")
+        .filter(_other_filter(), active=True)
+        .order_by("published", "youtube_id")
     )
-    return series, _episodes(videos, found, paths, tz), found.warnings
+    items = [
+        NumberingItem(v.youtube_id, numbering_date(v, tz)) for v in videos
+    ]
+    info = SeriesInfo(
+        series_id=OTHER_ID,
+        title=OTHER_TITLE,
+        plot=OTHER_PLOT,
+        premiered=items[0].published if items else None,
+    )
+    found = ensure_numbers(
+        SeriesKind.CHANNEL,
+        info,
+        EmbyNumbering.YEAR_FROZEN,
+        items,
+        {v.youtube_id: v.title for v in videos},
+        dry_run,
+    )
+    series = SeriesSource(kind="channels", info=info, name=found.series_name)
+    episodes = _episodes(
+        videos, found, paths, tz, tags=video_tags(videos), name_channel=True
+    )
+    return series, episodes, found.warnings
 
 
 def sync_series(
@@ -511,18 +588,27 @@ def sync_channel(
     """write the series of one channel"""
     check_layout(dry_run)
     channel = Channel.objects.get(channel_id=channel_id)
+    if not has_show(channel):
+        raise ValueError(
+            f"{channel_id} has no show of its own (emby_show), "
+            "its videos are in Other videos"
+        )
     series, episodes, warnings = channel_series(channel, paths, dry_run)
     writer = _writer(paths, dry_run)
     return sync_series(series, episodes, writer, warnings)
 
 
-def sync_playlist(
-    playlist_id: str, paths: EmbyPaths, dry_run: bool = False
-) -> SyncReport:
-    """write the series of one playlist"""
+def _other_source(
+    _model, paths: EmbyPaths, dry_run: bool
+) -> tuple[SeriesSource, list[EpisodeSource], list[str]]:
+    """other_series with the signature of the per series builders"""
+    return other_series(paths, dry_run)
+
+
+def sync_other(paths: EmbyPaths, dry_run: bool = False) -> SyncReport:
+    """write the "Other videos" show"""
     check_layout(dry_run)
-    playlist = Playlist.objects.get(playlist_id=playlist_id)
-    series, episodes, warnings = playlist_series(playlist, paths, dry_run)
+    series, episodes, warnings = other_series(paths, dry_run)
     writer = _writer(paths, dry_run)
     return sync_series(series, episodes, writer, warnings)
 
@@ -565,10 +651,8 @@ def _sync_all(paths: EmbyPaths, dry_run: bool) -> SyncReport:
     sources = [
         ("channels", c.channel_id, channel_series, c)
         for c in Channel.objects.order_by("pk")
-    ] + [
-        ("playlists", p.playlist_id, playlist_series, p)
-        for p in Playlist.objects.order_by("pk")
-    ]
+        if has_show(c)
+    ] + [("channels", OTHER_ID, _other_source, None)]
     for kind, series_id, build, model in sources:
         try:
             series, episodes, series_warnings = build(model, paths, dry_run)

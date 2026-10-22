@@ -105,3 +105,59 @@ because the tree stays as it is.
 - A second sync changes nothing, and later title changes rename nothing.
 - A spilled number goes back to its own day.
 - The dry run leaves the database and the disk untouched.
+
+
+# Layout 3: shows are channels, the rest is in "Other videos" (fork-v0.5.0)
+
+Design: `emby-v050-design.md` sections 4 and 6. The same command, `manage.py ta_emby_migrate_layout`, takes a
+database on layout 2 to layout 3 (and one on layout 1 through both).
+
+| | Layout 2 | Layout 3 |
+|---|---|---|
+| Shows in `.emby/` | one per channel **and** one per playlist (`playlists/`) | one per channel that has a show, plus **Other videos** |
+| Which channel has a show | all | `Channel.emby_show`: `auto` = subscribed (default), `always`, `never` |
+| Videos of channels without a show | a one-off show named after the channel | `channels/Other videos [other]/`, Season = upload year, numbering `year_frozen`; each episode's studio is the uploader and its plot starts "From <channel>." |
+| Access tags | none | channel shows carry `emby_tags` in `tvshow.nfo`; the Other videos show carries none, its episodes carry the tags of their playlists and channel |
+| Playlists | shows | not written to `.emby/`; Emby playlists come from a later change |
+
+The gate is the same: until the command has run, `emby_sync` and the API-triggered syncs refuse
+(`EmbyLayoutOutdated`). 2 to 3 changes no stored number. The sync that follows removes `playlists/*` and the
+shows of channels without a show, and creates Other videos. Stored numbers of those channels are kept, so
+switching a channel back to `always` returns its show with the same names.
+
+## What the dry run prints
+
+`ta_emby_migrate_layout --dry-run` runs the whole thing in a transaction, prints, and rolls back:
+
+- `show removed: <folder> (N files)` for every playlist show and every channel show that goes;
+- `playlist shows removed N, channel shows moved to Other videos N, episodes created in Other videos N`;
+- **watch history** (read only, uses the media server settings): for each Emby user, the removed media files they
+  have played or started, listed by path. A removed file is a new item in Emby, so that state is lost. The
+  playlist-show copies of channel episodes are separate items from the channel-show ones; the channel-show copy
+  keeps its state. If the server can't be read it says `watch history not read: <why>`;
+- the usual `renamed/created/updated/deleted` counts.
+
+## First production run (needs Matt's OK at each step)
+
+Prerequisites: PR 1 (tags) and PR 2 (this) deployed, Matt's OK to deploy, and `emby_tags` set on the channels David
+may see (`ta_emby_import_tags --dry-run`, then without). Until the migration runs, the hourly `emby_write` fails with
+the gate message and the tree stays as it is.
+
+1. **Snapshot:** `pg_dump`, and `find .../.emby -type f -printf "%i %p\n" > emby-tree-before.txt`.
+2. **No sync running** (TA task list).
+3. **Import the tags** from Emby: `ta_emby_import_tags --dry-run`, check every show maps (the YT-Approved
+   CoasterFan2105 maps to the TA channel), then run it. A sync now (layout 2 is still active, tags are written
+   into the existing `tvshow.nfo` files) is optional.
+4. **Preview:** `ta_emby_migrate_layout --dry-run --verbose-changes > preview.txt`. Check:
+   - `errors 0`;
+   - the removed shows are exactly the playlist shows and the channels Matt expects to lose their show;
+   - `episodes created in Other videos` equals the number of media files in the removed channel shows plus the
+     playlist-only videos (videos of unfollowed channels);
+   - the **watch history list**: decide per item whether the loss is acceptable (Matt's decision).
+5. **Run it:** `ta_emby_migrate_layout --verbose-changes > run.txt`; counts match the preview.
+6. **Idempotence:** `ta_emby_sync .../.emby --dry-run` reports `renamed 0, created 0, deleted 0`.
+7. **Tell Emby and check:** the notify job runs after the sync; then in Emby (as admin and as David) the YT library
+   shows channel shows and "Other videos" for admin, and David sees only tagged shows; "Other videos" is not in his
+   list.
+8. **If wrong:** restore the `pg_dump`, redeploy the previous image; files stay as they are, the old image's next
+   sync recreates the playlist shows and the one-off channel shows (one more change pass; ask Matt first).
