@@ -2548,6 +2548,10 @@ export interface components {
       path_to?: string;
       notify_enabled?: boolean;
       debounce_seconds?: number;
+      /** @description item refreshes per run after a sync (each re-reads files) */
+      refresh_batch_size?: number;
+      /** @description pause between runs of item refreshes */
+      refresh_pause_seconds?: number;
       /** @description Emby tags offered in the UI, e.g. ['David'] */
       known_tags?: string[];
       /** @description keep Emby playlists in step with the TA playlists (Emby) */
