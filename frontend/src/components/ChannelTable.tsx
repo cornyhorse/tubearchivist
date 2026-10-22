@@ -7,6 +7,7 @@ import ChannelIcon from './ChannelIcon';
 import DataTable, { Column, SortState } from './ux/DataTable';
 import { NumberingBadge, RuleBadge } from './ux/Badges';
 import AutoDownloadSwitch from './ux/AutoDownloadSwitch';
+import EmbyShowSelect from './ux/EmbyShowSelect';
 
 type ChannelTableProps = {
   channels: ChannelType[];
@@ -160,6 +161,20 @@ const ChannelTable = ({
           name={channel.channel_name}
           value={channel.emby_numbering}
           options={['date', 'year_frozen', 'absolute_frozen']}
+          canEdit={isAdmin}
+          onSaved={onChanged}
+        />
+      ),
+    },
+    {
+      key: 'emby_show',
+      header: 'Emby show',
+      help: 'Whether this channel has its own show in Emby. Otherwise its videos are in the Other videos show.',
+      render: channel => (
+        <EmbyShowSelect
+          id={channel.channel_id}
+          name={channel.channel_name}
+          value={channel.emby_show}
           canEdit={isAdmin}
           onSaved={onChanged}
         />

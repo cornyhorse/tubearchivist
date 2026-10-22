@@ -6,6 +6,10 @@ const saveAutoDownload = vi.fn();
 vi.mock('../api/actions/updateAutoDownload', () => ({
   default: (...args: unknown[]) => saveAutoDownload(...args),
 }));
+const saveEmbyShow = vi.fn();
+vi.mock('../api/actions/updateEmbyShow', () => ({
+  default: (...args: unknown[]) => saveEmbyShow(...args),
+}));
 import ChannelTable from './ChannelTable';
 import { ChannelType } from '../pages/Channels';
 
@@ -29,6 +33,7 @@ const rows = [
     latest_upload: '2026-10-08',
     emby_numbering: 'year_frozen',
     auto_download: true,
+    emby_show: 'always',
   }),
   channel({ channel_id: 'UC2', channel_name: 'Coasters', channel_subscribed: false }),
 ];
@@ -97,8 +102,25 @@ describe('ChannelTable', () => {
     expect(saveAutoDownload).toHaveBeenCalledWith('channel', 'UC2', true);
   });
 
+  it('shows the Emby show choice per row and saves a change', async () => {
+    saveEmbyShow.mockResolvedValue({ status: 200 });
+    const onChanged = vi.fn();
+    renderTable({ onChanged });
+    expect(screen.getByRole('columnheader', { name: /Emby show/ })).toBeTruthy();
+    const trains = screen.getByRole('combobox', { name: 'Emby show for Trains' });
+    const coasters = screen.getByRole('combobox', { name: 'Emby show for Coasters' });
+    expect((trains as HTMLSelectElement).value).toBe('always');
+    expect((coasters as HTMLSelectElement).value).toBe('auto');
+
+    fireEvent.change(coasters, { target: { value: 'never' } });
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(saveEmbyShow).toHaveBeenCalledWith('UC2', 'never');
+  });
+
   it('is read-only for viewers', () => {
     renderTable({ isAdmin: false });
+    expect(screen.queryByRole('combobox')).toBeNull();
     expect(screen.queryByRole('switch')).toBeNull();
     expect(screen.queryByRole('checkbox')).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
