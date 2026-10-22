@@ -1,4 +1,4 @@
-"""layout 3: dates are the UTC date of the upload, whatever TZ is"""
+"""layout 4: dates are the UTC date of the upload, whatever TZ is"""
 
 import io
 import xml.etree.ElementTree as ET
@@ -82,6 +82,13 @@ def test_aired_and_season_use_the_utc_date(ny_library):
     assert nfos["newyear"].findtext("season") == "2024"
     assert nfos["newyear"].findtext("episode") == "10100"
     assert numbers(ny_library.output_root)["newyear"] == (2024, 10100)
+
+
+NOSHOW = channel_doc(
+    channel_id="UCnoshow000000000000001",
+    channel_name="No show",
+    channel_subscribed=False,
+)
 
 
 def old_numbers(video_id, season, episode, scheme="date", series=CHANNEL_ID):
@@ -202,3 +209,50 @@ def test_dry_run_prints_the_count_first(ny_library, monkeypatch):
     )
     assert f"[dry-run]   UTC date: {CHANNEL_ID}/early" in lines
     assert EpisodeNumber.objects.get().episode == 111300  # rolled back
+
+
+def test_a_database_already_on_layout_3_is_renumbered_too(ny_library):
+    """the UTC step is its own layout, whichever PR was deployed first"""
+    add_video(ny_library, "early", EARLY)
+    old_numbers("early", 2023, 111300)
+    ConfigDocument.objects.create(key=LAYOUT_KEY, value={"version": 3})
+
+    summary = migrate_layout("America/New_York")
+
+    assert summary.utc_renumbered == [f"{CHANNEL_ID}/early"]
+    assert EpisodeNumber.objects.get().episode == 111400
+
+
+def test_only_what_will_be_renamed_is_selected(ny_library):
+    add_video(ny_library, "early", EARLY)
+    add_video(ny_library, "utcday", EARLY + 60)
+    add_video(ny_library, "pl", EARLY + 120)
+    add_video(ny_library, "hidden", EARLY + 180, channel=NOSHOW)
+    Channel.objects.create(**Channel.fields_from_doc(NOSHOW))
+    # numbered while TZ was UTC: already on the UTC day
+    old_numbers("utcday", 2023, 111400)
+    old_numbers("early", 2023, 111300)
+    EpisodeNumber.objects.create(
+        series_kind="playlist",
+        series_id="PL1",
+        scheme="date",
+        youtube_id="pl",
+        season=2023,
+        episode=111300,
+    )
+    old_numbers("hidden", 2023, 111300, series=NOSHOW["channel_id"])
+    summary = MigrationSummary()
+
+    _migrate_utc_dates(NY, summary)
+
+    assert summary.utc_renumbered == [f"{CHANNEL_ID}/early"]
+    got = {
+        r.youtube_id: (r.season, r.episode)
+        for r in EpisodeNumber.objects.all()
+    }
+    assert got["utcday"] == (2023, 111400)
+    assert got["early"] == (2023, 111401)
+    # a channel without a show is kept consistent, but not counted
+    assert got["hidden"] == (2023, 111400)
+    # playlists are not written to Emby any more: left alone
+    assert got["pl"] == (2023, 111300)

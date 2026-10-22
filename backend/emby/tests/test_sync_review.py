@@ -231,6 +231,6 @@ def test_fresh_database_starts_on_the_current_layout(library):
 
     sync_all(library)
 
-    assert layout_version() == 3
+    assert layout_version() == 4
     ConfigDocument.objects.filter(key=LAYOUT_KEY).update(value={})
     assert layout_version() == 1

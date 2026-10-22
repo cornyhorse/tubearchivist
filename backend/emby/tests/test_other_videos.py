@@ -206,3 +206,51 @@ def test_command_other_and_channel_errors(library, settings_env, capsys):
         call_command(
             "ta_emby_sync", str(library.output_root), "--channel", CHANNEL_ID
         )
+
+
+def channel_episode_tags(root):
+    return {
+        n.findtext("uniqueid"): [t.text for t in n.findall("tag")]
+        for n in (
+            ET.parse(p).getroot() for p in root.glob("channels/Test*/**/*.nfo")
+        )
+        if n.tag == "episodedetails"
+    }
+
+
+def test_playlist_tags_reach_episodes_of_an_untagged_channel(library):
+    """whatever a tagged playlist holds is approved for the tag"""
+    Playlist.objects.update(emby_tags=["David"])  # PL1 holds v3 and v1
+
+    sync_all(library)
+
+    assert channel_episode_tags(library.output_root) == {
+        "v1": ["David"],
+        "v2": [],
+        "v3": ["David"],
+    }
+    series = next(library.output_root.glob("channels/Test*/tvshow.nfo"))
+    assert ET.parse(series).getroot().find("tag") is None
+
+    # taking the tag back rewrites those NFOs
+    Playlist.objects.update(emby_tags=[])
+    report = sync_all(library)
+    assert channel_episode_tags(library.output_root) == {
+        "v1": [],
+        "v2": [],
+        "v3": [],
+    }
+    assert len([p for p in report.updated if p.endswith(".nfo")]) == 2
+
+
+def test_series_tag_is_not_repeated_on_episodes(library):
+    Channel.objects.update(emby_tags=["David"])
+    Playlist.objects.update(emby_tags=["david", "Kids"])
+
+    sync_all(library)
+
+    assert channel_episode_tags(library.output_root) == {
+        "v1": ["Kids"],
+        "v2": [],
+        "v3": ["Kids"],
+    }

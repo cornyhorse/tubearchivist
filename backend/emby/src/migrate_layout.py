@@ -27,6 +27,8 @@ from emby.src.layout import safe_name
 from emby.src.numbering import DATE_SLOTS_PER_DAY, date_block
 from emby.src.sync import (
     LAYOUT_VERSION,
+    OTHER_ID,
+    has_show,
     layout_version,
     numbering_date,
     set_layout_version,
@@ -50,7 +52,7 @@ class MigrationSummary:
     playlists_frozen: list[str] = field(default_factory=list)
     playlists_kept: list[str] = field(default_factory=list)
     names_frozen: int = 0
-    # layout 3: episodes whose number moves because their date is now the
+    # layout 4: episodes whose number moves because their date is now the
     # UTC one, and how many of those change season
     utc_renumbered: list[str] = field(default_factory=list)
     utc_season_changes: int = 0
@@ -140,12 +142,16 @@ def _free_slot(taken: set, season: int, day: date, preferred: int) -> int:
 
 def _migrate_utc_dates(local_tz: ZoneInfo, summary: MigrationSummary) -> None:
     """
-    layout 3: episodes were numbered by their date in TZ, now by the UTC
+    layout 4: episodes were numbered by their date in TZ, now by the UTC
     date; the ones uploaded between 00:00 and the UTC offset of TZ are on
     another day (and, on Jan 1, in another season)
-    date scheme: keeps its slot within the day when free; year scheme:
-    only a changed season gets the next number there; numbers set by hand
-    and the other schemes stay
+    date scheme: keeps its slot within the day when free, unless the
+    number already lies on the UTC day; year scheme: only a changed season
+    gets the next number there; numbers set by hand, the other schemes and
+    playlist series stay. The summary lists only the series the writer
+    writes (channels with a show, Other videos), so its count is the
+    number of episodes whose files are renamed. Within a day, the order of
+    slots may stop following upload order for a moved episode.
     """
     videos = {
         v.youtube_id: v
@@ -154,10 +160,14 @@ def _migrate_utc_dates(local_tz: ZoneInfo, summary: MigrationSummary) -> None:
     }
     rows = list(
         EpisodeNumber.objects.filter(
+            series_kind=SeriesKind.CHANNEL,
             youtube_id__in=videos,
             scheme__in=[EmbyNumbering.DATE, EmbyNumbering.YEAR_FROZEN],
         ).order_by("pk")
     )
+    written = {OTHER_ID} | {
+        c.channel_id for c in Channel.objects.all() if has_show(c)
+    }
     taken: dict[tuple, set] = {}
     final: dict[int, tuple[int, int]] = {}
     for row in rows:
@@ -175,6 +185,13 @@ def _migrate_utc_dates(local_tz: ZoneInfo, summary: MigrationSummary) -> None:
         taken[key].discard((row.season, row.episode))
         season = new_day.year
         if row.scheme == EmbyNumbering.DATE:
+            block = date_block(new_day)
+            if (
+                season == row.season
+                and block <= row.episode < block + DATE_SLOTS_PER_DAY
+            ):
+                taken[key].add((row.season, row.episode))
+                continue
             slot = row.episode - date_block(old_day)
             episode = _free_slot(taken[key], season, new_day, slot)
         elif season == row.season:
@@ -185,9 +202,10 @@ def _migrate_utc_dates(local_tz: ZoneInfo, summary: MigrationSummary) -> None:
             episode += 1
         taken[key].add((season, episode))
         final[row.pk] = (season, episode)
-        if season != row.season:
+        if season != row.season and row.series_id in written:
             summary.utc_season_changes += 1
-        summary.utc_renumbered.append(f"{row.series_id}/{row.youtube_id}")
+        if row.series_id in written:
+            summary.utc_renumbered.append(f"{row.series_id}/{row.youtube_id}")
     changed = [r for r in rows if r.pk in final]
     # two passes, as in _migrate_dates: -pk is unique and never a real one
     for row in changed:
@@ -282,8 +300,9 @@ def migrate_layout(
             _migrate_dates(ZoneInfo(timezone), summary)
             _freeze_playlists(set(keep_position or ()), summary)
             _freeze_names(summary)
-        # 2 -> 3: the shows are chosen when the tree is built and the
-        # writer removes what is no longer wanted; dates become UTC
+        # 2 -> 3 changes no stored number: the shows are chosen when the
+        # tree is built and the writer removes what is no longer wanted
+        # 3 -> 4 (and 2 -> 4): dates become UTC dates
         _migrate_utc_dates(ZoneInfo(timezone), summary)
         set_layout_version()
     return summary

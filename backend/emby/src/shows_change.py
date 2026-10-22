@@ -24,6 +24,9 @@ class ShowsChange:
 
     removed_shows: dict[str, int] = field(default_factory=dict)
     removed_media: list[str] = field(default_factory=list)
+    # media files that move (their old paths): Emby normally keeps the
+    # watch state of a renamed file, which is not certain
+    renamed_media: list[str] = field(default_factory=list)
     other_created: int = 0
 
     @property
@@ -55,6 +58,7 @@ def describe(report: SyncReport) -> ShowsChange:
         if folder in change.removed_shows:
             change.removed_shows[folder] += 1
             change.removed_media.append(path)
+    change.renamed_media = [old for old, _ in report.renamed if _is_media(old)]
     change.other_created = sum(
         1
         for p in report.created

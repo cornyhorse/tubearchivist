@@ -93,7 +93,7 @@ def test_migration_renames_once(library, monkeypatch):
     assert len(report.renamed) == 9
     assert not report.created and not report.errors
     assert media_inodes(root) == inodes
-    assert layout_version() == 3
+    assert layout_version() == 4
 
     assert sync_all(library).changed == 0
     Video.objects.update(title="Renamed later")
@@ -244,7 +244,7 @@ def test_command_no_sync(library, monkeypatch, settings_env):
     output = run("ta_emby_migrate_layout", "--no-sync")
 
     assert "not synced" in output
-    assert layout_version() == 3
+    assert layout_version() == 4
 
 
 def test_command_needs_emby_root(library, monkeypatch, settings_env):

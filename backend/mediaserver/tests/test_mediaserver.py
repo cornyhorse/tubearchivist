@@ -332,6 +332,7 @@ def test_series_with_tag_and_find_item(http):
         {
             "Items": [
                 {
+                    "Id": 7,
                     "Name": "Show",
                     "Path": "/x/Show [UC1]",
                     "ProviderIds": {"youtube": "UC1"},
@@ -348,38 +349,98 @@ def test_series_with_tag_and_find_item(http):
 
     assert shows == [
         {
+            "id": "7",
             "name": "Show",
             "path": "/x/Show [UC1]",
             "provider_ids": {"youtube": "UC1"},
             "tags": ["David", "Kids"],
         },
-        {"name": "", "path": "", "provider_ids": {}, "tags": []},
+        {"id": "", "name": "", "path": "", "provider_ids": {}, "tags": []},
     ]
     query = http.calls[-1][3]["params"]
     assert query["Tags"] == "David" and query["IncludeItemTypes"] == "Series"
     assert http.calls[-1][0] == "GET"
 
 
-def test_changed_series():
+def test_media_by_stem():
+    files = {
+        "c/A/S1/e.mp4": {"role": "media"},
+        "c/A/S1/e.nfo": {"role": "nfo"},
+        "c/A/S1/e-thumb.jpg": {"role": "thumb"},
+    }
+    assert ms_jobs.media_by_stem(files) == {"c/A/S1/e": "c/A/S1/e.mp4"}
+
+
+def test_series_episode_paths(http, monkeypatch):
+    configure()
+    client = MediaServerClient(
+        Connection("emby", "http://emby.test:8096", SECRET)
+    )
+    http.responses[("GET", "/Items")] = (
+        200,
+        {"Items": [{"Path": "/a.mkv"}, {"Id": 1}], "TotalRecordCount": 3},
+    )
+    monkeypatch.setattr(client_mod, "PAGE", 2)
+    assert client.series_episode_paths("7") == ["/a.mkv", "/a.mkv"]
+    assert http.calls[-1][3]["params"]["ParentId"] == "7"
+
+
+def test_from_server_path():
+    configure()
+    assert settings.from_server_path("/mnt/media/.emby/c/e.mkv") == "c/e.mkv"
+    assert settings.from_server_path("/elsewhere/e.mkv") is None
+
+
+def test_changed_items():
+    media = {"c/A/Season 1/e": "c/A/Season 1/e.mp4"}
     report = SyncReport(
         created=["channels/N/tvshow.nfo"],
-        updated=["channels/A/tvshow.nfo", "channels/A/Season 1/e.nfo"],
+        updated=[
+            "channels/A/tvshow.nfo",
+            "c/A/Season 1/e.nfo",
+            "c/A/Season 1/unknown.nfo",
+            "c/A/Season 1/e-thumb.jpg",
+        ],
         renamed=[("playlists/P/tvshow.nfo", "channels/B/tvshow.nfo")],
     )
-    assert ms_jobs.changed_series(report) == {"channels/A", "channels/B"}
+    assert ms_jobs.changed_items(report, media) == {
+        "series:channels/A",
+        "series:channels/B",
+        "episode:c/A/Season 1/e.mp4",
+    }
+
+
+def test_changed_items_past_the_limit_refreshes_the_show(monkeypatch):
+    monkeypatch.setattr(ms_jobs, "EPISODE_REFRESH_LIMIT", 2)
+    media = {
+        f"c/A [x]/Season 1/e{n}": f"c/A [x]/Season 1/e{n}.mp4"
+        for n in range(3)
+    }
+    report = SyncReport(
+        updated=[f"c/A [x]/Season 1/e{n}.nfo" for n in range(3)]
+        + ["channels/B/tvshow.nfo"]
+    )
+    assert ms_jobs.changed_items(report, media) == {
+        "tree:c/A [x]",
+        "series:channels/B",
+    }
 
 
 def test_queue_refresh_debounced():
-    assert ms_jobs.queue_item_refresh({"channels/A"}) is None  # not configured
+    assert ms_jobs.queue_item_refresh({"series:A"}) is None  # not configured
     configure()
-    first = ms_jobs.queue_item_refresh({"channels/A"})
-    second = ms_jobs.queue_item_refresh({"channels/B"})
+    first = ms_jobs.queue_item_refresh({"series:A"})
+    second = ms_jobs.queue_item_refresh({"series:B"})
 
     assert first.pk == second.pk
     settings.update({"notify_enabled": False})
-    assert ms_jobs.queue_item_refresh({"channels/C"}) is None
+    assert ms_jobs.queue_item_refresh({"series:C"}) is None
     configure(notify_enabled=True)
     assert ms_jobs.queue_item_refresh(set()) is None
+
+
+def found(path, item_id=42):
+    return (200, {"Items": [{"Id": item_id, "Path": path}]})
 
 
 def test_media_refresh_items(http):
@@ -387,29 +448,55 @@ def test_media_refresh_items(http):
         "skipped": "no media server configured"
     }
     configure()
-    assert run("media_refresh_items")[0] == {"folders": 0}
+    assert run("media_refresh_items")[0] == {"items": 0}
 
-    ms_jobs.queue_item_refresh({"channels/A [x]", "channels/B [y]"})
-    http.responses[("GET", "/Items")] = (200, {"Items": [{"Id": 42}]})
+    ms_jobs.queue_item_refresh(
+        {"series:channels/A [x]", "episode:o/e.mp4", "tree:channels/T [t]"}
+    )
+    paths = {
+        "channels/A [x]": "Series",
+        "o/e.mp4": "Episode",
+        "channels/T [t]": "Series",
+    }
+    seen = []
+
+    def lookup(method, url, headers=None, timeout=None, **kwargs):
+        # answer by the path asked for, like Emby
+        params = kwargs.get("params") or {}
+        seen.append((method, url, params))
+        if method == "GET":
+            wanted = params["Path"]
+            return SimpleNamespace(
+                status_code=200, json=lambda: found(wanted)[1]
+            )
+        return SimpleNamespace(status_code=204, json=lambda: None)
+
+    client_mod.requests.request = lookup
     result, _ = run("media_refresh_items")
 
-    assert result == {"refreshed": 2, "unknown": 0}
-    lookup = [c for c in http.calls if c[0] == "GET"][0]
-    assert lookup[3]["params"]["Path"] == "/mnt/media/.emby/channels/A [x]"
-    assert lookup[3]["params"]["IncludeItemTypes"] == "Series"
-    refresh = http.calls[-1]
-    assert refresh[1].endswith("/Items/42/Refresh")
-    assert refresh[3]["params"]["MetadataRefreshMode"] == "Default"
-    assert refresh[3]["params"]["ReplaceAllMetadata"] == "false"
+    assert result == {"refreshed": 3, "unknown": 0}
+    gets = {p["Path"]: p["IncludeItemTypes"] for m, u, p in seen if m == "GET"}
+    assert gets == {f"/mnt/media/.emby/{k}": v for k, v in paths.items()}
+    posts = [(u, p) for m, u, p in seen if m == "POST"]
+    assert all(u.endswith("/Items/42/Refresh") for u, _ in posts)
+    recursive = sorted(p["Recursive"] for _, p in posts)
+    assert recursive == ["false", "false", "true"]
+    assert all(p["MetadataRefreshMode"] == "Default" for _, p in posts)
+    assert all(p["ReplaceAllMetadata"] == "false" for _, p in posts)
 
 
 def test_media_refresh_items_unknown_and_failure(http):
     configure()
-    ms_jobs.queue_item_refresh({"channels/A"})
+    ms_jobs.queue_item_refresh({"series:channels/A"})
     http.responses[("GET", "/Items")] = (200, {"Items": []})
     assert run("media_refresh_items")[0] == {"refreshed": 0, "unknown": 1}
 
-    ms_jobs.queue_item_refresh({"channels/A", "channels/B"})
+    # the server ignores the Path filter and answers with another item
+    ms_jobs.queue_item_refresh({"series:channels/A"})
+    http.responses[("GET", "/Items")] = found("/somewhere/else")
+    assert run("media_refresh_items")[0] == {"refreshed": 0, "unknown": 1}
+
+    ms_jobs.queue_item_refresh({"series:channels/A", "series:channels/B"})
     http.responses[("GET", "/Items")] = (500, None)
     with pytest.raises(JobError, match="HTTP 500"):
         run("media_refresh_items")
@@ -427,6 +514,7 @@ def test_emby_write_queues_notify(monkeypatch, http):
     report = SyncReport(created=["channels/A/Season 1/e.nfo"])
     monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
     monkeypatch.setattr(handlers, "sync_all", lambda paths: report)
+    monkeypatch.setattr(handlers, "_media_stems", lambda paths: {})
     job, _ = enqueue("emby_write", dispatch=False)
 
     handlers.emby_write(JobContext(job))

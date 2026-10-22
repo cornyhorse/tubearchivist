@@ -35,7 +35,7 @@ from video.models import Video
 
 # Dates (aired, premiered, the season and the MMDD of date numbers) are the
 # UTC date of the upload, the same for every viewer and whatever TZ is set
-# to; before layout 3 they were dates in TZ, which put an upload between
+# to; before layout 4 they were dates in TZ, which put an upload between
 # 00:00 and 04:59 UTC on the previous day (and a Jan 1 one in the previous
 # season)
 UTC = ZoneInfo("UTC")
@@ -43,9 +43,11 @@ UTC = ZoneInfo("UTC")
 # ConfigDocument key recording which Emby layout the stored numbers use:
 # 1 (no document) MMDD*10+n numbers and live names, 2 frozen names,
 # MMDD*100+n numbers and frozen playlists, 3 shows are channels only, the
-# videos of channels without a show are in one "Other videos" show
+# videos of channels without a show are in one "Other videos" show, 4 dates
+# are UTC dates (a step of its own so that it happens whichever of 3 and 4
+# a database was migrated to first)
 LAYOUT_KEY = "emby_layout"
-LAYOUT_VERSION = 3
+LAYOUT_VERSION = 4
 # the show of videos whose channel has none; "other" can't be a channel id
 OTHER_ID = "other"
 OTHER_TITLE = "Other videos"
@@ -69,7 +71,7 @@ class EmbyPaths:
     media_root: Path
     cache_root: Path
     output_root: Path
-    # the zone dates were numbered in before layout 3; only the layout
+    # the zone dates were numbered in before layout 4; only the layout
     # migration reads it, files are written with UTC dates
     timezone: str = "UTC"
 
@@ -481,7 +483,28 @@ def channel_series(
         banner=paths.channel_art(channel.channel_id, "banner"),
         name=found.series_name,
     )
-    return series, _episodes(videos, found, paths, tz), found.warnings
+    episodes = _episodes(
+        videos, found, paths, tz, tags=extra_tags(videos, info.tags)
+    )
+    return series, episodes, found.warnings
+
+
+def extra_tags(
+    videos: list[Video], series_tags: tuple[str, ...]
+) -> dict[str, tuple[str, ...]]:
+    """
+    the tags of each video's playlists (and channel) that the show's own
+    tag doesn't give: whatever a tagged playlist holds is approved for the
+    tag's users, in an untagged channel show too. An episode tag is
+    enough for Emby, and only the differing ones keep the NFOs small.
+    """
+    inherited = {t.casefold() for t in series_tags}
+    extra = {}
+    for youtube_id, tags in video_tags(videos).items():
+        rest = tuple(t for t in tags if t.casefold() not in inherited)
+        if rest:
+            extra[youtube_id] = rest
+    return extra
 
 
 def playlist_numbers(
