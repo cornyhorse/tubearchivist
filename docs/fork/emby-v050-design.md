@@ -37,9 +37,20 @@ container with a throwaway library and fake episodes, never from production.
    episode with its file path. TA knows each path, so the sync lists the library once and maps path to id. (The
    `uniqueid` in the NFO does arrive as a provider id, but path is exact and doesn't depend on that.)
 6. **Emby does not re-read an NFO tag on `Library/Media/Updated`** *(tested; folder and file paths both)*. It does
-   after `POST /Items/{id}/Refresh?MetadataRefreshMode=Default&Recursive=false` (series and episode). So a tag change
-   needs a per-item refresh, not just the existing notify. Plain `Default` mode is enough: no `ReplaceAllMetadata`,
-   so Emby doesn't wipe anything it holds. (`ImageRefreshMode=None` is rejected with 400, so leave it out.)
+   after `POST /Items/{id}/Refresh`, but **only a full refresh that replaces the metadata changes an existing tag**
+   *(tested on the scratch Emby, series and episode, tag NFO changes)*:
+
+   | NFO change | `MetadataRefreshMode=Default`, `ReplaceAllMetadata=false` | `FullRefresh` + `ReplaceAllMetadata=true` |
+   |---|---|---|
+   | none -> David | David is added | David is added |
+   | David -> none | **David stays** | tags emptied |
+   | David -> Kids | **David stays, Kids is not added** | Kids replaces David |
+
+   So the follow-up refresh uses `FullRefresh` with `ReplaceAllMetadata=true` and `ReplaceAllImages=false`. On the
+   scratch Emby that kept the poster and thumb sidecar images, the play count and resume position, and worked on a
+   show with `lockdata`. It does replace anything set by hand in Emby on those items; TA owns these NFOs. It runs
+   only on items whose NFO changed in place (a renamed file is a new item the scan reads anyway), shows before episodes, at most `refresh_batch_size` (50) per run with `refresh_pause_seconds` (60) before the next run, because each refresh makes Emby read and probe the files again. If a library has online metadata providers switched on, a full refresh may ask
+   them; Matt's YT library has none that match these shows (no provider ids, series locked).
 7. New items are only in Emby after its scan. A playlist sync that runs before the scan simply leaves those
    episodes out, and the next run adds them.
 

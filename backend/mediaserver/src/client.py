@@ -87,6 +87,79 @@ class MediaServerClient:
             status = response.status_code
         return status
 
+    def series_with_tag(self, tag: str) -> list[dict]:
+        """
+        shows that carry a tag (a read only query): name, server path,
+        provider ids and all their tags
+        """
+        data = self._request(
+            "GET",
+            "/Items",
+            params={
+                "Tags": tag,
+                "Recursive": "true",
+                "IncludeItemTypes": "Series",
+                "Fields": "Path,ProviderIds,Tags,TagItems",
+            },
+        ).json()
+        return [
+            {
+                "name": item.get("Name") or "",
+                "path": item.get("Path") or "",
+                "provider_ids": item.get("ProviderIds") or {},
+                "tags": sorted(
+                    (
+                        {t.get("Name") for t in item.get("TagItems") or []}
+                        | set(item.get("Tags") or [])
+                    )
+                    - {None}
+                ),
+            }
+            for item in data.get("Items") or []
+        ]
+
+    def find_item(self, server_path: str, item_type: str) -> str | None:
+        """
+        id of the item of this type at exactly this server path, if any;
+        the filter is not trusted, the path of each result is compared
+        """
+        data = self._request(
+            "GET",
+            "/Items",
+            params={
+                "Path": server_path,
+                "Recursive": "true",
+                "IncludeItemTypes": item_type,
+                "Fields": "Path",
+                "Limit": 5,
+            },
+        ).json()
+        for item in data.get("Items") or []:
+            if item.get("Path") == server_path:
+                return str(item["Id"])
+        return None
+
+    def refresh_item(self, item_id: str) -> int:
+        """
+        read the item's NFO again and replace what the server holds with
+        it. The default refresh mode only fills in what is empty: a tag
+        taken out of the NFO, or another one put in its place, stayed as
+        it was (tested on Emby 4.9.5.0), which would leave a user with
+        access that was withdrawn.
+        TA owns these NFOs; images are sidecar files (ReplaceAllImages
+        stays off) and watch state is not metadata.
+        """
+        return self._request(
+            "POST",
+            f"/Items/{item_id}/Refresh",
+            params={
+                "Recursive": "false",
+                "MetadataRefreshMode": "FullRefresh",
+                "ReplaceAllMetadata": "true",
+                "ReplaceAllImages": "false",
+            },
+        ).status_code
+
     def refresh(self, library_id: str | None = None) -> int:
         """full refresh of one library, or of all of them"""
         if library_id:

@@ -63,6 +63,15 @@ class ChannelSerializer(serializers.Serializer):
             "a check downloads what the rules allow; off: found videos wait"
         ),
     )
+    emby_tags = serializers.ListField(
+        child=serializers.CharField(max_length=64, allow_blank=True),
+        required=False,
+        max_length=20,
+        help_text=(
+            "Emby tags written to the show; none hides it from Emby users "
+            "limited to tagged items"
+        ),
+    )
     _index = serializers.CharField(required=False)
     _score = serializers.IntegerField(required=False)
 
@@ -109,6 +118,9 @@ class ChannelListQuerySerializer(serializers.Serializer):
     has_rule = serializers.BooleanField(required=False, allow_null=True)
     has_errors = serializers.BooleanField(required=False, allow_null=True)
     auto_download = serializers.BooleanField(required=False, allow_null=True)
+    emby_tag = serializers.CharField(
+        required=False, help_text="only those with this Emby tag"
+    )
     sort = serializers.ChoiceField(
         choices=[
             "name",
@@ -149,6 +161,15 @@ class ChannelUpdateSerializer(serializers.Serializer):
         required=False,
         help_text=(
             "a check downloads what the rules allow; off: found videos wait"
+        ),
+    )
+    emby_tags = serializers.ListField(
+        child=serializers.CharField(max_length=64, allow_blank=True),
+        required=False,
+        max_length=20,
+        help_text=(
+            "Emby tags written to the show; none hides it from Emby users "
+            "limited to tagged items"
         ),
     )
 

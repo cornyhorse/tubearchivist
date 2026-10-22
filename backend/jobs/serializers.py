@@ -24,6 +24,7 @@ JOB_TYPES = [
     "post_download",
     "emby_write",
     "media_notify",
+    "media_refresh_items",
     "media_refresh",
     # maintenance lane, the former batch tasks
     "reindex",

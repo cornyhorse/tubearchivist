@@ -25,6 +25,8 @@ class SeriesInfo:
     plot: str = ""
     premiered: date | None = None
     studio: str = ""
+    # Emby access tags, see emby/src/tags.py
+    tags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,8 @@ def render_tvshow(series: SeriesInfo) -> bytes:
     if series.premiered:
         _add(root, "premiered", series.premiered.isoformat())
     _add(root, "studio", series.studio)
+    for tag in sorted(set(series.tags)):
+        _add(root, "tag", tag)
     _add(root, "uniqueid", series.series_id, type="youtube", default="true")
     _add(root, "lockdata", "true")
     return _render(root)

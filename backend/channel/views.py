@@ -25,6 +25,7 @@ from drf_spectacular.utils import (
     OpenApiResponse,
     extend_schema,
 )
+from emby.src.tags import set_tags
 from jobs.src.handlers import request_emby_write
 from rest_framework.response import Response
 from task.tasks import index_channel_playlists, subscribe_to
@@ -170,6 +171,10 @@ class ChannelApiView(ApiBaseView):
             set_auto_download(
                 "channel", [channel_id], validated_data["auto_download"]
             )
+
+        if "emby_tags" in validated_data:
+            set_tags("channel", [channel_id], validated_data["emby_tags"])
+            request_emby_write()
 
         return Response(serializer.data, status=200)
 

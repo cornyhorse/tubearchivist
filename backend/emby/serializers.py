@@ -117,3 +117,9 @@ class VideoNumberDeleteQuerySerializer(serializers.Serializer):
 
     series_kind = serializers.ChoiceField(choices=SERIES_KINDS)
     series_id = serializers.CharField()
+
+
+class EmbyTagsSerializer(serializers.Serializer):
+    """GET /api/emby/tags/: the tags to offer on channels and playlists"""
+
+    tags = serializers.ListField(child=serializers.CharField())

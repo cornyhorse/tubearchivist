@@ -36,6 +36,8 @@ import updatePlaylistSortOrder from '../api/actions/updatePlaylistSortOrder';
 import EmbyNumberingSelect from '../components/EmbyNumberingSelect';
 import { NumberingBadge, RuleBadge } from '../components/ux/Badges';
 import AutoDownloadSwitch, { AUTO_DOWNLOAD_HELP } from '../components/ux/AutoDownloadSwitch';
+import EmbyTagsSelect, { EMBY_TAGS_HELP } from '../components/ux/EmbyTagsSelect';
+import useEmbyTags from '../functions/useEmbyTags';
 import { useFilterBarTempConf } from '../stores/FilterbarTempConf';
 import { HideWatchedType, HideWatchedName } from '../configuration/constants/HideWatched';
 
@@ -51,6 +53,7 @@ const Playlist = () => {
   const videoId = searchParams.get('videoId');
 
   const { userConfig } = useUserConfigStore();
+  const embyTags = useEmbyTags();
   const { filterHeight } = useFilterBarTempConf();
   const { currentPage, setCurrentPage } = useOutletContext() as OutletContextType;
   const isAdmin = useIsAdmin();
@@ -166,6 +169,18 @@ const Playlist = () => {
               id={playlist.playlist_id}
               name={playlist.playlist_name}
               value={playlist.auto_download}
+              canEdit={isAdmin}
+              onSaved={() => setRefresh(true)}
+            />
+            <span className="ux-badge-label" title={EMBY_TAGS_HELP}>
+              Visible to
+            </span>
+            <EmbyTagsSelect
+              kind="playlist"
+              id={playlist.playlist_id}
+              name={playlist.playlist_name}
+              value={playlist.emby_tags}
+              knownTags={embyTags}
               canEdit={isAdmin}
               onSaved={() => setRefresh(true)}
             />

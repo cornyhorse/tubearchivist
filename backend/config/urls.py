@@ -34,6 +34,7 @@ urlpatterns = [
     path("api/add/", include("download.urls_add")),
     path("api/rules/", include("download.urls_rules")),
     path("api/numbering/", include("emby.urls")),
+    path("api/emby/", include("emby.urls_tags")),
     path("api/mediaserver/", include("mediaserver.urls")),
     path("api/mcp", McpView.as_view(), name="api-mcp"),
     path("api/mcp/", McpView.as_view()),

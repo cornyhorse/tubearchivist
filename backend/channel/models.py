@@ -64,6 +64,9 @@ class Channel(models.Model):
     )
     # opt in: a check of this channel downloads what the rules allow
     auto_download = models.BooleanField(default=False)
+    # tags written to the Emby tvshow.nfo; Emby users limited to tagged
+    # items see the channel only if one of them matches, none hides it
+    emby_tags = ArrayField(models.TextField(), default=list, blank=True)
 
     search = models.GeneratedField(
         expression=WeightedSearchVector(
@@ -122,6 +125,8 @@ class Channel(models.Model):
             fields["emby_numbering"] = doc["emby_numbering"]
         if "auto_download" in doc:
             fields["auto_download"] = bool(doc["auto_download"])
+        if "emby_tags" in doc:
+            fields["emby_tags"] = list(doc["emby_tags"] or [])
 
         return fields
 
@@ -163,6 +168,7 @@ class Channel(models.Model):
             "channel_tabs": list(self.tabs),
             "emby_numbering": self.emby_numbering,
             "auto_download": self.auto_download,
+            "emby_tags": list(self.emby_tags),
         }
         if overwrites := self.overwrites:
             doc["channel_overwrites"] = overwrites

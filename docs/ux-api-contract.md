@@ -42,7 +42,7 @@ each with its own concurrency and rate limit:
 |---|---|---|
 | `scan` | `check_subscriptions`, `check_channel`, `check_playlist`, `fetch_video` | 2 |
 | `download` | `download_video` | 1 |
-| `postprocess` | `post_download`, `emby_write`, `media_notify`, `media_refresh` | 1 |
+| `postprocess` | `post_download`, `emby_write`, `media_notify`, `media_refresh_items`, `media_refresh` | 1 |
 | `maintenance` | `reindex`, `backup`, `restore`, `filesystem_rescan`, `thumbnail_check`, `resync_metadata`, `manual_import`, `index_playlists`, `subscribe`, `version_check`, `snapshot` | 1 |
 
 A subscription check is one `check_subscriptions` job that queues one
@@ -255,6 +255,23 @@ manual number) queues an `emby_write` job when the Emby writer is on.
 
 The existing `emby_numbering` field on channel and playlist keeps working.
 
+### Emby access tags (fork-v0.5.0, docs/fork/emby-v050-design.md section 3)
+
+- `emby_tags: string[]` on channel and playlist read, `POST /api/channel/<id>/`
+  and `POST /api/playlist/<id>/` (replaces the list; blanks and case
+  duplicates are dropped, at most 20 tags of 64 characters). The Emby writer
+  puts them in the show's `tvshow.nfo`; an empty list hides the show from Emby
+  users limited to tagged items. Both list endpoints take `emby_tag=<name>`.
+- `GET /api/emby/tags/` -> `{tags}`: the names to offer, from the media server
+  setting `known_tags` (default `["David"]`, also in `GET/PUT /api/mediaserver/`)
+  plus every tag in use.
+- Emby only re-reads a changed NFO tag on an item refresh, so the writer's
+  follow-up job `media_refresh_items` refreshes the shows whose `tvshow.nfo`
+  changed.
+- `manage.py ta_emby_import_tags [--tag David] [--map "Emby name=ID"] [--dry-run]`
+  reads the shows of a tag from Emby (read only) and adds the tag to the
+  matching channel or playlist; the dry run lists the mapping.
+
 ## 6. Media server — `/api/mediaserver/`
 
 | method | path | body | response |
@@ -295,7 +312,7 @@ the frontend.
 Tools (each calls the same service functions as the REST endpoints):
 `preview_url`, `add_url` (with `auto_download`), `set_rule` (also
 per-video overrides, and `auto_download` per channel or playlist),
-`set_numbering` (with `dry_run`), `list_queue`, `list_found`, `download`,
+`set_numbering` (with `dry_run`), `set_emby_tags`, `list_queue`, `list_found`, `download`,
 `ignore`, `move_to_top`, `activity`, `stop_task`, `search_library`,
 `get_video`, `notify_media_server`. Errors an agent can fix come back as
 `isError: true` with a plain message saying what to send instead.

@@ -483,3 +483,22 @@ def test_auto_download_read_and_update(client):
 
     client.post(URL, {"auto_download": False}, format="json")
     assert Channel.objects.get().auto_download is False
+
+
+def test_emby_tags_read_update_filter(client):
+    add_channels()
+    assert client.get(URL).data["emby_tags"] == []
+
+    response = client.post(
+        URL, {"emby_tags": ["david ", "David", "", "Kids"]}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert Channel.objects.get(pk=CH).emby_tags == ["David", "Kids"]
+    assert client.get(URL).data["emby_tags"] == ["David", "Kids"]
+    tagged = table(client, emby_tag="kids")
+    assert [row["channel_id"] for row in tagged] == [CH]
+
+    client.post(URL, {"emby_tags": []}, format="json")
+    assert Channel.objects.get(pk=CH).emby_tags == []
+    assert table(client, emby_tag="Kids") == []

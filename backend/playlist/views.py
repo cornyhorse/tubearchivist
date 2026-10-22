@@ -9,6 +9,7 @@ from common.serializers import (
 from common.views_base import AdminWriteOnly, ApiBaseView
 from download.src.auto_download import set_auto_download
 from drf_spectacular.utils import OpenApiResponse, extend_schema
+from emby.src.tags import set_tags
 from jobs.src.handlers import request_emby_write
 from playlist.models import Playlist
 from playlist.serializers import (
@@ -284,11 +285,16 @@ class PlaylistApiView(ApiBaseView):
             )
             json_data = Playlist.load_doc(playlist_id)
 
+        if "emby_tags" in validated_data:
+            set_tags("playlist", [playlist_id], validated_data["emby_tags"])
+            json_data = Playlist.load_doc(playlist_id)
+            request_emby_write()
+
         if not json_data:
             error = ErrorResponseSerializer(
                 {
                     "error": "expect playlist_subscribed, playlist_sort_order,"
-                    + " emby_numbering or auto_download"
+                    + " emby_numbering, auto_download or emby_tags"
                 }
             )
             return Response(error.data, status=400)

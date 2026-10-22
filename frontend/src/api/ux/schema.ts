@@ -419,6 +419,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/emby/tags/': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description list tags */
+    get: operations['emby_tags_retrieve'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/found/': {
     parameters: {
       query?: never;
@@ -1687,6 +1704,8 @@ export interface components {
       download_rule?: components['schemas']['DownloadRule'] | null;
       /** @description a check downloads what the rules allow; off: found videos wait */
       auto_download?: boolean;
+      /** @description Emby tags written to the show; none hides it from Emby users limited to tagged items */
+      emby_tags?: string[];
       /**  index */
       _index?: string;
       /**  score */
@@ -1742,6 +1761,8 @@ export interface components {
       download_rule?: components['schemas']['DownloadRule'] | null;
       /** @description a check downloads what the rules allow; off: found videos wait */
       auto_download?: boolean;
+      /** @description Emby tags written to the show; none hides it from Emby users limited to tagged items */
+      emby_tags?: string[];
       /**  index */
       _index?: string;
       /**  score */
@@ -1797,6 +1818,8 @@ export interface components {
       download_rule?: components['schemas']['DownloadRule'] | null;
       /** @description a check downloads what the rules allow; off: found videos wait */
       auto_download?: boolean;
+      /** @description Emby tags written to the show; none hides it from Emby users limited to tagged items */
+      emby_tags?: string[];
     };
     /**
      * @description * `date` - date
@@ -1972,6 +1995,10 @@ export interface components {
       override:
         | (components['schemas']['VideoOverrideEnum'] | components['schemas']['NullEnum'])
         | null;
+    };
+    /** @description GET /api/emby/tags/: the tags to offer on channels and playlists */
+    EmbyTags: {
+      tags: string[];
     };
     /** @description a video's place in a series and its Emby name */
     EpisodeName: {
@@ -2356,6 +2383,7 @@ export interface components {
      *     * `post_download` - post_download
      *     * `emby_write` - emby_write
      *     * `media_notify` - media_notify
+     *     * `media_refresh_items` - media_refresh_items
      *     * `media_refresh` - media_refresh
      *     * `reindex` - reindex
      *     * `backup` - backup
@@ -2379,6 +2407,7 @@ export interface components {
       | 'post_download'
       | 'emby_write'
       | 'media_notify'
+      | 'media_refresh_items'
       | 'media_refresh'
       | 'reindex'
       | 'backup'
@@ -2492,6 +2521,8 @@ export interface components {
       path_to?: string;
       notify_enabled?: boolean;
       debounce_seconds?: number;
+      /** @description Emby tags offered in the UI, e.g. ['David'] */
+      known_tags?: string[];
       readonly last_notify: components['schemas']['LastNotify'] | null;
     };
     /** @description the queued post-process job */
@@ -2652,6 +2683,8 @@ export interface components {
       emby_numbering?: components['schemas']['NumberingSchemeEnum'];
       /** @description a check downloads what the rules allow; off: found videos wait */
       auto_download?: boolean;
+      /** @description Emby tags written to the show; none hides it from Emby users limited to tagged items */
+      emby_tags?: string[];
       /**  index */
       _index?: string;
       /**  score */
@@ -2727,6 +2760,8 @@ export interface components {
       emby_numbering?: components['schemas']['NumberingSchemeEnum'];
       /** @description a check downloads what the rules allow; off: found videos wait */
       auto_download?: boolean;
+      /** @description Emby tags written to the show; none hides it from Emby users limited to tagged items */
+      emby_tags?: string[];
     };
     /**
      * @description * `top` - top
@@ -4243,6 +4278,8 @@ export interface operations {
     parameters: {
       query?: {
         auto_download?: boolean | null;
+        /** @description only those with this Emby tag */
+        emby_tag?: string;
         /** @description * `subscribed` - subscribed
          *     * `unsubscribed` - unsubscribed */
         filter?: 'subscribed' | 'unsubscribed';
@@ -4836,6 +4873,25 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  emby_tags_retrieve: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EmbyTags'];
+        };
       };
     };
   };
@@ -5437,6 +5493,8 @@ export interface operations {
       query?: {
         auto_download?: boolean | null;
         channel?: string;
+        /** @description only those with this Emby tag */
+        emby_tag?: string;
         page?: number;
         subscribed?: boolean | null;
         /** @description * `regular` - regular
@@ -5698,6 +5756,7 @@ export interface operations {
          *     * `post_download` - post_download
          *     * `emby_write` - emby_write
          *     * `media_notify` - media_notify
+         *     * `media_refresh_items` - media_refresh_items
          *     * `media_refresh` - media_refresh
          *     * `reindex` - reindex
          *     * `backup` - backup
@@ -5719,6 +5778,7 @@ export interface operations {
           | 'post_download'
           | 'emby_write'
           | 'media_notify'
+          | 'media_refresh_items'
           | 'media_refresh'
           | 'reindex'
           | 'backup'

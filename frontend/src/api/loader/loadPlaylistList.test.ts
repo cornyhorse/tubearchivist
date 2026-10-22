@@ -16,4 +16,11 @@ describe('loadPlaylistList', () => {
     await loadPlaylistList({ autoDownload: null });
     expect(path()).toBe('/api/playlist/');
   });
+
+  it('filters by Emby tag only when asked', async () => {
+    await loadPlaylistList({ embyTag: 'David' });
+    expect(path()).toBe('/api/playlist/?emby_tag=David');
+    await loadPlaylistList({ embyTag: '' });
+    expect(path()).toBe('/api/playlist/');
+  });
 });

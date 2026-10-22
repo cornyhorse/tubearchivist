@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from datetime import timezone as dt_timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from zoneinfo import ZoneInfo
 
 from appsettings.models import ConfigDocument
@@ -29,6 +29,8 @@ from emby.src.layout import (
 from emby.src.nfo import EpisodeInfo, SeriesInfo
 from emby.src.numbering import FROZEN_SCHEMES, NumberingItem, assign_numbers
 from emby.src.writer import EmbyWriter, SyncReport, check_hardlinks
+from mediaserver.src import pending
+from mediaserver.src import settings as media_settings
 from playlist.models import Playlist
 from video.models import Video
 
@@ -127,9 +129,31 @@ def paths_from_env() -> EmbyPaths | None:
 
 
 def _writer(paths: EmbyPaths, dry_run: bool) -> EmbyWriter:
-    return EmbyWriter(
+    writer = EmbyWriter(
         paths.output_root, dry_run=dry_run, media_root=paths.media_root
     )
+    stored = media_settings.load()
+    if stored["type"] and stored["notify_enabled"]:
+        writer.on_update = _remember_for_refresh(writer)
+    return writer
+
+
+def _remember_for_refresh(writer: EmbyWriter):
+    """
+    the writer tells the media server's pending set about every NFO it
+    rewrites, as it writes it: Emby reads a changed NFO of a known item
+    only when told to, and a sync that stops halfway must not forget it
+    """
+
+    def remember(item) -> None:
+        if item.role == "tvshow":
+            pending.add(f"series:{PurePosixPath(item.relpath).parent}")
+        elif item.role == "nfo":
+            media = writer.manifest.owned_by(item.owner, "media")
+            if media:
+                pending.add(f"episode:{media}")
+
+    return remember
 
 
 def preflight(paths: EmbyPaths) -> None:
@@ -407,6 +431,7 @@ def channel_numbers(
         plot=channel.description or "",
         premiered=items[0].published if items else None,
         studio=channel.name,
+        tags=tuple(channel.emby_tags),
     )
     found = ensure_numbers(
         SeriesKind.CHANNEL,
@@ -463,6 +488,7 @@ def playlist_numbers(
         title=playlist.name,
         plot=playlist.description or "",
         studio=playlist.channel_name,
+        tags=tuple(playlist.emby_tags),
     )
     found = ensure_numbers(
         SeriesKind.PLAYLIST,

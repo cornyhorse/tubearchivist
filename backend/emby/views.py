@@ -9,6 +9,7 @@ from drf_spectacular.utils import (
     extend_schema,
 )
 from emby.serializers import (
+    EmbyTagsSerializer,
     SchemeChangeResultSerializer,
     SchemeChangeSerializer,
     SchemePreviewSerializer,
@@ -28,6 +29,7 @@ from emby.src.numbering_api import (
     set_scheme,
     video_numbers,
 )
+from emby.src.tags import known_tags
 from rest_framework.response import Response
 
 NOT_FOUND = OpenApiResponse(ErrorResponseSerializer(), description="not found")
@@ -188,3 +190,14 @@ class VideoNumberView(ApiBaseView):
         ):
             return _not_found()
         return Response(status=204)
+
+
+class EmbyTagsView(ApiBaseView):
+    """resolves to /api/emby/tags/
+    GET: Emby tags in use or configured, to offer on channels and playlists
+    """
+
+    @extend_schema(responses=EmbyTagsSerializer())
+    def get(self, request):
+        """list tags"""
+        return Response({"tags": known_tags()})

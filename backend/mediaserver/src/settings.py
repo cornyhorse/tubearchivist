@@ -25,6 +25,11 @@ DEFAULTS = {
     "path_to": "",
     "notify_enabled": True,
     "debounce_seconds": 30,
+    # item refreshes per run of media_refresh_items, and the pause before
+    # the next run: each one makes the server re-read files
+    "refresh_batch_size": 50,
+    "refresh_pause_seconds": 60,
+    "known_tags": ["David"],
     "last_notify": None,
 }
 EDITABLE = [
@@ -34,6 +39,9 @@ EDITABLE = [
     "path_to",
     "notify_enabled",
     "debounce_seconds",
+    "refresh_batch_size",
+    "refresh_pause_seconds",
+    "known_tags",
 ]
 
 
@@ -108,6 +116,9 @@ def public() -> dict:
         "path_to": stored["path_to"],
         "notify_enabled": stored["notify_enabled"],
         "debounce_seconds": stored["debounce_seconds"],
+        "refresh_batch_size": stored["refresh_batch_size"],
+        "refresh_pause_seconds": stored["refresh_pause_seconds"],
+        "known_tags": stored["known_tags"],
         "last_notify": stored["last_notify"],
     }
 
@@ -160,6 +171,14 @@ def to_server_path(relpath: str) -> str:
     """path below TA's Emby root -> the same file as the server sees it"""
     base = load()["path_to"] or EnvironmentSettings.EMBY_ROOT
     return f"{base.rstrip('/')}/{relpath.lstrip('/')}"
+
+
+def from_server_path(path: str) -> str | None:
+    """the same file as a path below TA's Emby root, None if outside"""
+    base = (load()["path_to"] or EnvironmentSettings.EMBY_ROOT).rstrip("/")
+    if base and path.startswith(base + "/"):
+        return path[len(base) + 1 :]
+    return None
 
 
 def from_ta_path(path: str) -> str:
