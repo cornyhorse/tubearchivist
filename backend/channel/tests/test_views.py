@@ -494,12 +494,9 @@ def test_emby_tags_read_update_filter(client):
     )
 
     assert response.status_code == 200
-    assert Channel.objects.get(pk=CH).emby_tags == ["david", "Kids"]
-    assert client.get(URL).data["emby_tags"] == ["david", "Kids"]
-    assert table(client)[0]["emby_tags"] == ["david", "Kids"] or any(
-        row["emby_tags"] for row in table(client)
-    )
-    tagged = table(client, emby_tag="Kids")
+    assert Channel.objects.get(pk=CH).emby_tags == ["David", "Kids"]
+    assert client.get(URL).data["emby_tags"] == ["David", "Kids"]
+    tagged = table(client, emby_tag="kids")
     assert [row["channel_id"] for row in tagged] == [CH]
 
     client.post(URL, {"emby_tags": []}, format="json")

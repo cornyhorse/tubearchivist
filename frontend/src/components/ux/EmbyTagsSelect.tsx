@@ -31,7 +31,9 @@ const EmbyTagsSelect = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const current = value ?? [];
-  const others = current.filter(tag => !knownTags.includes(tag));
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const has = (list: string[], tag: string) => list.some(item => same(item, tag));
+  const others = current.filter(tag => !has(knownTags, tag));
 
   if (!canEdit) {
     return (
@@ -43,8 +45,8 @@ const EmbyTagsSelect = ({
 
   const change = async (tag: string, on: boolean) => {
     const next = on
-      ? [...current.filter(item => item !== tag), tag]
-      : current.filter(item => item !== tag);
+      ? [...current.filter(item => !same(item, tag)), tag]
+      : current.filter(item => !same(item, tag));
     setBusy(true);
     setError('');
     let saved = false;
@@ -71,7 +73,7 @@ const EmbyTagsSelect = ({
             role="switch"
             aria-label={`Visible to ${tag}: ${name}`}
             aria-describedby={helpId}
-            checked={current.includes(tag)}
+            checked={has(current, tag)}
             disabled={busy}
             aria-busy={busy || undefined}
             onChange={event => change(tag, event.target.checked)}

@@ -240,7 +240,7 @@ const Channels = () => {
     const byId = new Map((channels ?? []).map(channel => [channel.channel_id, channel]));
     await forEachChannel(selectedIds, id => {
       const current = byId.get(id)?.emby_tags ?? [];
-      const rest = current.filter(item => item !== tag);
+      const rest = current.filter(item => item.toLowerCase() !== tag.toLowerCase());
       return updateEmbyTags('channel', id, show ? [...rest, tag] : rest);
     });
     setSelected(new Set());

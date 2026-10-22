@@ -68,9 +68,14 @@ def _resolve(
     if show["name"] in manual:
         target = _lookup(manual[show["name"]])
         return (target, "manual") if target else (None, "manual id unknown")
-    provider_id = show["provider_ids"].get("youtube") or show[
-        "provider_ids"
-    ].get("Youtube")
+    provider_id = next(
+        (
+            value
+            for key, value in show["provider_ids"].items()
+            if key.casefold() == "youtube"
+        ),
+        None,
+    )
     if provider_id and (target := _lookup(provider_id)):
         return target, "provider id"
     folder = _FOLDER_ID.search(show["path"])

@@ -11,7 +11,12 @@ from django.core.management.base import CommandError
 from emby.src.nfo import SeriesInfo, render_tvshow
 from emby.src.sync import sync_all
 from emby.src.tag_import import apply_import, plan_import
-from emby.src.tags import clean_tags, known_tags, set_tags
+from emby.src.tags import (
+    canonical_tag,
+    clean_tags,
+    known_tags,
+    set_tags,
+)
 from mediaserver.src import settings
 from mediaserver.src.client import MediaServerError
 from playlist.models import Playlist
@@ -31,6 +36,24 @@ def test_clean_tags():
     assert clean_tags(["b", "A"]) == ["A", "b"]
     assert len(clean_tags([f"t{i}" for i in range(50)])) == 20
     assert clean_tags(["x" * 100]) == ["x" * 64]
+
+
+def test_clean_tags_prefers_a_given_spelling():
+    assert clean_tags(["david", "KIDS"], ["David", "Kids"]) == [
+        "David",
+        "Kids",
+    ]
+    assert clean_tags(["david", "David"], ["David"]) == ["David"]
+    assert clean_tags(["david", "David"]) == ["david"]
+
+
+def test_tags_follow_the_known_spelling():
+    Channel.save_doc(channel_doc())
+    set_tags("channel", [CH], ["david"])
+    assert Channel.objects.get().emby_tags == ["David"]
+    assert canonical_tag("DAVID") == "David"
+    assert canonical_tag("  ") == ""
+    assert canonical_tag("Other") == "Other"
 
 
 def test_set_tags_and_known_tags():
@@ -117,7 +140,7 @@ def test_plan_and_apply_import():
     Playlist.save_doc(playlist_doc("PLb", [], playlist_name="Twin"))
     Playlist.save_doc(playlist_doc("PLc", [], playlist_name="Twin"))
     shows = [
-        show("By provider", "/y/a [zzz]", youtube=CH),
+        show("By provider", "/y/a [zzz]", YouTube=CH),
         show("Folder", "/y/playlists/F [PLa]/"),
         show("bible stories", "/y/YT-Approved/bible"),
         show(name, f"/y/YT-Approved/{name}"),
