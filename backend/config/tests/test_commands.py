@@ -4,10 +4,12 @@ import io
 import json
 
 import pytest
+from django.core.management import CommandError, call_command
+
 from channel.models import Channel
 from common.src.env_settings import EnvironmentSettings
+from common.src.ta_redis import RedisBase
 from common.tests.docs import channel_doc, playlist_doc, video_doc
-from django.core.management import CommandError, call_command
 from playlist.models import Playlist
 from video.models import Video
 
@@ -130,3 +132,40 @@ def test_emby_sync_verbose_create(library):
 def test_emby_sync_refuses_media_dir(library):
     with pytest.raises(CommandError, match="dot folder"):
         run("ta_emby_sync", str(library / "media" / "emby"))
+
+
+def test_emby_sync_tells_the_media_server(library, monkeypatch):
+    """the command ends like the emby_write job: notify and item refresh"""
+    # pylint: disable=import-outside-toplevel
+    from jobs.models import Job
+    from mediaserver.src import settings as media_settings
+
+    out = library / "emby"
+    RedisBase().conn.delete(
+        RedisBase.NAME_SPACE + "mediaserver:refresh_pending"
+    )
+    monkeypatch.setattr(EnvironmentSettings, "EMBY_ROOT", str(out))
+    monkeypatch.setenv(media_settings.KEY_ENV, "k")
+    media_settings.update({"type": "emby", "url": "http://e:8096"})
+
+    run("ta_emby_sync", str(out), "--dry-run")
+    assert not Job.objects.filter(type="media_notify").exists()
+
+    run("ta_emby_sync", str(out))
+    notify = Job.objects.get(type="media_notify")
+    assert notify.created_by == "user"
+    assert not Job.objects.filter(type="media_refresh_items").exists()
+
+    # a tag taken away rewrites the tvshow.nfo: Emby must be told to read it
+    Channel.objects.update(emby_tags=["David"])
+    run("ta_emby_sync", str(out))
+    assert Job.objects.filter(type="media_refresh_items").exists()
+    refresh = RedisBase().conn.smembers(
+        RedisBase.NAME_SPACE + "mediaserver:refresh_pending"
+    )
+    assert any(item.startswith("series:channels/") for item in refresh)
+
+    # another root than TA's own Emby root is nobody's business
+    Job.objects.all().delete()
+    run("ta_emby_sync", str(library / "elsewhere"))
+    assert not Job.objects.exists()

@@ -19,9 +19,10 @@ from dataclasses import dataclass, field
 from datetime import date
 from zoneinfo import ZoneInfo
 
-from channel.models import Channel, EmbyNumbering
 from django.db import transaction
 from django.db.models import Q
+
+from channel.models import Channel, EmbyNumbering
 from emby.models import EpisodeNumber, SeriesKind
 from emby.src.layout import safe_name
 from emby.src.numbering import DATE_SLOTS_PER_DAY, date_block

@@ -5,6 +5,11 @@ import sqlite3
 from types import SimpleNamespace
 
 import pytest
+from django.conf import settings
+from django.core.management import CommandError, call_command
+from django.db import OperationalError
+from django_celery_beat.models import CrontabSchedule
+
 from appsettings.models import ConfigDocument
 from appsettings.src.config import AppConfig, ReleaseVersion
 from appsettings.src.snapshot import DbSnapshot
@@ -16,10 +21,6 @@ from config.management.commands import (
     ta_startup,
     ta_stop_on_error,
 )
-from django.conf import settings
-from django.core.management import CommandError, call_command
-from django.db import OperationalError
-from django_celery_beat.models import CrontabSchedule
 from jobs.models import Job
 from jobs.src.engine import enqueue
 from task.models import CustomPeriodicTask

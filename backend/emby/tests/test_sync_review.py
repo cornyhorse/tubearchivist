@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 import pytest
+
 from appsettings.models import ConfigDocument
 from channel.models import Channel
 from common.tests.docs import channel_doc

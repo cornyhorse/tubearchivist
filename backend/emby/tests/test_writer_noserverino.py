@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 
 import pytest
+
 from emby.src import writer as writer_module
 from emby.src.writer import (
     MANIFEST_NAME,

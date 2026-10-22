@@ -8,10 +8,11 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 
-import config
 import django_auth_ldap.backend
 import ldap
 import pytest
+
+import config
 from common.src.ta_redis import RedisArchivist
 
 BACKEND = Path(__file__).resolve().parents[2]

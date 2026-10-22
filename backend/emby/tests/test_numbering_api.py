@@ -3,6 +3,7 @@
 from datetime import date, datetime, timezone
 
 import pytest
+
 from channel.models import Channel
 from common.tests.docs import channel_doc, playlist_doc, video_doc
 from emby.models import EpisodeNumber
