@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from channel.models import Channel
 from emby.src.tags import clean_tags, set_tags
+from mediaserver.src import pending, settings
 from mediaserver.src.client import MediaServerClient
 from playlist.models import Playlist
 
@@ -136,3 +137,39 @@ def apply_import(plan: list[TagMapping]) -> dict[str, list[str]]:
             set_tags(kind, [target_id], merged)
             changed[f"{kind}/{target_id}"] = merged
     return changed
+
+
+def tag_drift(client: MediaServerClient, tags: list[str]) -> list[str]:
+    """
+    problems for the Emby shows of TA's tree that carry a tag set by hand
+    which TA does not write: the next refresh of the show sets its tags to
+    exactly what TA writes and takes the tag away. A show whose refresh is
+    already waiting is the normal moment after a change in TA, not drift.
+    """
+    waiting = set(pending.entries())
+    problems = []
+    for item in plan_import(client, tags):
+        relpath = settings.from_server_path(item.emby_path)
+        if relpath is None or f"series:{relpath}" in waiting:
+            continue
+        if not item.kind:
+            problems.append(
+                f"Emby show {item.emby_name} is tagged {', '.join(item.tags)}"
+                " by hand and matches no channel or playlist of TA"
+            )
+            continue
+        have = {t.casefold() for t in _tags_of(item.kind, item.target_id)}
+        missing = [t for t in item.tags if t.casefold() not in have]
+        if missing:
+            problems.append(
+                f"Emby show {item.emby_name} is tagged {', '.join(missing)} "
+                f"by hand but TA does not tag {item.kind} {item.target_id}: "
+                "the tag is removed at the show's next refresh; tag it in "
+                "TA (ta_emby_import_tags)"
+            )
+    return problems
+
+
+def _tags_of(kind: str, target_id: str) -> list[str]:
+    model = Channel if kind == "channel" else Playlist
+    return list(model.objects.get(pk=target_id).emby_tags)
