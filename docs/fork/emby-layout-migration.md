@@ -161,3 +161,24 @@ the gate message and the tree stays as it is.
    list.
 8. **If wrong:** restore the `pg_dump`, redeploy the previous image; files stay as they are, the old image's next
    sync recreates the playlist shows and the one-off channel shows (one more change pass; ask Matt first).
+
+## Dates are UTC (fork-v0.5.0, same migration step)
+
+Before layout 3, `aired`, `premiered`, the season and the `MMDD` of a date number used the date in `TZ` (America/New_York
+on Matt's server). A video published at 00:00 to 04:59 UTC is still the previous day there, so Emby showed its
+premiere date one day early (201 episodes), and a video published just after midnight UTC on 1 January sat in the previous
+year's season. Now every date is the **UTC date of the upload**: it is what YouTube and TA show, and it does not change when
+`TZ` does.
+
+`ta_emby_migrate_layout` moves the stored numbers of the affected episodes in the same transaction as the 2 to 3 step, and the
+following sync renames their files (media, NFO, thumb). Its **first output line** is the count:
+
+    [dry-run] UTC dates: N episodes renumbered, M of them change season
+
+- `date` scheme: the episode keeps its slot within the day when it is free on the new day, else takes the first free one;
+  the season becomes the UTC year.
+- `year_frozen`: only an episode whose year changes moves, to the next number of the new season.
+- `absolute_frozen`, playlist schemes and numbers set by hand are not touched.
+- `--verbose-changes` lists every renumbered episode (`series/youtube_id`).
+
+The renames keep the media inodes (files are moved, not recreated) and Emby's rename detection, as in the layout 2 pass.

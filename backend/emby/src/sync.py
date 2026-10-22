@@ -33,6 +33,13 @@ from emby.src.writer import EmbyWriter, SyncReport, check_hardlinks
 from playlist.models import Playlist, PlaylistEntry
 from video.models import Video
 
+# Dates (aired, premiered, the season and the MMDD of date numbers) are the
+# UTC date of the upload, the same for every viewer and whatever TZ is set
+# to; before layout 3 they were dates in TZ, which put an upload between
+# 00:00 and 04:59 UTC on the previous day (and a Jan 1 one in the previous
+# season)
+UTC = ZoneInfo("UTC")
+
 # ConfigDocument key recording which Emby layout the stored numbers use:
 # 1 (no document) MMDD*10+n numbers and live names, 2 frozen names,
 # MMDD*100+n numbers and frozen playlists, 3 shows are channels only, the
@@ -62,6 +69,8 @@ class EmbyPaths:
     media_root: Path
     cache_root: Path
     output_root: Path
+    # the zone dates were numbered in before layout 3; only the layout
+    # migration reads it, files are written with UTC dates
     timezone: str = "UTC"
 
     def video_thumb(self, youtube_id: str) -> Path:
@@ -180,13 +189,13 @@ def check_layout(dry_run: bool = False) -> None:
         set_layout_version()
 
 
-def _local_date(value: datetime | None, tz: ZoneInfo):
+def _local_date(value: datetime | None, tz: ZoneInfo = UTC):
     if value is None:
         return None
     return value.astimezone(tz).date()
 
 
-def numbering_date(video: Video, tz: ZoneInfo):
+def numbering_date(video: Video, tz: ZoneInfo = UTC):
     """date used for numbering: upload date, else download date"""
     return _local_date(video.published or video.date_downloaded, tz)
 
@@ -462,7 +471,7 @@ def channel_series(
     channel: Channel, paths: EmbyPaths, dry_run: bool = False
 ) -> tuple[SeriesSource, list[EpisodeSource], list[str]]:
     """series and numbered episodes of a channel"""
-    tz = ZoneInfo(paths.timezone)
+    tz = UTC
     videos, info, found = channel_numbers(channel, tz, dry_run=dry_run)
     series = SeriesSource(
         kind="channels",
@@ -539,7 +548,7 @@ def other_series(
     upload year; the show itself carries no tag (so a tag restricted user
     never sees it), its episodes carry the tags of their playlists
     """
-    tz = ZoneInfo(paths.timezone)
+    tz = UTC
     videos = list(
         Video.objects.select_related("channel")
         .filter(_other_filter(), active=True)
