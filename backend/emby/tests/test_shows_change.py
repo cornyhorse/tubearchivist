@@ -6,8 +6,9 @@ import pytest
 from appsettings.models import ConfigDocument
 from common.src.env_settings import EnvironmentSettings
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from emby.src import shows_change
-from emby.src.sync import LAYOUT_KEY, sync_all
+from emby.src.sync import LAYOUT_KEY, LAYOUT_VERSION, layout_version, sync_all
 from emby.src.writer import SyncReport
 from mediaserver.src import client as client_mod
 from mediaserver.src import settings
@@ -195,6 +196,7 @@ def test_migration_dry_run_compares_visibility(
         CMD + "before_state",
         lambda client, tags, files: {"David": ({"v1"}, 2)},
     )
+    monkeypatch.setattr(CMD + "hand_set_metadata", lambda client: (0, []))
 
     output = run_dry("--dry-run")
 
@@ -220,6 +222,7 @@ def test_migration_visibility_needs_the_server(
         raise MediaServerError("down")
 
     monkeypatch.setattr(CMD + "before_state", down)
+    monkeypatch.setattr(CMD + "hand_set_metadata", lambda client: (0, []))
 
     assert "visibility not compared: down" in run_dry("--dry-run")
 
@@ -272,14 +275,110 @@ def test_migration_tells_the_media_server(
     Channel.objects.update(emby_tags=["David"])
     ConfigDocument.objects.filter(key=LAYOUT_KEY).update(value={"version": 2})
     monkeypatch.setattr(CMD + "before_state", lambda c, t, f: None)
+    monkeypatch.setattr(CMD + "hand_set_metadata", lambda client: (0, []))
     monkeypatch.setattr(
         CMD + "watch_history_at_risk", lambda media: ({}, None)
     )
 
-    run_dry()
+    output = run_dry()
+
+    # the load the refreshes put on Emby is stated, in a real run too
+    assert (
+        "item refreshes queued: 1 (1 shows, 0 episodes), 50 per run" in output
+    )
 
     assert Job.objects.get(type="media_notify").created_by == "user"
     pending = RedisBase().conn.smembers(
         RedisBase.NAME_SPACE + "mediaserver:refresh_pending"
     )
     assert any(item.startswith("series:channels/") for item in pending)
+
+
+@pytest.fixture(name="layout2")
+def fixture_layout2(server, library, settings_env, monkeypatch):
+    """a layout 2 database, a server to compare with, nothing else"""
+    # pylint: disable=unused-argument
+    monkeypatch.setenv(settings.KEY_ENV, "k")
+    ConfigDocument.objects.create(key=LAYOUT_KEY, value={"version": 2})
+    monkeypatch.setattr(CMD + "sync_all", lambda paths, dry_run=False: REPORT)
+    monkeypatch.setattr(CMD + "after_sync", lambda report, paths: None)
+    monkeypatch.setattr(CMD + "hand_set_metadata", lambda client: (0, []))
+    monkeypatch.setattr(
+        CMD + "watch_history_at_risk", lambda media: ({}, None)
+    )
+    return monkeypatch
+
+
+def lose_david(monkeypatch):
+    monkeypatch.setattr(
+        CMD + "before_state", lambda c, t, f: {"David": ({"v1"}, 0)}
+    )
+
+
+def test_a_real_run_refuses_when_someone_would_lose_access(layout2):
+    lose_david(layout2)
+
+    with pytest.raises(CommandError, match="1 videos would lose access"):
+        run_dry()
+
+    assert layout_version() == 2  # the database was not touched
+
+    output = run_dry("--accept-lost")
+    assert "LOST v1" in output and layout_version() == LAYOUT_VERSION
+
+
+def test_the_dry_run_says_a_real_run_would_refuse(layout2):
+    lose_david(layout2)
+
+    output = run_dry("--dry-run")
+
+    assert "[dry-run] a real run would refuse: 1 videos lose access" in output
+    assert layout_version() == 2
+
+
+def test_a_real_run_refuses_when_emby_can_not_be_checked(layout2):
+    def down(client, tags, files):
+        raise MediaServerError("down")
+
+    layout2.setattr(CMD + "before_state", down)
+
+    with pytest.raises(CommandError, match="can't check who would lose"):
+        run_dry()
+    assert layout_version() == 2
+
+    assert "visibility not compared: down" in run_dry("--accept-lost")
+
+
+def test_nothing_to_protect_without_a_media_server(layout2):
+    settings.update({"type": None})
+    assert "rolled back" not in run_dry()  # a real run, not refused
+    assert layout_version() == LAYOUT_VERSION
+
+
+def test_hand_set_metadata_is_listed(layout2):
+    layout2.setattr(CMD + "before_state", lambda c, t, f: None)
+    layout2.setattr(
+        CMD + "hand_set_metadata",
+        lambda client: (2, ["c/A/e.mkv: rating TV-Y", "c/B/e.mkv: tags x"]),
+    )
+
+    output = run_dry("--dry-run")
+
+    assert "hand-set metadata on 2 items" in output
+    assert "[dry-run]   c/A/e.mkv: rating TV-Y" in output
+
+    def down(client):
+        raise MediaServerError("down")
+
+    layout2.setattr(CMD + "hand_set_metadata", down)
+    assert "hand-set metadata not read: down" in run_dry("--dry-run")
+
+
+def test_a_real_run_goes_on_when_nobody_loses_access(layout2):
+    layout2.setattr(
+        CMD + "before_state", lambda c, t, f: {"David": (set(), 0)}
+    )
+
+    run_dry()
+
+    assert layout_version() == LAYOUT_VERSION

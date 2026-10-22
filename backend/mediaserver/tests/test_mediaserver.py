@@ -677,3 +677,39 @@ def test_media_refresh_items_keeps_what_it_did_not_reach(http):
 
     key = RedisBase.NAME_SPACE + ms_jobs.REFRESH_KEY
     assert RedisBase().conn.smembers(key) == {"series:s2"}
+
+
+def test_library_metadata(http, monkeypatch):
+    configure()
+    client = MediaServerClient(
+        Connection("emby", "http://emby.test:8096", SECRET)
+    )
+    http.responses[("GET", "/Items")] = (
+        200,
+        {
+            "Items": [
+                {
+                    "Path": "/a/e.mkv",
+                    "OfficialRating": "TV-Y",
+                    "Genres": ["Kids"],
+                    "TagItems": [{"Name": "x"}, {"Name": None}],
+                },
+                {"CustomRating": "G"},
+            ],
+            "TotalRecordCount": 3,
+        },
+    )
+    monkeypatch.setattr(client_mod, "PAGE", 2)
+
+    items = client.library_metadata()
+
+    assert items[0] == {
+        "path": "/a/e.mkv",
+        "rating": "TV-Y",
+        "genres": ["Kids"],
+        "tags": ["x"],
+    }
+    assert items[1] == {"path": "", "rating": "G", "genres": [], "tags": []}
+    assert len(items) == 4  # two pages of two
+    fields = http.calls[-1][3]["params"]["Fields"]
+    assert "OfficialRating" in fields and "TagItems" in fields

@@ -156,6 +156,45 @@ class MediaServerClient:
             for item in data.get("Items") or []
         ]
 
+    def library_metadata(self) -> list[dict]:
+        """
+        shows and episodes with what is set on them that a refresh that
+        replaces metadata would clear: path, rating, genres, tags (a read
+        only query of the whole library, in pages)
+        """
+        items: list[dict] = []
+        start = 0
+        while True:
+            data = self._request(
+                "GET",
+                "/Items",
+                params={
+                    "Recursive": "true",
+                    "IncludeItemTypes": "Series,Episode",
+                    "Fields": "Path,OfficialRating,CustomRating,Genres,"
+                    "Tags,TagItems",
+                    "StartIndex": start,
+                    "Limit": PAGE,
+                },
+            ).json()
+            for item in data.get("Items") or []:
+                items.append(
+                    {
+                        "path": item.get("Path") or "",
+                        "rating": item.get("OfficialRating")
+                        or item.get("CustomRating")
+                        or "",
+                        "genres": list(item.get("Genres") or []),
+                        "tags": sorted(
+                            {t.get("Name") for t in item.get("TagItems") or []}
+                            - {None}
+                        ),
+                    }
+                )
+            start += PAGE
+            if start >= data.get("TotalRecordCount", 0):
+                return items
+
     def series_episode_paths(self, series_id: str) -> list[str]:
         """server paths of every episode of a show (a read only query)"""
         paths: list[str] = []
