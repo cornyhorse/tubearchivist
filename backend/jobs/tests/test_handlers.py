@@ -651,7 +651,7 @@ def test_emby_playlists_job(monkeypatch, tmp_path):
     # pylint: disable=import-outside-toplevel
     from common.src.env_settings import EnvironmentSettings
     from emby.src import playlist_sync
-    from jobs.src.locks import emby_lock
+    from jobs.src.locks import emby_lock, playlist_lock
     from mediaserver.src import settings as media_settings
 
     monkeypatch.setattr(EnvironmentSettings, "CACHE_DIR", str(tmp_path))
@@ -680,7 +680,7 @@ def test_emby_playlists_job(monkeypatch, tmp_path):
             handlers.emby_playlists(ctx)
 
     result = playlist_sync.PlaylistSyncResult(warnings=["w"])
-    monkeypatch.setattr(handlers, "sync_playlists", lambda *_: result)
+    monkeypatch.setattr(handlers, "sync_playlists", lambda *_, **__: result)
     summary = handlers.emby_playlists(ctx)
     assert summary["created"] == 0
     assert playlist_sync.sync_state()["last_success"]
@@ -689,7 +689,31 @@ def test_emby_playlists_job(monkeypatch, tmp_path):
     with pytest.raises(JobError, match="boom"):
         handlers.emby_playlists(ctx)
 
-    def down(*_):
+    # held back as a whole: not a success, not a failure
+    result.errors = []
+    result.skipped = "Emby knows 1 of 3 files"
+    before = playlist_sync.sync_state()
+    assert handlers.emby_playlists(ctx)["skipped"] == result.skipped
+    assert playlist_sync.sync_state() == before
+    result.skipped = ""
+
+    # a manual sync holds the playlist lock
+    with playlist_lock():
+        with pytest.raises(Defer):
+            handlers.emby_playlists(ctx)
+
+    # the job passes allow_large_removal on
+    seen = {}
+    monkeypatch.setattr(
+        handlers,
+        "sync_playlists",
+        lambda *a, **kw: seen.update(kw) or result,
+    )
+    ctx.job.params = {"allow_large_removal": True}
+    handlers.emby_playlists(ctx)
+    assert seen == {"allow_large_removal": True}
+
+    def down(*_, **__):
         raise handlers.MediaServerError("down")
 
     monkeypatch.setattr(handlers, "sync_playlists", down)

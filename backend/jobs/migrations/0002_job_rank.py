@@ -29,12 +29,13 @@ class Migration(migrations.Migration):
             name="rank",
             field=models.FloatField(default=time.time),
         ),
-        migrations.RunPython(rank_from_created, migrations.RunPython.noop),
+        migrations.RunPython(
+            rank_from_created, migrations.RunPython.noop
+        ),
         migrations.AddIndex(
             model_name="job",
             index=models.Index(
-                fields=["lane", "status", "-priority", "rank"],
-                name="job_run_order",
+                fields=["lane", "status", "-priority", "rank"], name="job_run_order"
             ),
         ),
     ]

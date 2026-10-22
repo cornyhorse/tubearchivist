@@ -38,7 +38,7 @@ from emby.src.writer import EmbyRootError, Manifest
 from jobs.models import ACTIVE, CreatedBy, Job, Priority
 from jobs.src.context import JobContext
 from jobs.src.engine import enqueue
-from jobs.src.locks import LockBusy, emby_lock
+from jobs.src.locks import LockBusy, emby_lock, playlist_lock
 from jobs.src.registry import Defer, JobError, register
 from mediaserver.src import settings as media_settings
 from mediaserver.src.client import MediaServerClient, MediaServerError
@@ -468,15 +468,24 @@ def emby_playlists(ctx: JobContext) -> dict:
     if conn.type != "emby":
         return {"skipped": "playlists are synced to Emby only"}
     try:
-        with emby_lock():
-            media = media_paths(Manifest(paths.output_root, dry_run=True))
+        with playlist_lock():
+            with emby_lock():
+                media = media_paths(Manifest(paths.output_root, dry_run=True))
+            result = sync_playlists(
+                MediaServerClient(conn),
+                media,
+                allow_large_removal=bool(
+                    ctx.params.get("allow_large_removal")
+                ),
+            )
     except LockBusy as err:
         raise Defer(LOCK_RECHECK, str(err)) from err
-    try:
-        result = sync_playlists(MediaServerClient(conn), media)
     except MediaServerError as err:
         record_run(error=str(err))
         raise JobError(str(err)) from err
+    if result.skipped:
+        print(f"[emby playlists] held back: {result.skipped}")
+        return result.summary()
     record_run(result=result)
     for warning in result.warnings[:20]:
         print(f"[emby playlists] {warning}")

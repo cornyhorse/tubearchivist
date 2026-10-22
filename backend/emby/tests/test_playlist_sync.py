@@ -19,6 +19,7 @@ from emby.src.playlist_sync import (
 )
 from emby.src.sync import sync_all
 from emby.src.writer import Manifest
+from jobs.src.locks import LockBusy, playlist_lock
 from mediaserver.src import settings
 from mediaserver.src.client import MediaServerError, MediaServerNotFound
 from playlist.models import Playlist, PlaylistEntry
@@ -43,6 +44,7 @@ class FakeEmby:
         self.users_list = USERS
         self.next_id = 100
         self.known = set()
+        self.other_items = {}
 
     def users(self):
         return self.users_list
@@ -80,8 +82,19 @@ class FakeEmby:
         self._maybe_fail("add")
         entries = self.playlists[playlist_id]["entries"]
         for item in item_ids:
+            if item in [i for _, i in entries]:
+                continue  # Emby does not add an item twice
             self.next_id += 1
             entries.append((f"x{self.next_id}", item))
+
+    def owned_item(self, user_id, item_id):
+        self._maybe_fail("owned")
+        if item_id in self.other_items:
+            return self.other_items[item_id]
+        playlist = self.playlists.get(item_id)
+        if playlist and playlist["owner"] == user_id:
+            return {"type": "Playlist", "name": playlist["name"]}
+        return None
 
     def remove_from_playlist(self, playlist_id, entry_ids):
         self._maybe_fail("remove")
@@ -161,7 +174,8 @@ def test_unchanged_run_costs_reads_only(emby):
     result = run(emby)
 
     assert result.unchanged == 1 and not result.created
-    assert set(emby.calls) == {"items"}
+    # a read of the playlist and the check that it is still ours
+    assert set(emby.calls) == {"items", "owned"}
 
 
 def test_dry_run_changes_nothing(emby):
@@ -218,7 +232,7 @@ def test_duplicates_and_foreign_items_are_dropped(emby):
 
 
 def test_episodes_emby_has_not_scanned_yet(emby):
-    emby.known = {"v1"}
+    emby.known = {"v1", "v2"}
 
     result = run(emby)
 
@@ -230,12 +244,13 @@ def test_episodes_emby_has_not_scanned_yet(emby):
 
 
 def test_playlist_without_episodes_is_not_created(emby):
-    emby.known = set()
+    PlaylistEntry.objects.filter(youtube_id="v3").delete()  # only v1 left
+    emby.known = {"v2", "v3"}
 
     result = run(emby)
 
     assert not result.created and not emby.playlists
-    assert result.missing == 2
+    assert result.missing == 1
 
 
 def test_rename_recreates(emby):
@@ -278,8 +293,11 @@ def test_stale_link_whose_playlist_is_gone(emby):
     emby.playlists.clear()
     Playlist.objects.update(emby_playlist=False)
 
-    assert len(run(emby).deleted) == 1
-    assert not EmbyPlaylistLink.objects.exists()
+    result = run(emby)
+
+    # gone in Emby already: the link is dropped, nothing to delete
+    assert "nothing deleted" in result.warnings[0]
+    assert not result.deleted and not EmbyPlaylistLink.objects.exists()
 
 
 def test_unknown_default_user_warns_unknown_tag_does_not(emby):
@@ -306,6 +324,7 @@ def test_errors_are_collected_and_the_rest_continues(emby):
     EmbyPlaylistLink.objects.create(
         playlist_id="gone", user_id="u1", emby_id="zz", name="old"
     )
+    emby.playlists["zz"] = {"name": "old", "owner": "u1", "entries": []}
     emby.fail = "delete"
     result = run(emby)
     assert result.errors and "old" in result.errors[0]
@@ -422,3 +441,184 @@ def test_command_prints_warnings_and_dry_run_deletes(command):
 def test_command_warning_line(command):
     settings.update({"playlist_default_users": ["Matt", "Nobody"]})
     assert "warning: Emby has no user Nobody" in run_command("--dry-run")
+
+
+# review round 1 (findings 3, 5, 6, 8, 13)
+
+
+def test_a_reused_emby_id_is_never_touched(emby):
+    """an Emby database that was rebuilt hands the id to something else"""
+    run(emby)
+    link = EmbyPlaylistLink.objects.get()
+    emby.playlists.clear()
+    emby.other_items[link.emby_id] = {"type": "Episode", "name": "media.mkv"}
+
+    result = run(emby)
+
+    assert "is not the playlist TA made" in result.warnings[0]
+    assert "delete" not in emby.calls
+    assert len(result.created) == 1  # a new playlist, a new link
+    assert EmbyPlaylistLink.objects.get().emby_id != link.emby_id
+
+
+def test_a_playlist_of_another_user_or_name_is_not_ours(emby):
+    run(emby)
+    link = EmbyPlaylistLink.objects.get()
+    # same id, but renamed by hand in Emby
+    emby.playlists[link.emby_id]["name"] = "My own list"
+
+    result = run(emby)
+
+    assert "is not the playlist TA made" in result.warnings[0]
+    assert emby.playlists[link.emby_id]["name"] == "My own list"
+    assert len(emby.playlists) == 2  # the hand made one stays
+
+
+def test_stale_link_that_is_not_ours_is_dropped_not_deleted(emby):
+    run(emby)
+    link = EmbyPlaylistLink.objects.get()
+    emby.playlists[link.emby_id]["name"] = "renamed by hand"
+    Playlist.objects.update(emby_playlist=False)
+
+    dry = run(emby, dry_run=True)
+    assert dry.warnings and EmbyPlaylistLink.objects.exists()
+    result = run(emby)
+
+    assert "nothing deleted" in result.warnings[0]
+    assert not result.deleted and not EmbyPlaylistLink.objects.exists()
+    assert emby.playlists[link.emby_id]["name"] == "renamed by hand"
+
+
+def test_a_half_scanned_emby_does_not_empty_playlists(emby):
+    run(emby)
+    pid = next(iter(emby.playlists))
+    emby.known = {"v2", "v3"}  # enough files known, but v1 not yet
+
+    # one of two entries going is not more than half
+    result = run(emby)
+    assert len(result.changed) == 1
+    assert [i for _, i in emby.playlists[pid]["entries"]] == ["e-v3"]
+
+    emby.known = {"v1", "v2"}  # now v3 is the one Emby lost
+    result = run(emby)
+    # its only entry would go: held back, the playlist keeps what it had
+    assert "held back" in result.warnings[0]
+    assert [i for _, i in emby.playlists[pid]["entries"]] == ["e-v3"]
+
+
+def test_large_removal_can_be_allowed(emby):
+    run(emby)
+    pid = next(iter(emby.playlists))
+    # the TA playlist now holds only v2: both entries of the Emby copy go
+    PlaylistEntry.objects.filter(playlist_id="PL1").delete()
+    PlaylistEntry.objects.create(playlist_id="PL1", idx=0, youtube_id="v2")
+
+    held = run(emby)
+    assert "held back" in held.warnings[0]
+    assert [i for _, i in emby.playlists[pid]["entries"]] == ["e-v3", "e-v1"]
+
+    allowed = sync_playlists(emby, emby.paths, allow_large_removal=True)
+    assert len(allowed.changed) == 1
+    assert [i for _, i in emby.playlists[pid]["entries"]] == ["e-v2"]
+
+
+def test_emby_that_knows_few_files_holds_back_the_run(emby):
+    emby.known = {"v1"}  # 1 of 3 files
+
+    result = run(emby)
+
+    assert result.skipped.startswith("Emby knows 1 of 3 files")
+    assert not emby.playlists and not result.created
+    assert result.summary()["skipped"] == result.skipped
+
+
+def test_duplicate_entries_do_not_rebuild_every_run(emby):
+    PlaylistEntry.objects.create(playlist_id="PL1", idx=9, youtube_id="v3")
+    run(emby)
+    emby.calls.clear()
+
+    result = run(emby)
+
+    assert result.unchanged == 1 and not result.changed
+    assert set(emby.calls) <= {"items", "owned"}
+    pid = next(iter(emby.playlists))
+    assert [i for _, i in emby.playlists[pid]["entries"]] == ["e-v3", "e-v1"]
+
+
+def test_dry_run_shows_a_rename(emby):
+    run(emby)
+    Playlist.objects.update(name="New name")
+
+    result = run(emby, dry_run=True)
+
+    assert result.changed == ["recreate Playlist PL1 -> New name for Matt"]
+    assert emby.items_of("Playlist PL1", "u1") is not None  # nothing done
+    real = run(emby)
+    assert real.changed == result.changed
+    assert emby.items_of("New name", "u1") is not None
+
+
+def test_a_second_sync_cannot_start_while_one_runs(emby):
+    with playlist_lock():
+        with pytest.raises(LockBusy):
+            with playlist_lock():
+                pass  # pragma: no cover - the inner lock must refuse
+
+
+def test_command_refuses_while_a_sync_runs(command, monkeypatch):
+    monkeypatch.setattr(
+        "config.management.commands.ta_emby_playlists.COMMAND_WAIT", 0.1
+    )
+    with playlist_lock():
+        with pytest.raises(CommandError, match="another Emby playlist sync"):
+            run_command()
+
+
+def test_command_flags(command):
+    assert "held back" not in run_command("--dry-run")
+    command.known = {"v1"}
+    output = run_command()
+    assert "held back: Emby knows 1 of 3 files" in output
+    assert "last_success" not in sync_state()
+    command.known = None
+    run_command("--allow-large-removal")
+    assert sync_state()["last_success"]
+
+
+def test_reused_id_in_a_dry_run_changes_nothing(emby):
+    run(emby)
+    link = EmbyPlaylistLink.objects.get()
+    emby.playlists.clear()
+    emby.other_items[link.emby_id] = {"type": "Episode", "name": "media"}
+
+    result = run(emby, dry_run=True)
+
+    assert result.warnings and len(result.created) == 1
+    assert EmbyPlaylistLink.objects.get().emby_id == link.emby_id
+
+
+def test_playlist_vanishing_between_check_and_read(emby, monkeypatch):
+    run(emby)
+
+    def gone(*_):
+        raise MediaServerNotFound("gone")
+
+    monkeypatch.setattr(emby, "playlist_items", gone)
+    result = run(emby)
+
+    assert len(result.created) == 1  # recreated
+
+
+def test_delete_of_a_playlist_that_just_vanished(emby, monkeypatch):
+    run(emby)
+
+    def gone(_):
+        raise MediaServerNotFound("gone")
+
+    monkeypatch.setattr(emby, "delete_item", gone)
+    Playlist.objects.update(emby_playlist=False)
+
+    result = run(emby)
+
+    assert len(result.deleted) == 1 and not result.errors
+    assert not EmbyPlaylistLink.objects.exists()

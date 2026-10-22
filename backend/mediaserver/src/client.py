@@ -306,6 +306,19 @@ class MediaServerClient:
         ).json()
         return bool(data.get("Items"))
 
+    def owned_item(self, user_id: str, item_id: str) -> dict | None:
+        """
+        {type, name} of an item as user_id sees it, None if they can't:
+        a playlist is visible to its owner only, so this tells whose it is
+        """
+        data = self._request(
+            "GET", f"/Users/{user_id}/Items", params={"Ids": item_id}
+        ).json()
+        items = data.get("Items") or []
+        if not items:
+            return None
+        return {"type": items[0].get("Type"), "name": items[0].get("Name")}
+
     def create_playlist(
         self, name: str, user_id: str, item_ids: list[str]
     ) -> str:

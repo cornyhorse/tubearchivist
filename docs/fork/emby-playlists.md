@@ -35,15 +35,35 @@ files first) and by hand with `manage.py ta_emby_playlists [--dry-run]`. It
 4. deletes playlists TA created whose TA playlist is gone, switched off or no longer has the owner. Only rows of
    `EmbyPlaylistLink` are touched: playlists made by hand are never changed.
 
+Safety rules:
+
+- **Only ours.** Before it changes or deletes a playlist, TA asks Emby for the item as its owner sees it (only the
+  owner sees a playlist) and requires type Playlist and the name TA last gave it. If the id now names something else
+  (an Emby database that was rebuilt or restored, a playlist renamed by hand) the link is dropped and nothing is
+  touched; the dry run prints it as a warning.
+- **No shrinking while Emby is catching up.** A run is held back as a whole when Emby knows fewer than half of the
+  files of the tree (it is still scanning, or `path_to` is wrong): `held back: Emby knows N of M files`. A playlist
+  is held back when the run would remove more than half of its entries. `ta_emby_playlists --allow-large-removal`
+  (or the job parameter `allow_large_removal`) lets such a change through when it is meant.
+- **One at a time.** The job and the command take a lock for the whole run, so two cannot each create a copy.
+- **Repeats.** A video listed twice in a TA playlist is added once (Emby does not add an item twice).
+- **Rename.** Emby cannot rename through this API, so a rename is a delete and re-create; the dry run shows
+  `recreate <old> -> <new>`.
+
 A failing playlist is reported in the job result and the others still sync. The hourly `emby_health` check adds a
-problem when the playlist sync is on and has not succeeded for 6 hours or its last run failed.
+problem when the playlist sync is on and has not succeeded for 6 hours or its last run failed (a held back run is
+neither).
 
 ## First production run
 
+0. The layout migration (docs/fork/emby-layout-migration.md) has run **and Emby has finished scanning** the moved
+   files: the first playlist sync waits for that on its own (see the safety rules), but check the library before
+   switching it on.
 1. Deploy, then in Settings > Media server set the default users and switch `playlists_enabled` on.
 2. Set `emby_playlist` off on the playlists that only repeat a channel (uploads).
 3. `manage.py ta_emby_playlists --dry-run` lists what it would create; check owners and counts.
 4. Run it without `--dry-run` (or wait for the next `emby_write`), then look at David's and Matt's playlists in
    Emby. Matt's own playlists are untouched.
-5. To undo: switch `playlists_enabled` off and set every `emby_playlist` off, then run the command: the playlists TA
-   created are deleted.
+5. To undo: switch `playlists_enabled` off and set every `emby_playlist` off, then run
+   `ta_emby_playlists --allow-large-removal`: the playlists TA created are deleted. **Do this before restoring a
+   `pg_dump`**: the dump forgets which Emby playlists TA made, and they would stay in Emby for good.

@@ -431,6 +431,15 @@ def test_playlist_calls(http, monkeypatch):
         100,
         50,
     ]
+    # a playlist is visible to its owner only
+    http.responses[("GET", "/Users/u1/Items")] = (
+        200,
+        {"Items": [{"Type": "Playlist", "Name": "Mix"}]},
+    )
+    assert client.owned_item("u1", "55") == {"type": "Playlist", "name": "Mix"}
+    assert http.calls[-1][3]["params"]["Ids"] == "55"
+    http.responses[("GET", "/Users/u2/Items")] = (200, {"Items": []})
+    assert client.owned_item("u2", "55") is None
     client.delete_item("p1")
     assert http.calls[-1][1].endswith("/Items/p1")
 

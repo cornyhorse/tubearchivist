@@ -8,7 +8,12 @@ from emby.src.playlist_sync import (
 )
 from emby.src.sync import paths_from_env
 from emby.src.writer import Manifest
-from jobs.src.locks import with_emby_lock
+from jobs.src.locks import (
+    COMMAND_WAIT,
+    LockBusy,
+    emby_lock,
+    playlist_lock,
+)
 from mediaserver.src import settings
 from mediaserver.src.client import MediaServerClient, MediaServerError
 
@@ -19,6 +24,11 @@ class Command(BaseCommand):
     help = "Keep Emby playlists in step with the TA playlists (Emby only)"
 
     def add_arguments(self, parser):
+        parser.add_argument(
+            "--allow-large-removal",
+            action="store_true",
+            help="also do a change that removes most of a playlist",
+        )
         parser.add_argument(
             "--dry-run",
             action="store_true",
@@ -33,9 +43,10 @@ class Command(BaseCommand):
             self.stdout.write(f"warning: {line}")
         for line in result.errors:
             self.stdout.write(f"error: {line}")
+        if result.skipped:
+            self.stdout.write(f"{prefix}held back: {result.skipped}")
         self.stdout.write(f"{prefix}{result.summary()}")
 
-    @with_emby_lock
     def handle(self, *args, **options):
         conn = settings.connection()
         paths = paths_from_env()
@@ -43,15 +54,25 @@ class Command(BaseCommand):
             raise CommandError("an Emby server needs to be configured")
         if not paths:
             raise CommandError("TA_EMBY_ROOT is not set")
-        media = media_paths(Manifest(paths.output_root, dry_run=True))
         dry_run = options["dry_run"]
-        prefix = "[dry-run] " if dry_run else ""
         try:
-            result = sync_playlists(MediaServerClient(conn), media, dry_run)
+            with playlist_lock(wait_seconds=COMMAND_WAIT):
+                with emby_lock(wait_seconds=COMMAND_WAIT):
+                    media = media_paths(
+                        Manifest(paths.output_root, dry_run=True)
+                    )
+                result = sync_playlists(
+                    MediaServerClient(conn),
+                    media,
+                    dry_run,
+                    options["allow_large_removal"],
+                )
+        except LockBusy as err:
+            raise CommandError(f"{err}, try again when it is done") from err
         except MediaServerError as err:
             raise CommandError(str(err)) from err
-        if not dry_run:
+        if not dry_run and not result.skipped:
             record_run(result=result)
-        self._write(result, prefix)
+        self._write(result, "[dry-run] " if dry_run else "")
         if result.errors:
             raise CommandError(f"{len(result.errors)} playlists failed")
