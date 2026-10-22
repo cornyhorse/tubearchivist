@@ -69,6 +69,27 @@ describe('EmbyTagsSelect', () => {
     expect(save).toHaveBeenCalledWith('playlist', 'PL1', ['Other', 'David']);
   });
 
+  it('treats a tag spelled in another case as the same tag', async () => {
+    save.mockResolvedValue({ status: 200 });
+    render(
+      <EmbyTagsSelect
+        kind="channel"
+        id="UC1"
+        name="Trains"
+        value={['david']}
+        knownTags={['David']}
+        canEdit
+        onSaved={vi.fn()}
+      />,
+    );
+    const toggle = screen.getByRole('switch', { name: 'Visible to David: Trains' });
+    expect((toggle as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => expect(save).toHaveBeenCalledWith('channel', 'UC1', []));
+  });
+
   it('removes only the toggled tag', async () => {
     save.mockResolvedValue({ status: 200 });
     render(

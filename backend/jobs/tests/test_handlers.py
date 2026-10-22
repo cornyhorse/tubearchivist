@@ -380,6 +380,7 @@ def test_emby_write(monkeypatch, capsys):
     )
     monkeypatch.setattr(handlers, "paths_from_env", lambda: "paths")
     monkeypatch.setattr(handlers, "sync_all", lambda paths: report)
+    monkeypatch.setattr(handlers, "_media_stems", lambda paths: {})
     assert handlers.emby_write(ctx) == {
         "created": 2,
         "updated": 1,
@@ -643,3 +644,24 @@ def test_fetch_video_subscribe(fake, monkeypatch, app_config):
         ("init", ("vid00000001",), {}),
         ("subscribe", (), {}),
     ]
+
+
+def test_media_stems_reads_the_manifest(tmp_path):
+    # pylint: disable=import-outside-toplevel
+    from emby.src.writer import DesiredFile, EmbyWriter
+
+    EmbyWriter(tmp_path).sync(
+        [
+            DesiredFile(
+                "c/A/S1/e.mp4", "data", "channels/c/v1", "media", data=b"x"
+            ),
+            DesiredFile(
+                "c/A/S1/e.nfo", "data", "channels/c/v1", "nfo", data=b"n"
+            ),
+        ],
+        scope=None,
+    )
+
+    stems = handlers._media_stems(SimpleNamespace(output_root=tmp_path))
+
+    assert stems == {"c/A/S1/e": "c/A/S1/e.mp4"}

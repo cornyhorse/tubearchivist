@@ -20,6 +20,7 @@ from django.db.models import (
 from django.db.models.functions import Coalesce, Lower
 from download.models import Download, DownloadRule, DownloadStatus
 from download.src.rules import RULE_FIELDS, rule_summary
+from emby.src.tags import canonical_tag
 from video.models import Video
 
 SORTS = {
@@ -95,7 +96,9 @@ def channel_list(filters: dict) -> QuerySet:
                 condition if filters[key] else ~condition
             )
     if filters.get("emby_tag"):
-        queryset = queryset.filter(emby_tags__contains=[filters["emby_tag"]])
+        queryset = queryset.filter(
+            emby_tags__contains=[canonical_tag(filters["emby_tag"])]
+        )
     sort = SORTS[filters.get("sort", "name")]
     if filters.get("order", "asc") == "desc":
         order = sort.desc(nulls_last=True)
