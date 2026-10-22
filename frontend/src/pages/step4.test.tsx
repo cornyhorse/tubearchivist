@@ -807,6 +807,26 @@ describe('MediaServerSettings', () => {
     await waitFor(() => expect(screen.getByText(/comes with a newer server/)).toBeTruthy());
   });
 
+  it('saves the Emby tags to offer as a clean list', async () => {
+    clientMock.getMediaServer.mockResolvedValue(ok({ ...server, known_tags: ['David'] }));
+    clientMock.listLibraries.mockResolvedValue(ok({ data: [] }));
+    clientMock.saveMediaServer.mockResolvedValue(ok({ ...server, known_tags: ['David', 'Ann'] }));
+    wrap(<MediaServerSettings />);
+    const field = (await screen.findByLabelText('Emby tags to offer')) as HTMLInputElement;
+    expect(field.value).toBe('David');
+
+    fireEvent.change(field, { target: { value: ' David, Ann ,, David' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
+    expect(clientMock.saveMediaServer).toHaveBeenCalledWith(
+      expect.objectContaining({ known_tags: ['David', 'Ann'] }),
+    );
+    expect((screen.getByLabelText('Emby tags to offer') as HTMLInputElement).value).toBe(
+      'David, Ann',
+    );
+  });
+
   it('tests, picks a library and saves without echoing the key', async () => {
     clientMock.getMediaServer.mockResolvedValue(ok(server));
     clientMock.listLibraries.mockResolvedValue(

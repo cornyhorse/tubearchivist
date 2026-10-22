@@ -8,6 +8,7 @@ import DataTable, { Column, SortState } from './ux/DataTable';
 import { NumberingBadge, RuleBadge } from './ux/Badges';
 import AutoDownloadSwitch from './ux/AutoDownloadSwitch';
 import EmbyShowSelect from './ux/EmbyShowSelect';
+import EmbyTagsSelect, { EMBY_TAGS_HELP } from './ux/EmbyTagsSelect';
 
 type ChannelTableProps = {
   channels: ChannelType[];
@@ -21,6 +22,8 @@ type ChannelTableProps = {
   onChanged: () => void;
   /** set when the server has the work queue */
   onCheckNow?: (channel: ChannelType) => void;
+  /** the Emby tags to offer */
+  embyTags?: string[];
 };
 
 /** a count, or a dash while the server doesn't send it yet */
@@ -41,6 +44,7 @@ const ChannelTable = ({
   onToggleSubscribe,
   onChanged,
   onCheckNow,
+  embyTags = [],
 }: ChannelTableProps) => {
   const columns: Column<ChannelType>[] = [
     {
@@ -145,6 +149,22 @@ const ChannelTable = ({
           id={channel.channel_id}
           name={channel.channel_name}
           value={channel.auto_download}
+          canEdit={isAdmin}
+          onSaved={onChanged}
+        />
+      ),
+    },
+    {
+      key: 'emby_tags',
+      header: 'Visible to',
+      help: EMBY_TAGS_HELP,
+      render: channel => (
+        <EmbyTagsSelect
+          kind="channel"
+          id={channel.channel_id}
+          name={channel.channel_name}
+          value={channel.emby_tags}
+          knownTags={embyTags}
           canEdit={isAdmin}
           onSaved={onChanged}
         />

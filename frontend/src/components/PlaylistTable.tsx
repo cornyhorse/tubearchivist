@@ -4,6 +4,7 @@ import { PlaylistType } from '../api/loader/loadPlaylistById';
 import formatDate from '../functions/formatDates';
 import DataTable, { Column } from './ux/DataTable';
 import AutoDownloadSwitch from './ux/AutoDownloadSwitch';
+import EmbyTagsSelect, { EMBY_TAGS_HELP } from './ux/EmbyTagsSelect';
 
 type PlaylistTableProps = {
   playlists: PlaylistType[];
@@ -12,6 +13,8 @@ type PlaylistTableProps = {
   onSelectedChange: (selected: Set<string>) => void;
   onToggleSubscribe: (playlist: PlaylistType) => void;
   onChanged: () => void;
+  /** the Emby tags to offer */
+  embyTags?: string[];
 };
 
 const isCustom = (playlist: PlaylistType) => playlist.playlist_type === 'custom';
@@ -23,6 +26,7 @@ const PlaylistTable = ({
   onSelectedChange,
   onToggleSubscribe,
   onChanged,
+  embyTags = [],
 }: PlaylistTableProps) => {
   const columns: Column<PlaylistType>[] = [
     {
@@ -63,6 +67,25 @@ const PlaylistTable = ({
             id={playlist.playlist_id}
             name={playlist.playlist_name}
             value={playlist.auto_download}
+            canEdit={isAdmin}
+            onSaved={onChanged}
+          />
+        ),
+    },
+    {
+      key: 'emby_tags',
+      header: 'Visible to',
+      help: EMBY_TAGS_HELP,
+      render: playlist =>
+        isCustom(playlist) ? (
+          <span className="ux-muted">—</span>
+        ) : (
+          <EmbyTagsSelect
+            kind="playlist"
+            id={playlist.playlist_id}
+            name={playlist.playlist_name}
+            value={playlist.emby_tags}
+            knownTags={embyTags}
             canEdit={isAdmin}
             onSaved={onChanged}
           />
