@@ -6060,6 +6060,16 @@ components:
           type: integer
           maximum: 3600
           minimum: 0
+        refresh_batch_size:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: item refreshes per run after a sync (each re-reads files)
+        refresh_pause_seconds:
+          type: integer
+          maximum: 3600
+          minimum: 0
+          description: pause between runs of item refreshes
         known_tags:
           type: array
           items:

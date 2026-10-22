@@ -178,3 +178,52 @@ def test_import_dry_run_shows_who_loses(library, monkeypatch):
     real = run("ta_emby_import_tags")
     assert "LOST v2" in real
     assert Playlist.objects.get().emby_tags == ["David"]
+
+
+class MetadataClient:
+    """library_metadata of a media server"""
+
+    def __init__(self, items):
+        self.items = items
+
+    def library_metadata(self):
+        return self.items
+
+
+def test_hand_set_metadata(library):
+    configure()
+    client = MetadataClient(
+        [
+            {
+                "path": f"{SERVER}/channels/A/e1.mkv",
+                "rating": "TV-Y",
+                "genres": ["Kids", "Music"],
+                "tags": ["David", "huntarr-x"],
+            },
+            {
+                "path": f"{SERVER}/channels/A/e2.mkv",
+                "rating": "",
+                "genres": [],
+                "tags": ["david"],  # a tag TA writes
+            },
+            {
+                "path": "/handmade/YT-Approved/x.mkv",  # outside the tree
+                "rating": "G",
+                "genres": [],
+                "tags": [],
+            },
+        ]
+        * 20
+    )
+
+    count, lines = visibility.hand_set_metadata(client, limit=2)
+
+    assert count == 20
+    assert (
+        lines
+        == [
+            "channels/A/e1.mkv: rating TV-Y; genres Kids, Music; "
+            "tags huntarr-x"
+        ]
+        * 2
+    )

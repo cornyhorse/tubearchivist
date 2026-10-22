@@ -49,7 +49,7 @@ container with a throwaway library and fake episodes, never from production.
    So the follow-up refresh uses `FullRefresh` with `ReplaceAllMetadata=true` and `ReplaceAllImages=false`. On the
    scratch Emby that kept the poster and thumb sidecar images, the play count and resume position, and worked on a
    show with `lockdata`. It does replace anything set by hand in Emby on those items; TA owns these NFOs. It runs
-   only on items whose NFO changed. If a library has online metadata providers switched on, a full refresh may ask
+   only on items whose NFO changed in place (a renamed file is a new item the scan reads anyway), shows before episodes, at most `refresh_batch_size` (50) per run with `refresh_pause_seconds` (60) before the next run, because each refresh makes Emby read and probe the files again. If a library has online metadata providers switched on, a full refresh may ask
    them; Matt's YT library has none that match these shows (no provider ids, series locked).
 7. New items are only in Emby after its scan. A playlist sync that runs before the scan simply leaves those
    episodes out, and the next run adds them.

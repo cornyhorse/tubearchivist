@@ -60,6 +60,18 @@ class MediaServerSerializer(serializers.Serializer):
     debounce_seconds = serializers.IntegerField(
         required=False, min_value=0, max_value=3600
     )
+    refresh_batch_size = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=1000,
+        help_text="item refreshes per run after a sync (each re-reads files)",
+    )
+    refresh_pause_seconds = serializers.IntegerField(
+        required=False,
+        min_value=0,
+        max_value=3600,
+        help_text="pause between runs of item refreshes",
+    )
     known_tags = serializers.ListField(
         child=serializers.CharField(max_length=64),
         required=False,

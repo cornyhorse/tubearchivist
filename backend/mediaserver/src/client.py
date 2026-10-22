@@ -169,6 +169,45 @@ class MediaServerClient:
             for item in data.get("Items") or []
         ]
 
+    def library_metadata(self) -> list[dict]:
+        """
+        shows and episodes with what is set on them that a refresh that
+        replaces metadata would clear: path, rating, genres, tags (a read
+        only query of the whole library, in pages)
+        """
+        items: list[dict] = []
+        start = 0
+        while True:
+            data = self._request(
+                "GET",
+                "/Items",
+                params={
+                    "Recursive": "true",
+                    "IncludeItemTypes": "Series,Episode",
+                    "Fields": "Path,OfficialRating,CustomRating,Genres,"
+                    "Tags,TagItems",
+                    "StartIndex": start,
+                    "Limit": PAGE,
+                },
+            ).json()
+            for item in data.get("Items") or []:
+                items.append(
+                    {
+                        "path": item.get("Path") or "",
+                        "rating": item.get("OfficialRating")
+                        or item.get("CustomRating")
+                        or "",
+                        "genres": list(item.get("Genres") or []),
+                        "tags": sorted(
+                            {t.get("Name") for t in item.get("TagItems") or []}
+                            - {None}
+                        ),
+                    }
+                )
+            start += PAGE
+            if start >= data.get("TotalRecordCount", 0):
+                return items
+
     def series_episode_paths(self, series_id: str) -> list[str]:
         """server paths of every episode of a show (a read only query)"""
         paths: list[str] = []
@@ -214,13 +253,13 @@ class MediaServerClient:
                 return str(item["Id"])
         return None
 
-    def refresh_item(self, item_id: str, recursive: bool = False) -> int:
+    def refresh_item(self, item_id: str) -> int:
         """
-        read the item's NFO again (and those below it if recursive), and
-        replace what the server holds with it. The default refresh mode
-        only fills in what is empty: a tag taken out of the NFO, or
-        another one put in its place, stayed as it was (tested on Emby
-        4.9.5.0), which would leave a user with access that was withdrawn.
+        read the item's NFO again and replace what the server holds with
+        it. The default refresh mode only fills in what is empty: a tag
+        taken out of the NFO, or another one put in its place, stayed as
+        it was (tested on Emby 4.9.5.0), which would leave a user with
+        access that was withdrawn.
         TA owns these NFOs; images are sidecar files (ReplaceAllImages
         stays off) and watch state is not metadata.
         """
@@ -228,7 +267,7 @@ class MediaServerClient:
             "POST",
             f"/Items/{item_id}/Refresh",
             params={
-                "Recursive": "true" if recursive else "false",
+                "Recursive": "false",
                 "MetadataRefreshMode": "FullRefresh",
                 "ReplaceAllMetadata": "true",
                 "ReplaceAllImages": "false",
