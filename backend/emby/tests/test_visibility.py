@@ -5,7 +5,6 @@ import io
 import pytest
 from channel.models import Channel
 from common.src.env_settings import EnvironmentSettings
-from common.tests.docs import channel_doc, playlist_doc, video_doc
 from django.core.management import call_command
 from emby.src import visibility
 from emby.src.sync import sync_all

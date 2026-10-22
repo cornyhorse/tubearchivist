@@ -51,32 +51,14 @@ class Command(BaseCommand):
         conn = settings.connection()
         if not conn:
             raise CommandError("no media server configured")
-        manual = {}
-        for pair in options["map"]:
-            name, _, target = pair.rpartition("=")
-            if not name or not target:
-                raise CommandError(f"--map expects NAME=ID, got {pair!r}")
-            manual[name] = target
+        manual = self._manual(options["map"])
         client = MediaServerClient(conn)
         try:
             plan = plan_import(client, options["tag"], manual)
             before = self._before(client, options["tag"])
         except MediaServerError as err:
             raise CommandError(str(err)) from err
-        for item in plan:
-            where = (
-                f"{item.kind} {item.target_id} ({item.target_name})"
-                if item.kind
-                else "NOT MAPPED"
-            )
-            self.stdout.write(
-                f"{item.emby_name} [{', '.join(item.tags)}] -> {where}"
-                f" ({item.how})"
-            )
-        unmapped = [item for item in plan if not item.kind]
-        self.stdout.write(
-            f"{len(plan) - len(unmapped)} mapped, {len(unmapped)} not mapped"
-        )
+        self._write_plan(plan)
         if options["dry_run"]:
             try:
                 with transaction.atomic():
@@ -93,6 +75,33 @@ class Command(BaseCommand):
             request_emby_write()
         self._compare(before)
         self.stdout.write(f"{len(changed)} channels/playlists updated")
+
+    @staticmethod
+    def _manual(pairs: list[str]) -> dict[str, str]:
+        """--map NAME=ID pairs"""
+        manual = {}
+        for pair in pairs:
+            name, _, target = pair.rpartition("=")
+            if not name or not target:
+                raise CommandError(f"--map expects NAME=ID, got {pair!r}")
+            manual[name] = target
+        return manual
+
+    def _write_plan(self, plan) -> None:
+        for item in plan:
+            where = (
+                f"{item.kind} {item.target_id} ({item.target_name})"
+                if item.kind
+                else "NOT MAPPED"
+            )
+            self.stdout.write(
+                f"{item.emby_name} [{', '.join(item.tags)}] -> {where}"
+                f" ({item.how})"
+            )
+        unmapped = [item for item in plan if not item.kind]
+        self.stdout.write(
+            f"{len(plan) - len(unmapped)} mapped, {len(unmapped)} not mapped"
+        )
 
     def _before(self, client, tags):
         """what Emby shows for the tags now, None if it can't be compared"""
