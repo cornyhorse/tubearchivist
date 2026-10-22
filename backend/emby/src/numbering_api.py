@@ -6,16 +6,7 @@ Functionality:
 - shared by the REST views and the MCP server
 """
 
-<<<<<<< HEAD
 from channel.models import Channel
-
-=======
-from zoneinfo import ZoneInfo
-
-from channel.models import Channel
-from common.src.env_settings import EnvironmentSettings
-
->>>>>>> cornyhorse/v050-shows
 from django.db import transaction
 from emby.models import EpisodeNumber
 from emby.src.numbering import FROZEN_SCHEMES
