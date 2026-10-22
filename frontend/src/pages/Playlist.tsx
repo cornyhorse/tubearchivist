@@ -35,6 +35,7 @@ import NotFound from './NotFound';
 import updatePlaylistSortOrder from '../api/actions/updatePlaylistSortOrder';
 import { RuleBadge } from '../components/ux/Badges';
 import AutoDownloadSwitch, { AUTO_DOWNLOAD_HELP } from '../components/ux/AutoDownloadSwitch';
+import EmbyPlaylistSwitch, { EMBY_PLAYLIST_HELP } from '../components/ux/EmbyPlaylistSwitch';
 import EmbyTagsSelect, { EMBY_TAGS_HELP } from '../components/ux/EmbyTagsSelect';
 import useEmbyTags from '../functions/useEmbyTags';
 import { useFilterBarTempConf } from '../stores/FilterbarTempConf';
@@ -164,6 +165,16 @@ const Playlist = () => {
               name={playlist.playlist_name}
               value={playlist.emby_tags}
               knownTags={embyTags}
+              canEdit={isAdmin}
+              onSaved={() => setRefresh(true)}
+            />
+            <span className="ux-badge-label" title={EMBY_PLAYLIST_HELP}>
+              Emby playlist
+            </span>
+            <EmbyPlaylistSwitch
+              id={playlist.playlist_id}
+              name={playlist.playlist_name}
+              value={playlist.emby_playlist}
               canEdit={isAdmin}
               onSaved={() => setRefresh(true)}
             />

@@ -25,6 +25,8 @@ export type PlaylistType = {
   auto_download?: boolean;
   /** Emby tags on the show; none hides it from tag-restricted Emby users */
   emby_tags?: string[];
+  /** keep an Emby playlist for it; on unless false */
+  emby_playlist?: boolean;
   _index: string;
   _score: number;
 };

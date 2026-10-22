@@ -5,6 +5,10 @@ import PlaylistTable from './PlaylistTable';
 import { PlaylistType } from '../api/loader/loadPlaylistById';
 
 vi.mock('../api/actions/updateAutoDownload', () => ({ default: vi.fn() }));
+const saveEmbyPlaylist = vi.fn();
+vi.mock('../api/actions/updateEmbyPlaylist', () => ({
+  default: (...args: unknown[]) => saveEmbyPlaylist(...args),
+}));
 const saveEmbyTags = vi.fn();
 vi.mock('../api/actions/updateEmbyTags', () => ({
   default: (...args: unknown[]) => saveEmbyTags(...args),
@@ -81,6 +85,31 @@ describe('PlaylistTable', () => {
     expect(saveEmbyTags).toHaveBeenCalledWith('playlist', 'PL2', ['David']);
   });
 
+  it('shows the Emby playlist switch, on unless off, and saves it', async () => {
+    saveEmbyPlaylist.mockResolvedValue({ status: 200 });
+    const onChanged = vi.fn();
+    renderTable({
+      onChanged,
+      playlists: [
+        playlist({}),
+        playlist({ playlist_id: 'PL2', playlist_name: 'Old', emby_playlist: false }),
+        rows[2],
+      ],
+    });
+    const [, first, second, custom] = screen.getAllByRole('row');
+    expect(screen.getByRole('columnheader', { name: /Emby playlist/ })).toBeTruthy();
+    expect(within(custom).queryByRole('switch', { name: /Emby playlist/ })).toBeNull();
+    const on = within(first).getByRole('switch', { name: 'Emby playlist for Rides' });
+    expect((on as HTMLInputElement).checked).toBe(true);
+    const off = within(second).getByRole('switch', { name: 'Emby playlist for Old' });
+    expect((off as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(off);
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(saveEmbyPlaylist).toHaveBeenCalledWith('PL2', true);
+  });
+
   it('toggles subscription per row and selects rows for bulk actions', () => {
     const onToggleSubscribe = vi.fn();
     const onSelectedChange = vi.fn();
@@ -98,6 +127,7 @@ describe('PlaylistTable', () => {
     expect(screen.queryByRole('switch')).toBeNull();
     expect(screen.queryByRole('checkbox')).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
-    expect(screen.getAllByText('On').length).toBe(1);
+    // auto-download (one row on) plus the Emby playlist column (two regular rows, default on)
+    expect(screen.getAllByText('On').length).toBe(3);
   });
 });

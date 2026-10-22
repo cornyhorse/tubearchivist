@@ -2408,6 +2408,7 @@ export interface components {
      *     * `post_download` - post_download
      *     * `emby_write` - emby_write
      *     * `media_notify` - media_notify
+     *     * `emby_playlists` - emby_playlists
      *     * `media_refresh_items` - media_refresh_items
      *     * `media_refresh` - media_refresh
      *     * `reindex` - reindex
@@ -2432,6 +2433,7 @@ export interface components {
       | 'post_download'
       | 'emby_write'
       | 'media_notify'
+      | 'emby_playlists'
       | 'media_refresh_items'
       | 'media_refresh'
       | 'reindex'
@@ -2548,6 +2550,10 @@ export interface components {
       debounce_seconds?: number;
       /** @description Emby tags offered in the UI, e.g. ['David'] */
       known_tags?: string[];
+      /** @description keep Emby playlists in step with the TA playlists (Emby) */
+      playlists_enabled?: boolean;
+      /** @description Emby users who get every playlist, e.g. ['Matt']; users named by a playlist's tags get it too */
+      playlist_default_users?: string[];
       readonly last_notify: components['schemas']['LastNotify'] | null;
     };
     /** @description the queued post-process job */
@@ -2710,6 +2716,8 @@ export interface components {
       auto_download?: boolean;
       /** @description Emby tags written to the show; none hides it from Emby users limited to tagged items */
       emby_tags?: string[];
+      /** @description keep an Emby playlist for this playlist (default on) */
+      emby_playlist?: boolean;
       /**  index */
       _index?: string;
       /**  score */
@@ -2787,6 +2795,8 @@ export interface components {
       auto_download?: boolean;
       /** @description Emby tags written to the show; none hides it from Emby users limited to tagged items */
       emby_tags?: string[];
+      /** @description keep an Emby playlist for this playlist (default on) */
+      emby_playlist?: boolean;
     };
     /**
      * @description * `top` - top
@@ -5781,6 +5791,7 @@ export interface operations {
          *     * `post_download` - post_download
          *     * `emby_write` - emby_write
          *     * `media_notify` - media_notify
+         *     * `emby_playlists` - emby_playlists
          *     * `media_refresh_items` - media_refresh_items
          *     * `media_refresh` - media_refresh
          *     * `reindex` - reindex
@@ -5803,6 +5814,7 @@ export interface operations {
           | 'post_download'
           | 'emby_write'
           | 'media_notify'
+          | 'emby_playlists'
           | 'media_refresh_items'
           | 'media_refresh'
           | 'reindex'

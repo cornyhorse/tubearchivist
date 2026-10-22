@@ -827,6 +827,40 @@ describe('MediaServerSettings', () => {
     );
   });
 
+  it('saves the Emby playlist sync switch and default users, only for Emby', async () => {
+    clientMock.getMediaServer.mockResolvedValue(
+      ok({ ...server, playlists_enabled: false, playlist_default_users: ['Matt'] }),
+    );
+    clientMock.listLibraries.mockResolvedValue(ok({ data: [] }));
+    clientMock.saveMediaServer.mockResolvedValue(
+      ok({ ...server, playlists_enabled: true, playlist_default_users: ['Matt', 'Ann'] }),
+    );
+    wrap(<MediaServerSettings />);
+    const sync = (await screen.findByRole('switch', {
+      name: 'Sync Emby playlists',
+    })) as HTMLInputElement;
+    expect(sync.checked).toBe(false);
+    const users = screen.getByLabelText('Emby users who get every playlist') as HTMLInputElement;
+    expect(users.value).toBe('Matt');
+    expect(screen.getByText(/one copy per user/)).toBeTruthy();
+
+    fireEvent.click(sync);
+    fireEvent.change(users, { target: { value: ' Matt, Ann ,, Matt' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
+    expect(clientMock.saveMediaServer).toHaveBeenCalledWith(
+      expect.objectContaining({ playlists_enabled: true, playlist_default_users: ['Matt', 'Ann'] }),
+    );
+    expect(
+      (screen.getByLabelText('Emby users who get every playlist') as HTMLInputElement).value,
+    ).toBe('Matt, Ann');
+
+    fireEvent.change(screen.getByLabelText('Media server'), { target: { value: 'jellyfin' } });
+    expect(screen.queryByRole('switch', { name: 'Sync Emby playlists' })).toBeNull();
+    expect(screen.queryByLabelText('Emby users who get every playlist')).toBeNull();
+  });
+
   it('tests, picks a library and saves without echoing the key', async () => {
     clientMock.getMediaServer.mockResolvedValue(ok(server));
     clientMock.listLibraries.mockResolvedValue(
@@ -871,7 +905,7 @@ describe('MediaServerSettings', () => {
     fireEvent.change(screen.getByLabelText('Folder as the server sees it'), {
       target: { value: '/media/.emby' },
     });
-    fireEvent.click(screen.getByRole('switch'));
+    fireEvent.click(screen.getByRole('switch', { name: 'On' }));
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '10' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
