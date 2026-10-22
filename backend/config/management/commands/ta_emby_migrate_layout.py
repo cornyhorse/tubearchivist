@@ -5,10 +5,9 @@ the single sync that renames the files
 see docs/fork/emby-layout-migration.md
 """
 
+from common.src.env_settings import EnvironmentSettings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-
-from common.src.env_settings import EnvironmentSettings
 from emby.src.migrate_layout import AlreadyMigrated, migrate_layout
 from emby.src.shows_change import describe, watch_history_at_risk
 from emby.src.sync import paths_from_env, preflight, sync_all
