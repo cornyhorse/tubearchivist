@@ -200,8 +200,8 @@ gate message (a sync on layout 2 is refused on purpose) and the tree stays as it
    Emby: the writer puts each rewritten NFO in the media server's pending set (Redis) the moment it writes it, and
    the set is emptied only by refreshing the item, so the rerun, the next `emby_write` and the hourly
    `emby_health` all queue the refresh job for what waits (health reports it after 6 hours). If Redis itself was
-   lost, run `ta_emby_sync` after touching nothing: it won't see those NFOs as changed, so refresh the affected
-   shows from Emby's dashboard (Refresh metadata, replace existing) for the tagged channels.
+   lost, the rerun cannot know which NFOs changed: refresh the tagged channels' shows from Emby's dashboard
+   (Refresh metadata, replace existing metadata).
 8. **Idempotence:** `ta_emby_sync .../.emby --dry-run` reports `renamed 0, created 0, deleted 0`.
 9. **Tell Emby and check:** the real run itself queues the notify and the item refreshes (the same step as the
    `emby_write` job and `ta_emby_sync`: `after_sync`); the notify debounce is 30 s. Expect Emby to work for a
