@@ -12,7 +12,7 @@ import loadChannelList, {
 } from '../api/loader/loadChannelList';
 import loadDefaultDownloadRule from '../api/loader/loadDownloadRule';
 import iconAdd from '/img/icon-add.svg';
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import Pagination from '../components/Pagination';
 import { OutletContextType } from './Base';
 import ChannelList from '../components/ChannelList';
@@ -23,6 +23,8 @@ import Button from '../components/Button';
 import updateBulkChannelSubscriptions from '../api/actions/updateBulkChannelSubscriptions';
 import updateChannelSubscription from '../api/actions/updateChannelSubscription';
 import updateAutoDownload from '../api/actions/updateAutoDownload';
+import updateEmbyTags from '../api/actions/updateEmbyTags';
+import useEmbyTags from '../functions/useEmbyTags';
 import useIsAdmin from '../functions/useIsAdmin';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import updateUserConfig, { UserConfigType } from '../api/actions/updateUserConfig';
@@ -76,6 +78,8 @@ export type ChannelType = {
   download_rule?: DownloadRuleType | null;
   /** opted in: checks download new videos the rule allows; off by default */
   auto_download?: boolean;
+  /** Emby tags on the show; none hides it from tag-restricted Emby users */
+  emby_tags?: string[];
   /** list view only: per-channel counts of videos */
   counts?: ChannelCountsType;
   /** list view only: newest upload among the channel's videos */
@@ -118,6 +122,7 @@ const Channels = () => {
   const { userConfig, setUserConfig } = useUserConfigStore();
   const { currentPage, setCurrentPage } = useOutletContext() as OutletContextType;
   const isAdmin = useIsAdmin();
+  const embyTags = useEmbyTags();
   const queueAvailable = useQueueAvailable();
   const [checkMessage, setCheckMessage] = useState('');
 
@@ -131,6 +136,7 @@ const Channels = () => {
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<QuickFilter>(filterFromConfig(userConfig.show_subed_only));
+  const [embyTag, setEmbyTag] = useState('');
   const [sort, setSort] = useState<SortState>({ key: 'name', order: 'asc' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDialog, setBulkDialog] = useState<'rule' | 'numbering' | null>(null);
@@ -170,6 +176,7 @@ const Channels = () => {
         page: currentPage,
         filter: filter === 'all' ? null : filter,
         q: query,
+        embyTag: embyTag || null,
         sort: sort.key as ChannelSortKey,
         order: sort.order,
         pageSize: isTable ? TABLE_PAGE_SIZE : undefined,
@@ -179,7 +186,7 @@ const Channels = () => {
       setShowNotification(false);
       setRefresh(false);
     })();
-  }, [refresh, filter, query, sort, isTable, currentPage]);
+  }, [refresh, filter, embyTag, query, sort, isTable, currentPage]);
 
   const changeFilter = (value: QuickFilter) => {
     setFilter(value);
@@ -225,6 +232,17 @@ const Channels = () => {
 
   const bulkAutoDownload = async (value: boolean) => {
     await forEachChannel(selectedIds, id => updateAutoDownload('channel', id, value));
+    setSelected(new Set());
+    reload();
+  };
+
+  const bulkEmbyTag = async (tag: string, show: boolean) => {
+    const byId = new Map((channels ?? []).map(channel => [channel.channel_id, channel]));
+    await forEachChannel(selectedIds, id => {
+      const current = byId.get(id)?.emby_tags ?? [];
+      const rest = current.filter(item => item !== tag);
+      return updateEmbyTags('channel', id, show ? [...rest, tag] : rest);
+    });
     setSelected(new Set());
     reload();
   };
@@ -305,6 +323,25 @@ const Channels = () => {
             value={filter}
             onChange={changeFilter}
           />
+          {embyTags.length > 0 && (
+            <FilterChips
+              label="Emby tag"
+              options={[
+                { value: '', label: 'Any tag' },
+                ...embyTags.map(tag => ({
+                  value: tag,
+                  label: `Visible to ${tag}`,
+                  help: `Channels tagged ${tag} in Emby`,
+                })),
+              ]}
+              value={embyTag}
+              onChange={value => {
+                setEmbyTag(value);
+                setSelected(new Set());
+                setCurrentPage(0);
+              }}
+            />
+          )}
           <ViewToggle
             views={['table', 'grid', 'list']}
             value={viewStyle}
@@ -360,6 +397,24 @@ const Channels = () => {
             >
               Auto-download off
             </button>
+            {embyTags.map(tag => (
+              <Fragment key={tag}>
+                <button
+                  type="button"
+                  title={`Emby users limited to ${tag} will see the selected channels`}
+                  onClick={() => bulkEmbyTag(tag, true)}
+                >
+                  Show to {tag}
+                </button>
+                <button
+                  type="button"
+                  title={`Take the ${tag} tag off the selected channels so ${tag} no longer sees them`}
+                  onClick={() => bulkEmbyTag(tag, false)}
+                >
+                  Hide from {tag}
+                </button>
+              </Fragment>
+            ))}
             {queueAvailable && (
               <button
                 type="button"
@@ -457,6 +512,7 @@ const Channels = () => {
                 reload();
               }}
               onChanged={reload}
+              embyTags={embyTags}
               onCheckNow={
                 queueAvailable ? channel => checkChannels([channel.channel_id]) : undefined
               }

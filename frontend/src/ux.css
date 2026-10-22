@@ -1460,9 +1460,19 @@ b {
   gap: 6px;
 }
 
-.ux-auto-download .ux-error {
+.ux-auto-download .ux-error,
+.ux-emby-tags .ux-error {
   color: var(--danger);
   font-size: 0.85em;
+}
+
+/* --- Emby tag switches (channel and playlist) --- */
+
+.ux-emby-tags {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
 }
 
 .ux-option-indent {

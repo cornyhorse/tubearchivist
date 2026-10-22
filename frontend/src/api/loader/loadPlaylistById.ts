@@ -25,6 +25,8 @@ export type PlaylistType = {
   emby_numbering?: EmbyNumberingType;
   /** opted in: checks download new videos the rule allows; off by default */
   auto_download?: boolean;
+  /** Emby tags on the show; none hides it from tag-restricted Emby users */
+  emby_tags?: string[];
   _index: string;
   _score: number;
 };

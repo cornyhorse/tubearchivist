@@ -2,6 +2,10 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+const saveEmbyTags = vi.fn();
+vi.mock('../api/actions/updateEmbyTags', () => ({
+  default: (...args: unknown[]) => saveEmbyTags(...args),
+}));
 const saveAutoDownload = vi.fn();
 vi.mock('../api/actions/updateAutoDownload', () => ({
   default: (...args: unknown[]) => saveAutoDownload(...args),
@@ -95,6 +99,37 @@ describe('ChannelTable', () => {
 
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(saveAutoDownload).toHaveBeenCalledWith('channel', 'UC2', true);
+  });
+
+  it('shows who sees each channel and saves a tag switch', async () => {
+    saveEmbyTags.mockResolvedValue({ status: 200 });
+    const onChanged = vi.fn();
+    render(
+      <MemoryRouter>
+        <ChannelTable
+          channels={[{ ...rows[0], emby_tags: ['David'] }, rows[1]]}
+          defaultRule={null}
+          isAdmin
+          embyTags={['David']}
+          sort={{ key: 'name', order: 'asc' }}
+          onSortChange={() => {}}
+          selected={new Set()}
+          onSelectedChange={() => {}}
+          onToggleSubscribe={() => {}}
+          onChanged={onChanged}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('columnheader', { name: /Visible to/ })).toBeTruthy();
+    const trains = screen.getByRole('switch', { name: 'Visible to David: Trains' });
+    const coasters = screen.getByRole('switch', { name: 'Visible to David: Coasters' });
+    expect((trains as HTMLInputElement).checked).toBe(true);
+    expect((coasters as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(coasters);
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(saveEmbyTags).toHaveBeenCalledWith('channel', 'UC2', ['David']);
   });
 
   it('is read-only for viewers', () => {

@@ -33,6 +33,11 @@ describe('loadChannelList', () => {
     );
   });
 
+  it('sends the Emby tag filter', async () => {
+    await loadChannelList({ page: 0, embyTag: 'David' });
+    expect(path()).toBe('/api/channel/?emby_tag=David');
+  });
+
   it('sends the auto-download filter as its own flag', async () => {
     await loadChannelList({ page: 0, filter: 'auto_download' });
     expect(path()).toBe('/api/channel/?auto_download=true');
