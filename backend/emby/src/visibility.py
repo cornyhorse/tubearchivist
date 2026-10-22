@@ -14,6 +14,7 @@ Functionality:
 from dataclasses import dataclass, field
 
 from channel.models import Channel
+from emby.src.tags import known_tags
 from mediaserver.src import settings
 from mediaserver.src.client import MediaServerClient
 from playlist.models import PlaylistEntry
@@ -144,3 +145,31 @@ def write_report(
             write(f"{prefix}  LOST {youtube_id} {names.get(youtube_id, '')}")
         if len(result.lost) > limit:
             write(f"{prefix}  ... and {len(result.lost) - limit} more")
+
+
+def hand_set_metadata(
+    client: MediaServerClient, limit: int = 30
+) -> tuple[int, list[str]]:
+    """
+    (count, lines) of the items in the TA tree that carry metadata TA does
+    not write (a rating, genres, tags TA never uses): a refresh that
+    replaces metadata clears it. A rating can be an access route for a
+    user with AllowTagOrRating, which the visibility lines don't see.
+    """
+    mine = {t.casefold() for t in known_tags()}
+    found = []
+    for item in client.library_metadata():
+        relpath = settings.from_server_path(item["path"])
+        if relpath is None:
+            continue
+        what = []
+        if item["rating"]:
+            what.append(f"rating {item['rating']}")
+        if item["genres"]:
+            what.append(f"genres {', '.join(item['genres'])}")
+        other = [t for t in item["tags"] if t.casefold() not in mine]
+        if other:
+            what.append(f"tags {', '.join(other)}")
+        if what:
+            found.append(f"{relpath}: {'; '.join(what)}")
+    return len(found), found[:limit]

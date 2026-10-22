@@ -37,10 +37,6 @@ def changed_folders(report) -> set[str]:
     return {str(PurePosixPath(p).parent) for p in paths if p}
 
 
-# more changed episode NFOs than this in one run: refresh the whole show
-EPISODE_REFRESH_LIMIT = 200
-
-
 def media_by_stem(files: dict[str, dict]) -> dict[str, str]:
     """{relpath without extension: relpath} of the media in a manifest"""
     return {
@@ -55,23 +51,20 @@ def changed_items(report, media: dict[str, str]) -> set[str]:
     what to refresh in the server after a sync: the server doesn't re-read
     an NFO of a known item on a media update, and access tags live in NFOs
     - "series:<folder>": a show whose tvshow.nfo changed
-    - "episode:<media relpath>": an episode whose NFO changed; past
-      EPISODE_REFRESH_LIMIT of them, "tree:<folder>" refreshes the whole
-      show instead
+    - "episode:<media relpath>": an episode whose NFO changed
+    only NFOs that were updated in place: a renamed file is a new item to
+    the server, which reads its NFO on the scan (refreshing it as well
+    would only make the server read it twice)
     media maps an NFO's path without extension to its media file
     """
-    nfos = list(report.updated) + [new for _, new in report.renamed]
     series, episodes = set(), set()
-    for path in nfos:
+    for path in report.updated:
         pure = PurePosixPath(path)
         if pure.name == "tvshow.nfo":
             series.add(f"series:{pure.parent}")
         elif pure.suffix == ".nfo" and (found := media.get(str(pure)[:-4])):
-            episodes.add(found)
-    if len(episodes) > EPISODE_REFRESH_LIMIT:
-        folders = {"/".join(e.split("/")[:2]) for e in episodes}
-        return series | {f"tree:{folder}" for folder in folders}
-    return series | {f"episode:{e}" for e in episodes}
+            episodes.add(f"episode:{found}")
+    return series | episodes
 
 
 def queue_item_refresh(
@@ -178,6 +171,11 @@ def media_notify(ctx: JobContext) -> dict:
     return {"status_code": status, "paths": len(updates)}
 
 
+def _refresh_order(entry: str) -> tuple[int, str]:
+    """shows before episodes, so an episode finds its show refreshed"""
+    return (0 if entry.startswith("series:") else 1, entry)
+
+
 @register(
     "media_refresh_items",
     "postprocess",
@@ -189,19 +187,27 @@ def media_refresh_items(ctx: JobContext) -> dict:
     """
     refresh the items whose NFO changed (tags), found by their path; an
     item the server doesn't know yet is skipped, its first scan reads the
-    NFO
+    NFO. Each refresh makes the server read and probe files again, so a
+    run does at most refresh_batch_size of them, shows first, and queues
+    itself again after refresh_pause_seconds for the rest.
     """
     conn = settings.connection()
     if not conn:
         return {"skipped": "no media server configured"}
     redis_conn, key = _conn(REFRESH_KEY)
-    entries = sorted(redis_conn.spop(key, 10_000) or [])
-    if not entries:
+    pending = sorted(
+        (e.decode() if isinstance(e, bytes) else e)
+        for e in redis_conn.smembers(key)
+    )
+    pending.sort(key=_refresh_order)
+    if not pending:
         return {"items": 0}
+    stored = settings.load()
+    batch = pending[: stored["refresh_batch_size"]]
     client = MediaServerClient(conn)
     refreshed = unknown = 0
     try:
-        for index, entry in enumerate(entries):
+        for entry in batch:
             kind, _, relpath = entry.partition(":")
             item_id = client.find_item(
                 settings.to_server_path(relpath),
@@ -209,13 +215,22 @@ def media_refresh_items(ctx: JobContext) -> dict:
             )
             if item_id is None:
                 unknown += 1
-                continue
-            client.refresh_item(item_id, recursive=kind == "tree")
-            refreshed += 1
+            else:
+                client.refresh_item(item_id)
+                refreshed += 1
+            redis_conn.srem(key, entry)
     except MediaServerError as err:
-        redis_conn.sadd(key, *entries[index:])
         raise JobError(str(err)) from err
-    return {"refreshed": refreshed, "unknown": unknown}
+    left = len(pending) - len(batch)
+    if left:
+        enqueue(
+            "media_refresh_items",
+            priority=Priority.LOW,
+            created_by=ctx.job.created_by,
+            not_before=timezone.now()
+            + timedelta(seconds=stored["refresh_pause_seconds"]),
+        )
+    return {"refreshed": refreshed, "unknown": unknown, "left": left}
 
 
 @register(

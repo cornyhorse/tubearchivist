@@ -180,18 +180,35 @@ gate message (a sync on layout 2 is refused on purpose) and the tree stays as it
    - the removed shows are exactly the playlist shows and the channels expected to lose their show;
    - `episodes created in Other videos` equals the media in the removed channel shows plus the videos of
      unfollowed channels;
-   - the watch history lists (for the record).
-6. **Run it:** `ta_emby_migrate_layout --verbose-changes > run.txt`; counts match the preview (within the drift).
+   - the watch history lists (for the record);
+   - **hand-set metadata**: the list `hand-set metadata on N items that the item refresh after the run clears`
+     (ratings, genres, tags TA does not use, on items in the TA tree). The refresh after the run replaces an
+     item's metadata with its NFO, which TA writes with tags, title, dates and plot only, so those are dropped.
+     A rating can be an access route for a user with `AllowTagOrRating`, and the visibility lines do not see it.
+     Move what matters into TA (tags) or accept the loss;
+   - `item refreshes queued: N (S shows, E episodes), 50 per run, R runs 60 s apart`: only NFOs updated in place are
+     refreshed, shows first, never the whole show; a renamed file is a new item the scan reads anyway.
+6. **Run it, in a quiet window** (nobody watching, no other Emby scan or refresh running, no TA rebuild churn):
+   `ta_emby_migrate_layout --verbose-changes > run.txt`; counts match the preview (within the drift). The real run
+   **refuses before touching the database** if anyone would lose access they have now (the LOST lines), or if Emby
+   can't be read to check; the fix is to tag the channels/playlists in TA (`ta_emby_import_tags`), `--accept-lost`
+   only when the loss is intended. This matters because the item refresh sets an item's tags to exactly what TA
+   writes: a tag only set by hand in Emby on a show whose TA channel does not carry it is taken away.
 7. **If the sync fails after the database part committed** (the 2026-10-21 case): the command reports
    `already on Emby layout`; fix the cause and run `ta_emby_sync .../.emby --dry-run`, then without
    `--dry-run`. It finishes the same renames.
 8. **Idempotence:** `ta_emby_sync .../.emby --dry-run` reports `renamed 0, created 0, deleted 0`.
-9. **Tell Emby and check:** the real run itself queues the notify and the item refresh (the same step as the
-   `emby_write` job and `ta_emby_sync`: `after_sync`); the debounce is 30 s. Check the queue for `media_notify`
-   and `media_refresh_items` and that they finish. The refresh matters: Emby does not re-read an existing item's
-   NFO on a scan, so the new episode tags (a tagged playlist inside an untagged channel show) reach Emby only
-   through it. Then in Emby (as admin and as David) the YT library shows channel shows and "Other videos" for
-   admin, David sees only tagged shows plus tagged episodes (playlists), and "Other videos" is not in his list.
+9. **Tell Emby and check:** the real run itself queues the notify and the item refreshes (the same step as the
+   `emby_write` job and `ta_emby_sync`: `after_sync`); the notify debounce is 30 s. Expect Emby to work for a
+   while: first the library scan of the moved and new files (about 1,000+ items move into Other videos and the
+   renamed ones are new items), then the item refreshes from the preview line, 50 per run a minute apart, so
+   roughly `N / 50` minutes for N refreshes (a few hundred take under ten minutes of queueing, and Emby then
+   re-reads each item's files over CIFS). Do not start other scans meanwhile. Check the queue for `media_notify`
+   and `media_refresh_items` and that they finish; `refresh_batch_size` and `refresh_pause_seconds` in the media
+   server settings pace it. The refresh matters: Emby does not re-read an existing item's NFO on a scan, so the
+   new episode tags (a tagged playlist inside an untagged channel show) reach Emby only through it. Then in Emby
+   (as admin and as David) the YT library shows channel shows and "Other videos" for admin, David sees only
+   tagged shows plus tagged episodes (playlists), and "Other videos" is not in his list.
 10. **If wrong:** if the Emby playlist sync (PR 28) has run, undo it first (see docs/fork/emby-playlists.md:
     `playlists_enabled` off, then `ta_emby_playlists`), then restore the `pg_dump` and redeploy the previous
     image; the old image's next sync recreates the playlist shows and the one-off channel shows (one more change
