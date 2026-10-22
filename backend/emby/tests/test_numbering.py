@@ -3,7 +3,6 @@
 from datetime import date
 
 import pytest
-
 from emby.src.numbering import NumberingError, NumberingItem, assign_numbers
 
 

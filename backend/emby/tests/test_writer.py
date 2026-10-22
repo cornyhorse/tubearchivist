@@ -7,7 +7,6 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-
 from emby.src import writer as writer_module
 from emby.src.layout import (
     EpisodeSource,

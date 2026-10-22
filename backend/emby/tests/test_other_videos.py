@@ -3,11 +3,10 @@
 import xml.etree.ElementTree as ET
 
 import pytest
-from django.core.management import call_command
-from django.core.management.base import CommandError
-
 from appsettings.models import ConfigDocument
 from channel.models import Channel
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from emby.models import EpisodeNumber
 from emby.src.sync import (
     LAYOUT_KEY,

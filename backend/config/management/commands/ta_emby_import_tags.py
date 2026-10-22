@@ -6,7 +6,6 @@ see docs/fork/emby-v050-design.md
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-
 from emby.src.sync import paths_from_env
 from emby.src.tag_import import apply_import, plan_import
 from emby.src.visibility import before_state, compare, write_report

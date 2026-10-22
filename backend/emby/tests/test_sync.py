@@ -4,7 +4,6 @@ import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 
 import pytest
-
 from channel.models import Channel
 from common.src.env_settings import EnvironmentSettings
 from common.tests.docs import channel_doc

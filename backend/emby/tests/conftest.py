@@ -1,7 +1,6 @@
 """shared fixtures of the Emby writer tests"""
 
 import pytest
-
 from channel.models import Channel
 from common.src.env_settings import EnvironmentSettings
 from common.tests.docs import channel_doc, playlist_doc, video_doc
