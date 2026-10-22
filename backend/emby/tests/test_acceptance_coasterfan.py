@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-
 from channel.models import Channel
 from common.tests.docs import channel_doc, video_doc
 from emby.src.sync import EmbyPaths, sync_all, sync_channel

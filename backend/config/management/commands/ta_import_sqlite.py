@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
-
 from storage.sqlite_import import SqliteImporter
 
 

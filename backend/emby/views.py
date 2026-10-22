@@ -1,15 +1,13 @@
 """numbering API views, /api/numbering/"""
 
+from common.serializers import ErrorResponseSerializer
+from common.views_base import AdminOnly, ApiBaseView
 from django.core.exceptions import ObjectDoesNotExist
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiResponse,
     extend_schema,
 )
-from rest_framework.response import Response
-
-from common.serializers import ErrorResponseSerializer
-from common.views_base import AdminOnly, ApiBaseView
 from emby.serializers import (
     EmbyTagsSerializer,
     SchemeChangeResultSerializer,
@@ -32,6 +30,7 @@ from emby.src.numbering_api import (
     video_numbers,
 )
 from emby.src.tags import known_tags
+from rest_framework.response import Response
 
 NOT_FOUND = OpenApiResponse(ErrorResponseSerializer(), description="not found")
 

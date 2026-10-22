@@ -3,10 +3,9 @@
 from io import StringIO
 
 import pytest
-from django.core.management import call_command
-
 from appsettings.models import ConfigDocument
 from common.src.env_settings import EnvironmentSettings
+from django.core.management import call_command
 from emby.src import shows_change
 from emby.src.sync import LAYOUT_KEY, sync_all
 from emby.src.writer import SyncReport

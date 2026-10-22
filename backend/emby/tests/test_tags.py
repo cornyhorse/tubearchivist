@@ -4,12 +4,10 @@ import xml.etree.ElementTree as ET
 from io import StringIO
 
 import pytest
-from django.core.management import call_command
-from django.core.management.base import CommandError
-from rest_framework.test import APIClient
-
 from channel.models import Channel
 from common.tests.docs import channel_doc, playlist_doc
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from emby.src.nfo import SeriesInfo, render_tvshow
 from emby.src.sync import sync_all
 from emby.src.tag_import import apply_import, plan_import
@@ -22,6 +20,7 @@ from emby.src.tags import (
 from mediaserver.src import settings
 from mediaserver.src.client import MediaServerError
 from playlist.models import Playlist
+from rest_framework.test import APIClient
 from user.models import Account
 
 pytestmark = pytest.mark.django_db

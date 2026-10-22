@@ -10,11 +10,10 @@ from datetime import date
 from zoneinfo import ZoneInfo
 
 import pytest
-from django.core.management import CommandError, call_command
-
 from appsettings.models import ConfigDocument
 from channel.models import Channel
 from common.tests.docs import channel_doc
+from django.core.management import CommandError, call_command
 from emby.models import EpisodeNumber
 from emby.src import numbering
 from emby.src import sync as sync_module

@@ -8,10 +8,9 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from django.core.management import CommandError, call_command
-
 from appsettings.models import ConfigDocument
 from common.tests.docs import channel_doc
+from django.core.management import CommandError, call_command
 from emby.models import EpisodeNumber
 from emby.src import sync as sync_module
 from emby.src import writer as writer_module

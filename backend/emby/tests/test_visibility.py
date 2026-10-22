@@ -3,10 +3,9 @@
 import io
 
 import pytest
-from django.core.management import call_command
-
 from channel.models import Channel
 from common.src.env_settings import EnvironmentSettings
+from django.core.management import call_command
 from emby.src import visibility
 from emby.src.sync import sync_all
 from emby.src.writer import Manifest

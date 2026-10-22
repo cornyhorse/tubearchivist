@@ -10,9 +10,8 @@ import os
 import re
 from time import sleep
 
-from django.core.management.base import BaseCommand, CommandError
-
 from common.src.env_settings import EnvironmentSettings
+from django.core.management.base import BaseCommand, CommandError
 from user.models import Account
 
 LOGO = """

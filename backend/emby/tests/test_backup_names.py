@@ -3,7 +3,6 @@
 import json
 
 import pytest
-
 from emby.models import EpisodeNumber
 from storage.importer import EsImporter, episode_to_doc
 

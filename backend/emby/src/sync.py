@@ -15,11 +15,10 @@ from datetime import timezone as dt_timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from django.db import transaction
-from django.db.models import Q
-
 from appsettings.models import ConfigDocument
 from channel.models import Channel, EmbyNumbering, EmbyShow
+from django.db import transaction
+from django.db.models import Q
 from emby.models import EpisodeNumber, SeriesKind
 from emby.src.layout import (
     EpisodeSource,
