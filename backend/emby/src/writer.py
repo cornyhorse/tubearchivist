@@ -21,6 +21,7 @@ import os
 import re
 import secrets
 import tempfile
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -311,6 +312,25 @@ def nearest_dir(path: Path) -> Path:
     return next(p for p in (path, *path.parents) if p.is_dir())
 
 
+def _retry_estale(func: Callable, *args, wait: float = 6.0):
+    """
+    a CIFS client with attribute caching answers EINVAL (or ESTALE) for a
+    few seconds when a name hardlinked from a just-created file is first
+    opened; retry until it settles
+    """
+    deadline = time.monotonic() + wait
+    while True:
+        try:
+            return func(*args)
+        except OSError as err:
+            if (
+                err.errno not in (errno.EINVAL, errno.ESTALE)
+                or time.monotonic() >= deadline
+            ):
+                raise
+            time.sleep(0.5)
+
+
 def check_hardlinks(media_dir: Path, root: Path) -> None:
     """
     preflight, by behaviour rather than inode numbers (a CIFS mount that
@@ -345,8 +365,8 @@ def check_hardlinks(media_dir: Path, root: Path) -> None:
             ) from err
         for written, read in ((probe, source), (source, probe)):
             token = secrets.token_hex(16).encode()
-            _write_through(written, token)
-            if read.read_bytes() != token:
+            _retry_estale(_write_through, written, token)
+            if _retry_estale(read.read_bytes) != token:
                 raise EmbyRootError(
                     f"a hardlink in {root} is not the same file as its "
                     f"source in {media_dir}: a write through one name "
