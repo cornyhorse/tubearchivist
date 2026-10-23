@@ -23,6 +23,10 @@ FROM python:3.13.11-slim-trixie AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc libldap2-dev libsasl2-dev libssl-dev git
 
+# pip >= 26.2.2 (emSign ECC Root CA - G3 distrust, 2026-10). The base image's pip trusts the
+# revoked root through its own vendored certifi, so the first upgrade is a hash-pinned wheel.
+RUN python -m pip install --no-cache-dir --upgrade "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
+
 # install requirements
 COPY ./backend/requirements.txt /requirements.txt
 RUN pip install --user -r requirements.txt
@@ -53,8 +57,13 @@ ENV PATH=/root/.local/bin:$PATH
 COPY --from=ffmpeg-builder ./ffmpeg/ffmpeg /usr/bin/ffmpeg
 COPY --from=ffmpeg-builder ./ffprobe/ffprobe /usr/bin/ffprobe
 
-# install distro packages needed
+# pip >= 26.2.2 in the shipped image too, same hash-pinned wheel (emSign ECC Root CA - G3 distrust, 2026-10)
+RUN python -m pip install --no-cache-dir --upgrade "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
+
+# install distro packages needed. ca-certificates is named so the OS bundle is upgraded here
+# even when the pinned python base tag was built before the emSign ECC Root CA - G3 distrust.
 RUN apt-get clean && apt-get -y update && apt-get -y install --no-install-recommends \
+    ca-certificates \
     nginx \
     atomicparsley \
     tini \
