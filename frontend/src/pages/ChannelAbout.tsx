@@ -111,6 +111,8 @@ const ChannelAbout = () => {
     return 'Channel not found!';
   }
 
+  const archived = channel.source === 'archive';
+
   return (
     <>
       <title>{`TA | Channel: About ${channel.channel_name}`}</title>
@@ -122,13 +124,15 @@ const ChannelAbout = () => {
             channelSubs={channel.channel_subs}
             channelSubscribed={channel.channel_subscribed}
             channelThumbUrl={channel.channel_thumb_url}
+            archived={archived}
             setRefresh={setRefresh}
           />
 
           <div className="info-box-item">
             <div>
-              <p>Last refreshed: {formatDate(channel.channel_last_refresh)}</p>
-              {channel.channel_active && (
+              {!archived && <p>Last refreshed: {formatDate(channel.channel_last_refresh)}</p>}
+              {archived && <p>Source: archived files</p>}
+              {!archived && channel.channel_active && (
                 <p>
                   Youtube:{' '}
                   <a
@@ -140,7 +144,7 @@ const ChannelAbout = () => {
                   </a>
                 </p>
               )}
-              {!channel.channel_active && <p>Youtube: Deactivated</p>}
+              {!archived && !channel.channel_active && <p>Youtube: Deactivated</p>}
             </div>
           </div>
 
@@ -179,7 +183,7 @@ const ChannelAbout = () => {
                   </div>
                   <br></br>
                   {reindex && <p>Reindex scheduled</p>}
-                  {!reindex && (
+                  {!reindex && !archived && (
                     <div id="reindex-button" className="button-box">
                       <Button
                         label="Reindex"
@@ -244,7 +248,7 @@ const ChannelAbout = () => {
           </div>
         )}
 
-        {isAdmin && (
+        {isAdmin && !archived && (
           <div className="info-box">
             <div className="info-box-item">
               <h2>Channel Customization</h2>
@@ -391,30 +395,32 @@ const ChannelAbout = () => {
 
         {isAdmin && (
           <div className="info-box">
-            <div className="info-box-item">
-              <h2>Download Rules</h2>
-              {userConfig.show_help_text && (
-                <div className="help-text">
-                  <ul>
-                    <li>
-                      Decide which videos of this channel get downloaded when the channel is
-                      scanned. Empty fields match everything.
-                    </li>
-                    <li>
-                      Without a rule here, the default rule from the application settings applies.
-                      Save a disabled rule to download everything from this channel anyway.
-                    </li>
-                    <li>Videos you add by URL are always downloaded.</li>
-                  </ul>
-                </div>
-              )}
-              <DownloadRuleForm
-                key={JSON.stringify(channel.download_rule ?? null)}
-                channelId={channel.channel_id}
-                rule={channel.download_rule ?? null}
-                onSaved={() => setRefresh(true)}
-              />
-            </div>
+            {!archived && (
+              <div className="info-box-item">
+                <h2>Download Rules</h2>
+                {userConfig.show_help_text && (
+                  <div className="help-text">
+                    <ul>
+                      <li>
+                        Decide which videos of this channel get downloaded when the channel is
+                        scanned. Empty fields match everything.
+                      </li>
+                      <li>
+                        Without a rule here, the default rule from the application settings applies.
+                        Save a disabled rule to download everything from this channel anyway.
+                      </li>
+                      <li>Videos you add by URL are always downloaded.</li>
+                    </ul>
+                  </div>
+                )}
+                <DownloadRuleForm
+                  key={JSON.stringify(channel.download_rule ?? null)}
+                  channelId={channel.channel_id}
+                  rule={channel.download_rule ?? null}
+                  onSaved={() => setRefresh(true)}
+                />
+              </div>
+            )}
             <div className="info-box-item">
               <h2>Emby</h2>
               {userConfig.show_help_text && (

@@ -4346,6 +4346,14 @@ components:
       properties:
         channel_id:
           type: string
+        source:
+          allOf:
+          - $ref: '#/components/schemas/SourceA85Enum'
+          description: |-
+            archive: made from files on disk, nothing to refresh, check or download from YouTube
+
+            * `youtube` - youtube
+            * `archive` - archive
         channel_active:
           type: boolean
         channel_banner_url:
@@ -4495,6 +4503,14 @@ components:
       properties:
         channel_id:
           type: string
+        source:
+          allOf:
+          - $ref: '#/components/schemas/SourceA85Enum'
+          description: |-
+            archive: made from files on disk, nothing to refresh, check or download from YouTube
+
+            * `youtube` - youtube
+            * `archive` - archive
         channel_active:
           type: boolean
         channel_banner_url:
@@ -7521,6 +7537,14 @@ components:
       description: |-
         * `user` - user
         * `auto` - auto
+    SourceA85Enum:
+      enum:
+      - youtube
+      - archive
+      type: string
+      description: |-
+        * `youtube` - youtube
+        * `archive` - archive
     SponsorBlock:
       type: object
       description: serialize sponsorblock
@@ -8045,6 +8069,14 @@ components:
       properties:
         active:
           type: boolean
+        source:
+          allOf:
+          - $ref: '#/components/schemas/SourceA85Enum'
+          description: |-
+            archive: a file on disk, no YouTube page to open
+
+            * `youtube` - youtube
+            * `archive` - archive
         category:
           type: array
           items:

@@ -52,6 +52,8 @@ from mediaserver.src.jobs import (
 from playlist.models import Playlist
 from playlist.src.index import YoutubePlaylist
 from video.models import Video
+from video.src.archive import is_archive_id
+from video.src.archive_import import ArchiveImporter, ArchiveImportError
 from video.src.meta_embed import MetadataEmbed
 
 # another Emby writer holds the lock: check again after this long
@@ -94,6 +96,13 @@ def rule_from_params(params: dict) -> DownloadRule | None | bool:
         return False
     fields = _rule_fields(params["rule"])
     return DownloadRule(**fields) if fields else None
+
+
+def _archived(ctx: JobContext) -> dict | None:
+    """a result that skips the job if its target is an archived item"""
+    if is_archive_id(ctx.job.target_id):
+        return {"skipped": "archived items have no YouTube data"}
+    return None
 
 
 def prepare_channel(ctx: JobContext) -> None:
@@ -234,6 +243,8 @@ def check_subscriptions(ctx: JobContext) -> dict:
 )
 def check_channel(ctx: JobContext) -> dict:
     """find new videos of one channel"""
+    if skipped := _archived(ctx):
+        return skipped
     channel_id = ctx.job.target_id
     newest_n = ctx.params.get("newest_n")
     prepare_channel(ctx)
@@ -318,6 +329,8 @@ def check_playlist(ctx: JobContext) -> dict:
 )
 def fetch_video(ctx: JobContext) -> dict:
     """add one video to the found videos"""
+    if skipped := _archived(ctx):
+        return skipped
     entry = {
         "type": "video",
         "url": ctx.job.target_id,
@@ -620,6 +633,35 @@ def filesystem_rescan(ctx: JobContext) -> dict:
 
 
 @register(
+    "archive_import",
+    "maintenance",
+    "Import an archived channel from a folder",
+    notify=False,
+)
+def archive_import(ctx: JobContext) -> dict:
+    """index a folder of media files without YouTube metadata"""
+    params = ctx.params
+    try:
+        report = ArchiveImporter(
+            params["root"],
+            channel_name=params.get("channel_name"),
+            channel_id=params.get("channel_id"),
+            mode=params.get("mode", "auto"),
+            task=ctx,
+        ).run()
+    except ArchiveImportError as err:
+        raise JobError(str(err)) from err
+
+    if report.imported:
+        queue_emby_write(ctx)
+    if report.failed:
+        names = ", ".join(f"{n}: {r}" for n, r in report.failed[:5])
+        raise JobError(f"{report.message()}. First failures: {names}")
+
+    return {"message": report.message(), "imported": len(report.imported)}
+
+
+@register(
     "thumbnail_check",
     "maintenance",
     "Check thumbnails",
@@ -670,6 +712,8 @@ def manual_import(ctx: JobContext) -> dict:
 )
 def index_playlists(ctx: JobContext) -> dict:
     """index all playlists of a channel"""
+    if skipped := _archived(ctx):
+        return skipped
     YoutubeChannel(ctx.job.target_id, task=ctx).index_channel_playlists()
     return {"done": True}
 

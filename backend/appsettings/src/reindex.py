@@ -19,6 +19,7 @@ from download.src.thumbnails import ThumbManager
 from download.src.yt_dlp_base import CookieHandler
 from playlist.src.index import YoutubePlaylist
 from task.models import CustomPeriodicTask
+from video.src.archive import is_archive_id
 from video.src.comments import Comments
 from video.src.index import YoutubeVideo
 
@@ -104,6 +105,13 @@ class ReindexPopulate(ReindexBase):
             "ta_playlist": Playlist,
         }[reindex_config["index_name"]]
 
+    def _youtube(self, reindex_config: ReindexConfigType):
+        """items refreshed from YouTube: archived ones have nothing to ask"""
+        model = self._model(reindex_config)
+        if hasattr(model, "source"):
+            return model.objects.filter(source="youtube")
+        return model.objects.all()
+
     def add_recent(self) -> None:
         """add videos published in the last 3 days to refresh"""
         # pylint: disable=import-outside-toplevel
@@ -111,7 +119,9 @@ class ReindexPopulate(ReindexBase):
 
         since = datetime.fromtimestamp(self.now - self.DAYS3, tz=timezone.utc)
         all_ids = list(
-            Video.objects.filter(active=True, published__gte=since)
+            Video.objects.filter(
+                active=True, source="youtube", published__gte=since
+            )
             .order_by("-published")
             .values_list("youtube_id", flat=True)
         )
@@ -128,7 +138,7 @@ class ReindexPopulate(ReindexBase):
 
     def _get_total_hits(self, reindex_config: ReindexConfigType) -> int:
         """count active items"""
-        return self._model(reindex_config).objects.filter(active=True).count()
+        return self._youtube(reindex_config).filter(active=True).count()
 
     def _get_daily_should(self, total_hits: int) -> int:
         """calc how many should reindex daily"""
@@ -141,9 +151,9 @@ class ReindexPopulate(ReindexBase):
         cutoff = datetime.fromtimestamp(
             self.now - self.interval * 24 * 60 * 60, tz=timezone.utc
         )
-        model = self._model(reindex_config)
         return list(
-            model.objects.filter(active=True, last_refresh__lte=cutoff)
+            self._youtube(reindex_config)
+            .filter(active=True, last_refresh__lte=cutoff)
             .order_by("last_refresh", "pk")
             .values_list("pk", flat=True)[:daily_should]
         )
@@ -279,6 +289,11 @@ class Reindex(ReindexBase):
             if self.task:
                 self._notify(name, total, idx)
 
+            if is_archive_id(youtube_id):
+                # no YouTube metadata to refresh, and a failed lookup would
+                # deactivate it
+                continue
+
             self._mark_active(youtube_id, queue_name=queue.key)
             index_name = index_config["index_name"]
             if index_name == "ta_video":
@@ -315,6 +330,9 @@ class Reindex(ReindexBase):
         self, youtube_id: str, from_download=False
     ) -> YoutubeVideo | None:
         """refresh data for single video"""
+        if is_archive_id(youtube_id):
+            return None
+
         video = YoutubeVideo(youtube_id)
 
         # read current state

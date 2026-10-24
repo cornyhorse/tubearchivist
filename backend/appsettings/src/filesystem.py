@@ -6,10 +6,12 @@ Functionality:
 import os
 
 from appsettings.src.config import AppConfig
+from channel.models import Source
 from common.src.env_settings import EnvironmentSettings
 from common.src.helper import ignore_filelist, rand_sleep
 from download.src.queue_interact import PendingInteract
 from video.models import Video
+from video.src.archive import is_archive_id
 from video.src.comments import Comments
 from video.src.index import YoutubeVideo, index_new_video
 from video.src.meta_embed import IndexFromEmbed
@@ -54,7 +56,7 @@ class Scanner:
                 {
                     (i.split(".")[0], f"{channel}/{i}")
                     for i in files
-                    if i.endswith(".mp4")
+                    if i.endswith(".mp4") and not is_archive_id(i)
                 }
             )
 
@@ -65,7 +67,13 @@ class Scanner:
         if self.task:
             self.task.send_progress(["Get all videos indexed."])
 
-        return set(Video.objects.values_list("youtube_id", "media_url"))
+        # archived videos have no YouTube metadata and can be any container,
+        # the scanner neither indexes nor removes them
+        return set(
+            Video.objects.filter(source=Source.YOUTUBE).values_list(
+                "youtube_id", "media_url"
+            )
+        )
 
     def apply(self) -> None:
         """apply all changes"""

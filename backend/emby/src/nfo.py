@@ -27,6 +27,9 @@ class SeriesInfo:
     studio: str = ""
     # Emby access tags, see emby/src/tags.py
     tags: tuple[str, ...] = ()
+    # uniqueid type: "archive" keeps Emby's YouTube provider from looking
+    # up an id that is not a YouTube id
+    provider: str = "youtube"
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,7 @@ class EpisodeInfo:
     studio: str = ""
     # access tags of an episode that has no tagged show to inherit from
     tags: tuple[str, ...] = ()
+    provider: str = "youtube"
 
 
 def _clean(text: str | None) -> str:
@@ -77,7 +81,13 @@ def render_tvshow(series: SeriesInfo) -> bytes:
     _add(root, "studio", series.studio)
     for tag in sorted(set(series.tags)):
         _add(root, "tag", tag)
-    _add(root, "uniqueid", series.series_id, type="youtube", default="true")
+    _add(
+        root,
+        "uniqueid",
+        series.series_id,
+        type=series.provider,
+        default="true",
+    )
     _add(root, "lockdata", "true")
     return _render(root)
 
@@ -101,5 +111,11 @@ def render_episode(episode: EpisodeInfo) -> bytes:
         _add(root, "tag", tag)
     # thumbs are <name>-thumb.jpg sidecars, which Emby picks up by name
     # no lockdata here: a locked episode ignores later NFO changes
-    _add(root, "uniqueid", episode.youtube_id, type="youtube", default="true")
+    _add(
+        root,
+        "uniqueid",
+        episode.youtube_id,
+        type=episode.provider,
+        default="true",
+    )
     return _render(root)

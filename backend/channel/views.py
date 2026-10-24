@@ -32,6 +32,24 @@ from task.tasks import index_channel_playlists, subscribe_to
 from video.models import Video
 
 
+def _archive_refusal(channel: dict, data: dict) -> Response | None:
+    """400 if the change asks an archived channel for subscribing, checks
+    or playlist lookups, which need YouTube"""
+    overwrites = data.get("channel_overwrites") or {}
+    asks = (
+        data.get("channel_subscribed")
+        or data.get("auto_download")
+        or overwrites.get("index_playlists")
+    )
+    if channel.get("source") != "archive" or not asks:
+        return None
+
+    error = ErrorResponseSerializer(
+        {"error": "an archived channel has nothing to check online"}
+    )
+    return Response(error.data, status=400)
+
+
 class ChannelApiListView(ApiBaseView):
     """resolves to /api/channel/
     GET: returns list of channels
@@ -145,6 +163,8 @@ class ChannelApiView(ApiBaseView):
         serializer = ChannelUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
+        if refusal := _archive_refusal(self.response, validated_data):
+            return refusal
 
         subscribed = validated_data.get("channel_subscribed")
         if subscribed is not None:
@@ -158,17 +178,7 @@ class ChannelApiView(ApiBaseView):
             if overwrites.get("index_playlists"):
                 index_channel_playlists.delay(channel_id)
 
-        if numbering := validated_data.get("emby_numbering"):
-            Channel.objects.filter(channel_id=channel_id).update(
-                emby_numbering=numbering
-            )
-            request_emby_write()
-
-        if show := validated_data.get("emby_show"):
-            Channel.objects.filter(channel_id=channel_id).update(
-                emby_show=show
-            )
-            request_emby_write()
+        self._set_emby_layout(channel_id, validated_data)
 
         if "download_rule" in validated_data:
             set_rule(channel_id, validated_data["download_rule"])
@@ -183,6 +193,21 @@ class ChannelApiView(ApiBaseView):
             request_emby_write()
 
         return Response(serializer.data, status=200)
+
+    @staticmethod
+    def _set_emby_layout(channel_id: str, data: dict) -> None:
+        """numbering and show of the channel in Emby"""
+        if numbering := data.get("emby_numbering"):
+            Channel.objects.filter(channel_id=channel_id).update(
+                emby_numbering=numbering
+            )
+            request_emby_write()
+
+        if show := data.get("emby_show"):
+            Channel.objects.filter(channel_id=channel_id).update(
+                emby_show=show
+            )
+            request_emby_write()
 
     @staticmethod
     def _fork_settings(channel_id: str) -> dict:

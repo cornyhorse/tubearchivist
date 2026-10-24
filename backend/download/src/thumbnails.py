@@ -320,7 +320,7 @@ class ThumbValidator:
         from video.models import Video
 
         videos = list(
-            Video.objects.filter(active=True).values_list(
+            Video.objects.filter(active=True, source="youtube").values_list(
                 "youtube_id", "vid_thumb_url"
             )
         ) + list(
@@ -335,7 +335,7 @@ class ThumbValidator:
             )
             _progress(self.task, "Videos", idx, len(videos))
 
-        channels = list(Channel.objects.filter(active=True))
+        channels = list(Channel.objects.filter(active=True, source="youtube"))
         print("ta_channel: validate artwork")
         for idx, channel in enumerate(channels, start=1):
             urls = (channel.thumb_url, channel.banner_url, channel.tvart_url)
@@ -404,7 +404,8 @@ class ThumbValidator:
         thumbs_is = {"_".join(i.split("_")[:-1]) for i in channel_art}
         to_delete = is_missing(list(thumbs_is), "ta_channel", "channel_id")
         for channel_thumb in channel_art:
-            if channel_thumb[:24] in to_delete:
+            # <channel id>_<kind>.jpg; ids are not all 24 characters long
+            if channel_thumb.rsplit("_", 1)[0] in to_delete:
                 delete_path = os.path.join(channel_dir, channel_thumb)
                 os.remove(delete_path)
 

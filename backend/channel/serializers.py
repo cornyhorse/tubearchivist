@@ -2,7 +2,7 @@
 
 # pylint: disable=abstract-method
 
-from channel.models import EmbyNumbering, EmbyShow
+from channel.models import EmbyNumbering, EmbyShow, Source
 from common.serializers import PaginationSerializer, ValidateUnknownFieldsMixin
 from download.serializers import DownloadRuleSerializer
 from rest_framework import serializers
@@ -35,6 +35,14 @@ class ChannelSerializer(serializers.Serializer):
     """serialize channel"""
 
     channel_id = serializers.CharField()
+    source = serializers.ChoiceField(
+        choices=Source.values,
+        required=False,
+        help_text=(
+            "archive: made from files on disk, nothing to refresh, check "
+            "or download from YouTube"
+        ),
+    )
     channel_active = serializers.BooleanField()
     channel_banner_url = serializers.CharField(allow_null=True, required=False)
     channel_thumb_url = serializers.CharField(allow_null=True, required=False)

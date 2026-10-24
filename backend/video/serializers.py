@@ -2,6 +2,7 @@
 
 # pylint: disable=abstract-method
 
+from channel.models import Source
 from channel.serializers import ChannelSerializer
 from common.serializers import PaginationSerializer
 from drf_spectacular.utils import extend_schema_field
@@ -94,6 +95,11 @@ class VideoSerializer(serializers.Serializer):
     """serialize video item"""
 
     active = serializers.BooleanField()
+    source = serializers.ChoiceField(
+        choices=Source.values,
+        required=False,
+        help_text="archive: a file on disk, no YouTube page to open",
+    )
     category = serializers.ListField(child=serializers.CharField())
     channel = ChannelSerializer(required=False)
     comment_count = serializers.IntegerField(allow_null=True, required=False)

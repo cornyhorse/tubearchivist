@@ -191,6 +191,7 @@ const Video = () => {
   }
 
   const video = videoResponseData;
+  const archived = video.source === 'archive';
   const watched = video.player.watched;
   const playlistNav = videoPlaylistNavResponseData;
   const sponsorBlock = video.sponsorblock;
@@ -255,13 +256,14 @@ const Video = () => {
             channelSubs={video.channel.channel_subs}
             channelSubscribed={video.channel.channel_subscribed}
             channelThumbUrl={video.channel.channel_thumb_url}
+            archived={archived}
             setRefresh={setRefreshVideoList}
           />
 
           <div className="info-box-item">
             <div>
               <p>Published: {formatDate(video.published)}</p>
-              <p>Last refreshed: {formatDate(video.vid_last_refresh)}</p>
+              {!archived && <p>Last refreshed: {formatDate(video.vid_last_refresh)}</p>}
               <p className="video-info-watched">
                 Watched:
                 <WatchedCheckBox
@@ -277,7 +279,8 @@ const Video = () => {
                   }}
                 />
               </p>
-              {video.active && (
+              {archived && <p>Source: archived file</p>}
+              {!archived && video.active && (
                 <p>
                   Youtube:{' '}
                   <a
@@ -289,40 +292,42 @@ const Video = () => {
                   </a>
                 </p>
               )}
-              {!video.active && <p>Youtube: Deactivated</p>}
+              {!archived && !video.active && <p>Youtube: Deactivated</p>}
             </div>
           </div>
-          <div className="info-box-item">
-            <div>
-              <p className="thumb-icon">
-                <img src={iconEye} alt="views" />: {formatNumbers(video.stats.view_count)}
-              </p>
-              <p className="thumb-icon like">
-                <img src={iconThumb} alt="thumbs-up" />: {formatNumbers(video.stats.like_count)}
-              </p>
-              {video.stats.dislike_count > 0 && (
+          {!archived && (
+            <div className="info-box-item">
+              <div>
                 <p className="thumb-icon">
-                  <img className="dislike" src={iconThumb} alt="thumbs-down" />:{' '}
-                  {formatNumbers(video.stats.dislike_count)}
+                  <img src={iconEye} alt="views" />: {formatNumbers(video.stats.view_count)}
                 </p>
-              )}
-              {video?.stats && starRating && (
-                <div className="rating-stars">
-                  {starRating?.map?.((star, index) => {
-                    if (star === 'full') {
-                      return <img key={index} src={iconStarFull} alt={star} />;
-                    }
+                <p className="thumb-icon like">
+                  <img src={iconThumb} alt="thumbs-up" />: {formatNumbers(video.stats.like_count)}
+                </p>
+                {video.stats.dislike_count > 0 && (
+                  <p className="thumb-icon">
+                    <img className="dislike" src={iconThumb} alt="thumbs-down" />:{' '}
+                    {formatNumbers(video.stats.dislike_count)}
+                  </p>
+                )}
+                {video?.stats && starRating && (
+                  <div className="rating-stars">
+                    {starRating?.map?.((star, index) => {
+                      if (star === 'full') {
+                        return <img key={index} src={iconStarFull} alt={star} />;
+                      }
 
-                    if (star === 'half') {
-                      return <img key={index} src={iconStarHalf} alt={star} />;
-                    }
+                      if (star === 'half') {
+                        return <img key={index} src={iconStarHalf} alt={star} />;
+                      }
 
-                    return <img key={index} src={iconStarEmpty} alt={star} />;
-                  })}
-                </div>
-              )}
+                      return <img key={index} src={iconStarEmpty} alt={star} />;
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
         <div className="info-box info-box-2">
           <div className="info-box-item">
@@ -330,7 +335,7 @@ const Video = () => {
               {reindex && <p>Reindex scheduled</p>}
               {!reindex && (
                 <>
-                  {isAdmin && (
+                  {isAdmin && !archived && (
                     <div id="reindex-button">
                       <Button
                         label="Reindex"
