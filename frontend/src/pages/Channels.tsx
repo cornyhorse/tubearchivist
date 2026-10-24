@@ -62,6 +62,8 @@ export type ChannelCountsType = {
 };
 
 export type ChannelType = {
+  /** archive: made from files on disk, nothing to check on YouTube */
+  source?: 'youtube' | 'archive';
   channel_active: boolean;
   channel_banner_url: string;
   channel_description: string;

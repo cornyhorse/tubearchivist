@@ -36,10 +36,22 @@ class EmbyShow(models.TextChoices):
     NEVER = "never", "Never: its videos go to Other videos"
 
 
+class Source(models.TextChoices):
+    """where an item's metadata comes from"""
+
+    YOUTUBE = "youtube", "YouTube"
+    ARCHIVE = "archive", "Archive: files on disk, no YouTube metadata"
+
+
 class Channel(models.Model):
-    """a youtube channel, indexed or subscribed"""
+    """a youtube channel, indexed or subscribed, or an archived one"""
 
     channel_id = models.CharField(primary_key=True, max_length=64)
+    # archive: made by `ta_import_archive`; never refreshed, subscribed or
+    # downloaded from, see docs/fork/archive-import.md
+    source = models.CharField(
+        max_length=8, choices=Source.choices, default=Source.YOUTUBE
+    )
     name = models.TextField()
     description = models.TextField(null=True, blank=True)
     active = models.BooleanField(default=True)
@@ -138,6 +150,8 @@ class Channel(models.Model):
             fields["emby_numbering"] = doc["emby_numbering"]
         if doc.get("emby_show"):
             fields["emby_show"] = doc["emby_show"]
+        if doc.get("source"):
+            fields["source"] = doc["source"]
         if "auto_download" in doc:
             fields["auto_download"] = bool(doc["auto_download"])
         if "emby_tags" in doc:
@@ -186,6 +200,8 @@ class Channel(models.Model):
             "auto_download": self.auto_download,
             "emby_tags": list(self.emby_tags),
         }
+        if self.source != Source.YOUTUBE:
+            doc["source"] = self.source
         if overwrites := self.overwrites:
             doc["channel_overwrites"] = overwrites
 

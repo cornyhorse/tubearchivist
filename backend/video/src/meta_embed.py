@@ -40,9 +40,10 @@ class MetadataEmbed:
     def embed(self):
         """entry point"""
         youtube_ids = list(
-            Video.objects.order_by("youtube_id").values_list(
-                "youtube_id", flat=True
-            )
+            # never write into the files of archived videos
+            Video.objects.filter(source="youtube")
+            .order_by("youtube_id")
+            .values_list("youtube_id", flat=True)
         )
         total = len(youtube_ids)
         for idx, youtube_id in enumerate(youtube_ids, start=1):

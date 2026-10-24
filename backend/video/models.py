@@ -1,6 +1,6 @@
 """video, subtitle and comment models"""
 
-from channel.models import Channel
+from channel.models import Channel, Source
 from common.src.db import WeightedSearchVector, from_epoch, to_epoch
 from common.src.helper import get_duration_str
 from django.contrib.postgres.fields import ArrayField
@@ -51,6 +51,10 @@ class Video(models.Model):
     youtube_id = models.CharField(primary_key=True, max_length=32)
     channel = models.ForeignKey(
         Channel, on_delete=models.PROTECT, related_name="videos"
+    )
+    # archive: a file on disk with no YouTube metadata, its id is made up
+    source = models.CharField(
+        max_length=8, choices=Source.choices, default=Source.YOUTUBE
     )
     title = models.TextField()
     description = models.TextField(null=True, blank=True)
@@ -136,6 +140,7 @@ class Video(models.Model):
         video_stream = cls._first_video_stream(streams)
         return {
             "youtube_id": doc["youtube_id"],
+            "source": doc.get("source") or Source.YOUTUBE.value,
             "title": doc.get("title") or "",
             "description": doc.get("description"),
             "category": list(doc.get("category") or []),
@@ -258,6 +263,8 @@ class Video(models.Model):
             "streams": self.streams,
             "channel": self.channel.to_doc(),
         }
+        if self.source != Source.YOUTUBE:
+            doc["source"] = self.source
         if self.subtitles:
             doc["subtitles"] = self.subtitles
         if self.sponsorblock is not None:

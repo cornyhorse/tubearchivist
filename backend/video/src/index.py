@@ -446,6 +446,10 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
             print(f"{self.youtube_id}: skip embed, video not indexed")
             return
 
+        if self.json_data.get("source") == "archive":
+            # the file is the user's own, possibly hardlinked to the original
+            return
+
         if self.config["downloads"].get("add_metadata"):
             try:
                 self._embed_text_data()

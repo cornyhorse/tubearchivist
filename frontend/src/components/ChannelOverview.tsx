@@ -12,6 +12,8 @@ type ChannelOverviewProps = {
   channelSubs: number;
   channelSubscribed: boolean;
   channelThumbUrl: string;
+  /** an archived channel has no subscribers and can't be subscribed */
+  archived?: boolean;
   setRefresh: (status: boolean) => void;
 };
 
@@ -21,6 +23,7 @@ const ChannelOverview = ({
   channelSubscribed,
   channelname,
   channelThumbUrl,
+  archived = false,
   setRefresh,
 }: ChannelOverviewProps) => {
   const isAdmin = useIsAdmin();
@@ -38,9 +41,11 @@ const ChannelOverview = ({
             <Link to={Routes.ChannelVideo(channelId)}>{channelname}</Link>
           </h3>
 
-          {channelSubs !== null && <FormattedNumber text="Subscribers:" number={channelSubs} />}
+          {!archived && channelSubs !== null && (
+            <FormattedNumber text="Subscribers:" number={channelSubs} />
+          )}
 
-          {isAdmin && (
+          {isAdmin && !archived && (
             <>
               {channelSubscribed ? (
                 <Button

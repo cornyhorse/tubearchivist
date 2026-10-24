@@ -425,6 +425,7 @@ def _episodes(
             runtime_seconds=video.duration,
             studio=video.channel.name,
             tags=(tags or {}).get(video.youtube_id, ()),
+            provider=video.source,
         )
         episodes.append(
             EpisodeSource(
@@ -481,6 +482,7 @@ def channel_numbers(
         premiered=items[0].published if items else None,
         studio=channel.name,
         tags=tuple(channel.emby_tags),
+        provider=channel.source,
     )
     found = ensure_numbers(
         SeriesKind.CHANNEL,

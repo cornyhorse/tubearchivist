@@ -67,6 +67,8 @@ export type Subtitles = {
 
 export type VideoType = {
   active: boolean;
+  /** archive: a file on disk with no YouTube page; absent means youtube */
+  source?: 'youtube' | 'archive';
   category: string[];
   channel: ChannelType;
   date_downloaded: number;

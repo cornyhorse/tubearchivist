@@ -15,6 +15,7 @@ from common.src.helper import rand_sleep
 from common.src.index_generic import YouTubeItem
 from download.src.thumbnails import ThumbManager
 from download.src.yt_dlp_base import YtWrap
+from video.src.archive import is_archive_id
 from video.src.constants import VideoTypeEnum
 
 
@@ -155,6 +156,9 @@ class YoutubeChannel(YouTubeItem):
         change subscribe status; a new subscription gets the default
         auto_download (subscriptions.auto_download_default, off unless set)
         """
+        if new_subscribe_state and is_archive_id(self.youtube_id):
+            raise ValueError("an archived channel can't be subscribed")
+
         was_subscribed = Channel.objects.filter(
             channel_id=self.youtube_id, subscribed=True
         ).exists()
