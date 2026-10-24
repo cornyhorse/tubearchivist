@@ -402,3 +402,23 @@ def test_manifest_from_a_newer_writer_is_refused(tmp_path):
 
     with pytest.raises(writer_module.ManifestTooNew):
         EmbyWriter(out)
+
+
+def test_preflight_retries_einval_on_fresh_hardlink(tmp_path, monkeypatch):
+    """CIFS attribute caching: a new hardlink opens EINVAL for a moment"""
+    media = tmp_path / "media"
+    root = tmp_path / "media" / ".emby"
+    root.mkdir(parents=True)
+    real_open = writer_module._write_through
+    calls = {"n": 0}
+
+    def flaky(path, data_):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError(errno.EINVAL, "Invalid argument")
+        return real_open(path, data_)
+
+    monkeypatch.setattr(writer_module, "_write_through", flaky)
+    monkeypatch.setattr(writer_module.time, "sleep", lambda s: None)
+    check_hardlinks(media, root)
+    assert calls["n"] >= 3
