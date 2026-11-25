@@ -26,6 +26,9 @@ class FakeYt:
             raise AssertionError(f"unexpected yt-dlp call: {url}")
 
         response = self.responses[url]
+        if isinstance(response, Exception):
+            raise response
+
         if response is None:
             return None, "failed"
 

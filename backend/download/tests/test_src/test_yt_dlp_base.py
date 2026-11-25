@@ -1,5 +1,6 @@
 """tests for the yt-dlp wrapper and the cookie handler"""
 
+import io
 from http import cookiejar
 
 import pytest
@@ -7,6 +8,7 @@ import yt_dlp
 from appsettings.src.config import AppConfig
 from common.src.ta_redis import RedisArchivist
 from download.src.yt_dlp_base import CookieHandler, YtWrap
+from yt_dlp.networking.exceptions import RequestError
 
 COOKIE = "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tA\tB\n"
 
@@ -48,6 +50,11 @@ class FakeYDL:
         """fake extract"""
         self._run(("extract", url))
         return self.response
+
+    def urlopen(self, url):
+        """fake urlopen, response body is the response bytes"""
+        self._run(("urlopen", url))
+        return io.BytesIO(self.response)
 
 
 @pytest.fixture(name="ydl")
@@ -212,6 +219,42 @@ def test_extract_ok_unchanged_cookie(ydl, redis_ns, monkeypatch):
     ydl.write_cookie = "\x00"
     YtWrap({}, config(True)).extract("abc")
     assert not writes
+
+
+def test_fetch_text_ok(ydl, redis_ns):
+    """body is decoded and a refreshed cookie written back"""
+    RedisArchivist().set_message("cookie", COOKIE)
+    ydl.response = "\u00fcber".encode("utf-8")
+    ydl.write_cookie = COOKIE + "refreshed\n"
+
+    wrap = YtWrap({}, config(True))
+    assert wrap.fetch_text("https://sub.example") == ("\u00fcber", None)
+    assert ydl.instances[0].calls == [("urlopen", "https://sub.example")]
+    assert RedisArchivist().get_message_str("cookie") == (
+        COOKIE + "refreshed\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RequestError("http 429"),
+        cookiejar.LoadError("bad cookie"),
+        yt_dlp.utils.DownloadError("blocked"),
+    ],
+)
+def test_fetch_text_errors(ydl, error):
+    ydl.error = error
+    text, err = YtWrap({}, config()).fetch_text("https://sub.example")
+    assert text is None
+    assert err == str(error)
+
+
+def test_fetch_text_not_utf8(ydl):
+    ydl.response = b"\xff\xfe"
+    text, err = YtWrap({}, config()).fetch_text("https://sub.example")
+    assert text is None
+    assert "utf-8" in err
 
 
 def test_cookie_set_and_revoke(app_config, redis_ns):

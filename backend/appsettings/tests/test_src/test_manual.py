@@ -240,17 +240,18 @@ def test_dump_thumb_mkv_without_cover(import_dir, ffmpeg):
     assert len(ffmpeg["calls"]) == 1
 
 
-def test_dump_thumb_mp4(import_dir, ffmpeg):
+@pytest.mark.parametrize("codec", ["png", "mjpeg"])
+def test_dump_thumb_mp4(import_dir, ffmpeg, codec):
     media = touch(import_dir / f"{YT_ID}.mp4")
     ffmpeg["streams"][media] = [
         {"codec_type": "video", "codec_name": "h264"},
-        {"codec_type": "video", "codec_name": "png"},
+        {"codec_type": "video", "codec_name": codec},
     ]
     current = {"media": media, "thumb": False}
 
     ImportFolderScanner()._dump_thumb(current)  # pylint: disable=W0212
 
-    assert current["thumb"] == str(import_dir / f"{YT_ID}.png")
+    assert current["thumb"] == str(import_dir / f"{YT_ID}.{codec}")
     args, kwargs = ffmpeg["calls"][-1]
     assert args[:3] == ["ffmpeg", "-i", media] and kwargs["check"]
 
@@ -280,6 +281,19 @@ def test_convert_thumb(import_dir):
     assert other["thumb"] == str(import_dir / "b.jpg")
     assert Image.open(other["thumb"]).format == "JPEG"
     assert not (import_dir / "b.png").exists()
+
+
+def test_convert_thumb_mjpeg(import_dir):
+    """mp4 mjpeg cover is dumped as .mjpeg, converted to .jpg"""
+    mjpeg = import_dir / "c.mjpeg"
+    Image.new("RGB", (4, 4)).save(mjpeg, format="JPEG")
+    current = {"thumb": str(mjpeg)}
+
+    ImportFolderScanner()._convert_thumb(current)  # pylint: disable=W0212
+
+    assert current["thumb"] == str(import_dir / "c.jpg")
+    assert Image.open(current["thumb"]).format == "JPEG"
+    assert not mjpeg.exists()
 
 
 # subtitles and conversion
@@ -369,7 +383,7 @@ def fixture_meta(monkeypatch):  # noqa: C901
             """canned build"""
             calls.append(("build", youtube_meta_overwrite, media_path))
             if state["build_raises"]:
-                raise ValueError("remote failed")
+                raise state["build_raises"]
             self.json_data = state["json_data"]
 
         def check_subtitles(self, subtitle_files):
@@ -509,26 +523,32 @@ def test_prefer_local_falls_back_to_remote(video_files, meta, archive):
     assert (archive / "UCa" / f"{YT_ID}.mp4").exists()
 
 
-def test_remote_fails_embedded_used(video_files, meta, archive):
-    meta["build_raises"] = True
+def test_remote_fails_embedded_used(video_files, meta, archive, import_dir):
+    """embedded import archives the media itself, only clean up here"""
+    # pylint: disable=unused-argument
+    meta["build_raises"] = RuntimeError("yt-dlp failed")
     meta["embed"] = dict(meta["json_data"])
 
     run_import(video_files)
 
-    assert (archive / "UCa" / f"{YT_ID}.mp4").exists()
+    assert [c[0] for c in meta["calls"]] == ["build", "from_embed"]
+    assert os.listdir(import_dir) == [f"{YT_ID}.mp4"]
+    assert not Download.objects.exists()
 
 
 def test_remote_fails_raises(video_files, meta, archive):
     # pylint: disable=unused-argument
-    meta["build_raises"] = True
+    meta["build_raises"] = RuntimeError("yt-dlp failed")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as err:
         run_import(video_files)
+
+    assert "metadata build failed: yt-dlp failed" in str(err.value.__cause__)
 
 
 def test_remote_fails_ignored(video_files, meta, archive, import_dir):
     # pylint: disable=unused-argument
-    meta["build_raises"] = True
+    meta["build_raises"] = ValueError("remote failed")
 
     run_import(video_files, ignore_error=True)
 
@@ -542,7 +562,7 @@ def test_no_metadata_raises(video_files, meta, archive):
     with pytest.raises(ValueError) as err:
         run_import(video_files)
 
-    assert "no metadata found" in str(err.value.__cause__)
+    assert "no video remote data extracted" in str(err.value.__cause__)
 
 
 def test_no_metadata_ignored(video_files, meta, archive, import_dir):
@@ -552,7 +572,7 @@ def test_no_metadata_ignored(video_files, meta, archive, import_dir):
     run_import(video_files, ignore_error=True)
 
     assert len(os.listdir(import_dir)) == 4
-    assert [c[0] for c in meta["calls"]] == ["build"]
+    assert [c[0] for c in meta["calls"]] == ["build", "from_embed"]
 
 
 def test_cleanup_tolerates_missing_files(video_files, meta):

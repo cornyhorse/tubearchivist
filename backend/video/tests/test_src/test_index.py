@@ -137,9 +137,32 @@ class TestBuildJson:
     def _build(self, meta, **kwargs):
         video = YoutubeVideo(YOUTUBE_ID, video_type=VideoTypeEnum.SHORTS)
         with mock.patch("common.src.index_generic.YtWrap") as yt_wrap:
-            yt_wrap.return_value.extract.return_value = (meta, None)
+            if isinstance(meta, Exception):
+                yt_wrap.return_value.extract.side_effect = meta
+            else:
+                yt_wrap.return_value.extract.return_value = (meta, None)
             video.build_json(**kwargs)
         return video
+
+    def test_youtube_raises_without_overwrite(self, app_config):
+        del app_config
+        with pytest.raises(ConnectionError, match="bot detection"):
+            self._build(ConnectionError("bot detection"))
+
+    def test_youtube_raises_with_overwrite(
+        self, app_config, channel, tmp_path, probe
+    ):
+        """offline import goes on from the info json"""
+        del app_config, channel, probe
+        media = tmp_path / "file.mp4"
+        media.write_bytes(b"12")
+        video = self._build(
+            ConnectionError("bot detection"),
+            youtube_meta_overwrite=dict(META),
+            media_path=str(media),
+        )
+        assert video.offline_import
+        assert video.json_data["youtube_id"] == YOUTUBE_ID
 
     def test_no_metadata(self, app_config):
         del app_config
