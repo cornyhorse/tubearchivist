@@ -380,7 +380,14 @@ def test_channel_flat(yt):
     assert vid1.vid_thumb_url == "https://big/vid1"
     assert vid1.vid_type == "shorts"
     assert vid2.vid_type == "videos"
-    assert "Bulk extracting Channel: 'Test Channel'." in task.lines
+    assert task.lines[:5] == [
+        "Listing the Shorts tab on YouTube",
+        "Shorts: 2 listed on YouTube",
+        "2 not in the archive yet",
+        "Shorts: reading the channel details",
+        "Shorts: adding new video 1/2",
+    ]
+    assert "Shorts: adding new video 2/2" in task.lines
     assert not FakeThumbs.downloaded
 
 
@@ -399,7 +406,8 @@ def test_channel_full_extract(yt):
     assert added == 1
     assert queued("vid1").vid_type == "streams"
     assert queued("vid1").channel_indexed
-    assert "Full extracting Channel: 'Test Channel'" in task.lines
+    assert "1 not in the archive yet" in task.lines
+    assert "Live: fetching details of new video 1/1" in task.lines
 
 
 def test_channel_nothing_to_add(yt):
@@ -719,3 +727,83 @@ def test_rules_checked_on_flat_data_first(yt, monkeypatch):
     assert extracted == ["short"]
     assert queued("long") is None
     assert queued("short").status == "pending"
+
+
+def test_channel_progress_steps(yt):
+    """each step of a channel check says what it is doing"""
+    task = FakeTask()
+    PendingList(
+        [channel_url("videos"), channel_url("shorts")], task=task, flat=True
+    ).parse_url_list()
+    assert task.lines == [
+        "Listing the Videos tab on YouTube (1/2)",
+        "Videos: no videos listed on YouTube",
+        "Listing the Shorts tab on YouTube (2/2)",
+        "Shorts: no videos listed on YouTube",
+    ]
+    assert [m["progress"] for m in task.messages[::2]] == [0, 0.5]
+
+    Channel.save_doc(channel_doc())
+    Video.save_doc(video_doc(youtube_id="old"))
+    yt.channel_videos = [flat_entry("old")]
+    task = FakeTask()
+    PendingList([channel_url()], task=task, flat=True).parse_url_list()
+    # nothing new: the channel details are not read at all
+    assert task.lines[-2:] == [
+        "Videos: 1 listed on YouTube",
+        "0 not in the archive yet",
+    ]
+
+    yt.channel_videos = [flat_entry("vid1")]
+    FakeChannel.json_data = None
+    task = FakeTask()
+    PendingList([channel_url()], task=task, flat=True).parse_url_list()
+    assert task.messages[-1]["lines"] == [
+        "Videos: reading the channel details failed"
+    ]
+    assert task.messages[-1]["level"] == "error"
+
+
+def test_new_video_without_title(yt):
+    """a listing entry without a title still counts"""
+    task = FakeTask()
+    queue_list = PendingList([channel_url()], task=task)
+    queue_list._notify_new_video(  # pylint: disable=protected-access
+        "Live", 1, 2, {"id": "x"}
+    )
+    assert task.messages[-1] == {
+        "lines": ["Live: fetching details of new video 1/2"],
+        "progress": 0.5,
+        "level": "info",
+    }
+
+
+@pytest.mark.parametrize(
+    "entry, expected",
+    [
+        ({"type": "playlist"}, "Listing the playlist on YouTube"),
+        ({"type": "video"}, "Looking up the video on YouTube"),
+        (
+            {"type": "channel", "vid_type": VideoTypeEnum.UNKNOWN},
+            "Listing the Videos tab on YouTube",
+        ),
+    ],
+)
+def test_entry_step_words(yt, entry, expected):
+    # pylint: disable=unused-argument
+    task = FakeTask()
+    PendingList([], task=task)._notify_entry(  # pylint: disable=W0212
+        entry, 1, 1
+    )
+    assert task.lines == [expected]
+
+
+def test_streamed_adds_skip_bulk_messages(yt):
+    """with on_added every video is stored at once: no bulk lines"""
+    yt.channel_videos = [flat_entry("vid1")]
+    task = FakeTask()
+    PendingList(
+        [channel_url()], task=task, flat=True, on_added=lambda items: None
+    ).parse_url_list()
+    assert queued("vid1")
+    assert not any("Bulk adding" in line for line in task.lines)

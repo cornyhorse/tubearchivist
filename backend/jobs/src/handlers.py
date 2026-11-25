@@ -193,7 +193,23 @@ def scan(
     ).parse_url_list(status=params.get("status", "pending"))
     if auto:
         counts["auto_download"] = True
+    ctx.send_progress([scan_summary(counts)], progress=1)
     return counts
+
+
+def scan_summary(counts: dict) -> str:
+    """the last progress line of a check, in words"""
+    found = counts["found"]
+    if not found:
+        return "Done: no new videos"
+    parts = [f"Done: {found} new video{'' if found == 1 else 's'} found"]
+    if counts["queued_downloads"]:
+        parts.append(f"{counts['queued_downloads']} queued for download")
+    elif counts["allowed"]:
+        parts.append("waiting on the downloads page")
+    if counts["ignored"]:
+        parts.append(f"{counts['ignored']} ignored by download rules")
+    return ", ".join(parts)
 
 
 @register(
