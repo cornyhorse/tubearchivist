@@ -5,6 +5,7 @@ import FormattedNumber from './FormattedNumber';
 import Button from './Button';
 import ChannelIcon from './ChannelIcon';
 import useIsAdmin from '../functions/useIsAdmin';
+import CheckSourceButton from './CheckSourceButton';
 
 type ChannelOverviewProps = {
   channelId: string;
@@ -68,7 +69,8 @@ const ChannelOverview = ({
                     setRefresh(true);
                   }}
                 />
-              )}
+              )}{' '}
+              <CheckSourceButton kind="channel" id={channelId} name={channelname} />
             </>
           )}
         </div>

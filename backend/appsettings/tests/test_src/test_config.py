@@ -140,62 +140,78 @@ class FakeResponse:
         """return payload"""
         return self.data
 
+    def raise_for_status(self):
+        """a 200"""
+
 
 @pytest.fixture(name="release")
 def fixture_release(monkeypatch, settings, redis_clean):
-    """ReleaseVersion on a fixed local version, no sleeping"""
+    """ReleaseVersion on a fixed local fork version, no sleeping"""
     # pylint: disable=unused-argument
-    settings.TA_VERSION = "v0.5.12"
+    settings.FORK_VERSION = "fork-v0.5.3"
     monkeypatch.setattr(config_module, "sleep", lambda secs: None)
 
-    def set_remote(version, breaking=False):
-        def fake_get(url, timeout):
+    def set_remote(*tags):
+        def fake_get(url, params, headers, timeout):
             assert url == ReleaseVersion.REMOTE_URL
+            assert "cornyhorse/tubearchivist" in url
             assert timeout == 20
-            return FakeResponse(
-                {"release_version": version, "breaking_changes": breaking}
-            )
+            return FakeResponse([{"name": tag} for tag in tags])
 
         monkeypatch.setattr(config_module.requests, "get", fake_get)
 
     return set_remote
 
 
-def test_check_finds_new_version(release):
-    release("v0.6.0", breaking=True)
+def test_check_finds_new_fork_version(release):
+    release("fork-v0.5.3", "fork-v0.10.0", "fork-v0.6.1", "v0.9.9", "x")
 
     ReleaseVersion().check()
 
     assert ReleaseVersion().get_update() == {
         "status": True,
-        "version": "v0.6.0",
-        "is_breaking": True,
+        "version": "fork-v0.10.0",
+        "is_breaking": False,
     }
 
 
 def test_check_no_update(release):
-    release("v0.5.12")
+    release("fork-v0.5.3", "fork-v0.5.2")
     checker = ReleaseVersion()
 
     checker.check()
 
-    assert checker.get_local_version() == "v0.5.12"
+    assert checker.get_local_version() == "fork-v0.5.3"
     assert checker.get_update() is None
 
 
-def test_unstable_same_version_is_update(release, settings):
-    release("v0.5.12")
-    settings.TA_VERSION = "v0.5.12-unstable"
-    checker = ReleaseVersion()
+def test_upstream_releases_are_not_updates(release):
+    release("v0.6.0", "v1.0.0")
 
-    checker.get_remote_version()
+    ReleaseVersion().check()
 
-    assert checker._has_update() == "v0.5.12"  # pylint: disable=W0212
+    assert ReleaseVersion().get_update() is None
+
+
+def test_dev_build_never_has_an_update(release, settings):
+    release("fork-v9.9.9")
+    settings.FORK_VERSION = "fork-dev"
+
+    ReleaseVersion().check()
+
+    assert ReleaseVersion().get_update() is None
 
 
 @pytest.mark.parametrize(
     "version, expected",
-    [("v0.5.12", (0, 5, 12)), ("1.2.3-unstable", (1, 2, 3))],
+    [
+        ("fork-v0.5.12", (0, 5, 12)),
+        ("fork-v1.2", (1, 2)),
+        ("v0.6.0", None),
+        ("fork-dev", None),
+        ("fork-v1.2-rc1", None),
+        (None, None),
+    ],
 )
 def test_parse_version(version, expected):
     assert ReleaseVersion._parse_version(version) == expected  # noqa
@@ -206,21 +222,32 @@ def test_is_updated_without_message(release):
     assert ReleaseVersion().is_updated() is False
 
 
-def test_is_updated_after_upgrade(release, settings):
+def test_is_updated_after_upgrade(release):
     # pylint: disable=unused-argument
     RedisArchivist().set_message(
-        ReleaseVersion.NEW_KEY, {"status": True, "version": "v0.5.12"}
+        ReleaseVersion.NEW_KEY, {"status": True, "version": "fork-v0.5.3"}
     )
 
-    assert ReleaseVersion().is_updated() == settings.TA_VERSION
+    assert ReleaseVersion().is_updated() == "fork-v0.5.3"
     assert ReleaseVersion().get_update() is None
 
 
 def test_is_updated_still_pending(release):
     # pylint: disable=unused-argument
     RedisArchivist().set_message(
-        ReleaseVersion.NEW_KEY, {"status": True, "version": "v0.6.0"}
+        ReleaseVersion.NEW_KEY, {"status": True, "version": "fork-v0.6.0"}
     )
 
     assert ReleaseVersion().is_updated() is False
-    assert ReleaseVersion().get_update()["version"] == "v0.6.0"
+    assert ReleaseVersion().get_update()["version"] == "fork-v0.6.0"
+
+
+def test_upstream_message_is_dropped(release):
+    # pylint: disable=unused-argument
+    RedisArchivist().set_message(
+        ReleaseVersion.NEW_KEY, {"status": True, "version": "v0.6.0"}
+    )
+
+    assert ReleaseVersion().get_update() is None
+    assert ReleaseVersion().is_updated() is False
+    assert RedisArchivist().get_message_dict(ReleaseVersion.NEW_KEY) == {}

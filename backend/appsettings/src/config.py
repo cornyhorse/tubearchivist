@@ -225,14 +225,19 @@ def auto_download_default() -> bool:
 
 
 class ReleaseVersion:
-    """compare local version with remote version"""
+    """
+    compare the running fork version with the newest fork-v* tag of the
+    fork's repository; upstream TubeArchivist releases are not looked at,
+    the fork has moved too far from them for an upstream release to be an
+    update (Matt 2026-11-25)
+    """
 
-    REMOTE_URL = "https://www.tubearchivist.com/api/release/latest/"
+    REMOTE_URL = f"https://api.github.com/repos/{settings.FORK_REPO}/tags"
+    TAG_PREFIX = "fork-v"
     NEW_KEY = "versioncheck:new"
 
     def __init__(self) -> None:
-        self.local_version: str = settings.TA_VERSION
-        self.is_unstable: bool = settings.TA_VERSION.endswith("-unstable")
+        self.local_version: str = settings.FORK_VERSION
         self.remote_version: str = ""
         self.is_breaking: bool = False
 
@@ -255,46 +260,63 @@ class ReleaseVersion:
         return self.local_version
 
     def get_remote_version(self) -> None:
-        """read version from remote"""
+        """the newest fork-v* tag of the fork's repository"""
         sleep(randint(0, 60))
-        response = requests.get(self.REMOTE_URL, timeout=20).json()
-        self.remote_version = response["release_version"]
-        self.is_breaking = response["breaking_changes"]
+        response = requests.get(
+            self.REMOTE_URL,
+            params={"per_page": 100},
+            headers={"Accept": "application/vnd.github+json"},
+            timeout=20,
+        )
+        response.raise_for_status()
+        versions = [
+            (parsed, tag["name"])
+            for tag in response.json()
+            if (parsed := self._parse_version(tag.get("name", "")))
+        ]
+        self.remote_version = max(versions)[1] if versions else ""
 
     def _has_update(self) -> str | bool:
         """check if there is an update"""
         remote_parsed = self._parse_version(self.remote_version)
         local_parsed = self._parse_version(self.local_version)
-        if remote_parsed > local_parsed:
-            return self.remote_version
-
-        if self.is_unstable and local_parsed == remote_parsed:
+        if remote_parsed and local_parsed and remote_parsed > local_parsed:
             return self.remote_version
 
         return False
 
-    @staticmethod
-    def _parse_version(version) -> tuple[int, ...]:
-        """return version parts"""
-        clean = version.rstrip("-unstable").lstrip("v")
-        return tuple((int(i) for i in clean.split(".")))
+    @classmethod
+    def _parse_version(cls, version: str | None) -> tuple[int, ...] | None:
+        """(major, minor, patch) of a fork-vX.Y.Z tag, None for others"""
+        if not version or not version.startswith(cls.TAG_PREFIX):
+            return None
+        parts = version.removeprefix(cls.TAG_PREFIX).split(".")
+        if not all(part.isdigit() for part in parts):
+            return None
+        return tuple(int(i) for i in parts)
 
     def is_updated(self) -> str | bool:
         """check if update happened in the mean time"""
-        message = self.get_update()
+        message = RedisArchivist().get_message_dict(self.NEW_KEY)
         if not message:
             return False
 
-        local_parsed = self._parse_version(self.local_version)
         message_parsed = self._parse_version(message.get("version"))
-
-        if local_parsed >= message_parsed:
+        if message_parsed is None:
+            # an upstream release found by an older version: not ours
             RedisArchivist().del_message(self.NEW_KEY)
-            return settings.TA_VERSION
+            return False
+
+        local_parsed = self._parse_version(self.local_version)
+        if local_parsed and local_parsed >= message_parsed:
+            RedisArchivist().del_message(self.NEW_KEY)
+            return self.local_version
 
         return False
 
     def get_update(self) -> dict | None:
         """return new version dict if available"""
         message = RedisArchivist().get_message_dict(self.NEW_KEY)
-        return message or None
+        if not message or self._parse_version(message.get("version")) is None:
+            return None
+        return message

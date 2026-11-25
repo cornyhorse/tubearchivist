@@ -43,8 +43,11 @@ RUN python ffmpeg_download.py $TARGETPLATFORM
 FROM python:3.13.11-slim-trixie AS tubearchivist
 
 ARG INSTALL_DEBUG
+# the fork-vX.Y.Z tag this image is built from (fork_image.yml)
+ARG TA_FORK_VERSION=fork-dev
 
 ENV PYTHONUNBUFFERED=1
+ENV TA_FORK_VERSION=$TA_FORK_VERSION
 
 # deno 2.9.7, multi-arch index digest
 COPY --from=denoland/deno:bin-2.9.7@sha256:bc5aa4466e21b6d3021226a85ba2e1911f7c386254d97b9d797903ab74edace2 /deno /usr/local/bin/deno

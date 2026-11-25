@@ -241,6 +241,11 @@ CORS_EXPOSE_HEADERS = ["X-Start-Timestamp"]
 # TA application settings
 TA_UPSTREAM = "https://github.com/tubearchivist/tubearchivist"
 TA_VERSION = "v0.5.12"
+# the fork's own version: the fork-vX.Y.Z tag the image was built from
+# (fork_image.yml), "fork-dev" for a local build; the version check
+# compares it with the fork's tags, not with upstream releases
+FORK_REPO = "cornyhorse/tubearchivist"
+FORK_VERSION = environ.get("TA_FORK_VERSION") or "fork-dev"
 TA_START = None
 try:
     TA_START = RedisArchivist().get_message_str("STARTTIMESTAMP")

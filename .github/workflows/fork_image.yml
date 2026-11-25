@@ -45,4 +45,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          # the version the app reports and compares with the fork's tags
+          build-args: |
+            TA_FORK_VERSION=${{ github.ref_type == 'tag' && github.ref_name || 'fork-dev' }}
           labels: ${{ steps.meta.outputs.labels }}

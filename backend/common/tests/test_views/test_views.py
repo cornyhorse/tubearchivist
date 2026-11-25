@@ -57,11 +57,11 @@ def test_ping(client, account):
     assert response.data == {
         "response": "pong",
         "user": account.id,
-        "version": settings.TA_VERSION,
+        "version": settings.FORK_VERSION,
         "ta_update": None,
     }
 
-    update = {"status": True, "version": "v0.6.0", "is_breaking": False}
+    update = {"status": True, "version": "fork-v9.0.0", "is_breaking": False}
     RedisArchivist().set_message("versioncheck:new", update)
     assert client.get("/api/ping/").data["ta_update"] == update
 

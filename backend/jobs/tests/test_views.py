@@ -149,6 +149,33 @@ def test_create_job(admin_client, django_capture_on_commit_callbacks):
     assert whole.json()["job"]["target"]["id"] is None
 
 
+def test_create_check_without_downloads(admin_client):
+    url = "/api/queue/jobs/"
+    body = {
+        "type": "check_subscriptions",
+        "download_now": False,
+        "priority": "low",
+    }
+
+    response = admin_client.post(url, body, format="json")
+
+    assert response.status_code == 201
+    assert Job.objects.get().params == {"download_now": False}
+
+    channel = admin_client.post(
+        url,
+        {"type": "check_channel", "target_id": "UC1", "download_now": None},
+        format="json",
+    )
+    assert Job.objects.get(pk=channel.json()["job"]["id"]).params == {}
+
+    wrong = admin_client.post(
+        url, {"type": "backup", "download_now": False}, format="json"
+    )
+    assert wrong.status_code == 400
+    assert "check jobs only" in wrong.json()["error"]
+
+
 @pytest.mark.parametrize(
     "job_type, setup, expected",
     [

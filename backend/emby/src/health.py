@@ -3,7 +3,8 @@ Functionality:
 - periodic health check of the Emby sync (review E1, Matt 2026-10-11):
   detect a sync that is stuck or failing, repair what is safe to repair,
   and report the rest so it can be notified
-- detects: no successful sync_all for max_age_hours, the last run's
+- detects: no successful sync_all for max_age_hours while runs keep
+  failing (a quiet library with no runs is healthy), the last run's
   error, a series failing on failing_runs runs in a row, a corrupt or
   too-new manifest, temp files older than stale_minutes, the old layout
 - repairs: names too long for the filesystem are frozen shorter, stale
@@ -94,12 +95,8 @@ def _check_runs(
     report: HealthReport, max_age_hours: float, failing: int, repair: bool
 ) -> None:
     state = sync_state()
-    last = state.get("last_success")
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
-    if not last or datetime.fromisoformat(last) < cutoff:
-        report.problems.append(
-            f"no successful Emby sync since {last or 'ever'}"
-        )
+    if stale := _stale_success(state, max_age_hours):
+        report.problems.append(f"no successful Emby sync since {stale}")
     if error := state.get("last_error"):
         report.problems.append(f"last Emby sync failed: {error}")
 
@@ -120,6 +117,25 @@ def _check_runs(
         )
 
 
+def _stale_success(state: dict, max_age_hours: float) -> str | None:
+    """
+    'ever' if a sync never succeeded, the time of the last success if a
+    run since then did not succeed and it is older than max_age_hours,
+    else None. A sync only runs when something changed (downloads, edits,
+    a schedule), so a quiet day with no runs is healthy, not stale
+    (Matt 2026-11-25: alarms every hour after six quiet hours)
+    """
+    last = state.get("last_success")
+    if not last:
+        return "ever"
+    last_run = state.get("last_run") or last
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+    last_time = datetime.fromisoformat(last)
+    if datetime.fromisoformat(last_run) > last_time and last_time < cutoff:
+        return last
+    return None
+
+
 def _check_refreshes(report: HealthReport, max_age_hours: float) -> None:
     """item refreshes that wait too long: a withdrawn tag is still in Emby"""
     since = pending.since()
@@ -137,11 +153,9 @@ def _check_playlists(report: HealthReport, max_age_hours: float) -> None:
     if not media_settings.load()["playlists_enabled"]:
         return
     state = playlist_state()
-    last = state.get("last_success")
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
-    if not last or datetime.fromisoformat(last) < cutoff:
+    if stale := _stale_success(state, max_age_hours):
         report.problems.append(
-            f"no successful Emby playlist sync since {last or 'ever'}"
+            f"no successful Emby playlist sync since {stale}"
         )
     if error := state.get("last_error"):
         report.problems.append(f"last Emby playlist sync failed: {error}")
