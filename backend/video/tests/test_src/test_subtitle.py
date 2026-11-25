@@ -1,6 +1,5 @@
 """test subtitle download, parsing and indexing"""
 
-import io
 import json
 from types import SimpleNamespace
 from unittest import mock
@@ -41,10 +40,6 @@ def _events(*texts, start=0, step=1000):
         }
         for idx, text in enumerate(texts)
     ]
-
-
-def _response(text="", ok=True):
-    return SimpleNamespace(ok=ok, text=text)
 
 
 class TestGetSubtitles:
@@ -164,57 +159,32 @@ class TestDownloadSubtitles:
 
 
 class TestMakeRequest:
-    """subtitle http request"""
+    """subtitle request through yt-dlp"""
 
-    def _request(self, app_config, response, **config):
-        set_config(**config)
+    def _request(self, app_config, result):
         video = _video(app_config)
-        with mock.patch("video.src.subtitle.requests.get") as get:
-            get.return_value = response
-            result = YoutubeSubtitle(video)._make_request(  # noqa: W0212
+        with mock.patch("video.src.subtitle.YtWrap") as wrap:
+            wrap.return_value.fetch_text.return_value = result
+            text = YoutubeSubtitle(video)._make_request(  # noqa: W0212
                 "https://sub.example", "en"
             )
-        return result, get.call_args.kwargs
+        return text, wrap
 
     def test_ok(self, app_config):
-        result, kwargs = self._request(app_config, _response("body"))
-        assert result == "body"
-        assert "cookies" not in kwargs
-        assert kwargs["timeout"] == 30
+        text, wrap = self._request(app_config, ("body", None))
+        assert text == "body"
+        assert wrap.call_args.kwargs["config"] is not None
+        wrap.return_value.fetch_text.assert_called_once_with(
+            "https://sub.example"
+        )
 
-    def test_not_ok(self, app_config):
-        result, _ = self._request(app_config, _response("err", ok=False))
-        assert result is None
+    def test_failed(self, app_config):
+        text, _ = self._request(app_config, (None, "http 429"))
+        assert text is None
 
     def test_empty(self, app_config):
-        result, _ = self._request(app_config, _response(""))
-        assert result is None
-
-    def test_cookie(self, app_config):
-        cookie = io.StringIO(
-            "# Netscape HTTP Cookie File\n"
-            "# a b c d e f\n"
-            ".youtube.com\tTRUE\t/\tTRUE\t0\tSID\tsecret\n"
-            "short line\n"
-        )
-        with mock.patch("video.src.subtitle.CookieHandler") as handler:
-            handler.return_value.get.return_value = cookie
-            _, kwargs = self._request(
-                app_config, _response("body"), cookie_import=True
-            )
-
-        jar = kwargs["cookies"]
-        assert [(c.name, c.value, c.domain) for c in jar] == [
-            ("SID", "secret", ".youtube.com")
-        ]
-
-    def test_cookie_missing(self, app_config):
-        with mock.patch("video.src.subtitle.CookieHandler") as handler:
-            handler.return_value.get.return_value = None
-            _, kwargs = self._request(
-                app_config, _response("body"), cookie_import=True
-            )
-        assert "cookies" not in kwargs
+        text, _ = self._request(app_config, ("", None))
+        assert text is None
 
 
 def test_write_subtitle_file_chown(dirs, monkeypatch):
