@@ -5659,6 +5659,12 @@ components:
           allOf:
           - $ref: '#/components/schemas/PriorityEnum'
           default: high
+        download_now:
+          type: boolean
+          nullable: true
+          description: 'check jobs only: false finds new videos without downloading
+            them (so nothing is written to Emby), true downloads every allowed one,
+            omit to follow each channel''s auto-download'
       required:
       - type
     JobCreateResponse:

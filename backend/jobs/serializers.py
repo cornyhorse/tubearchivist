@@ -193,6 +193,16 @@ class JobCreateSerializer(serializers.Serializer):
     priority = serializers.ChoiceField(
         choices=PRIORITY_NAMES, required=False, default="high"
     )
+    download_now = serializers.BooleanField(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text=(
+            "check jobs only: false finds new videos without downloading "
+            "them (so nothing is written to Emby), true downloads every "
+            "allowed one, omit to follow each channel's auto-download"
+        ),
+    )
 
 
 class JobCreateResponseSerializer(serializers.Serializer):

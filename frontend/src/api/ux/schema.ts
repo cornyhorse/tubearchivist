@@ -2308,6 +2308,8 @@ export interface components {
       target_id?: string | null;
       /** @default high */
       priority: components['schemas']['PriorityEnum'];
+      /** @description check jobs only: false finds new videos without downloading them (so nothing is written to Emby), true downloads every allowed one, omit to follow each channel's auto-download */
+      download_now?: boolean | null;
     };
     /** @description the job, and whether it merged into an existing one */
     JobCreateResponse: {

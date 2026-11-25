@@ -19,6 +19,7 @@ import deletePlaylist from '../api/actions/deletePlaylist';
 import Routes from '../configuration/routes/RouteList';
 import formatDate from '../functions/formatDates';
 import queueReindex from '../api/actions/queueReindex';
+import CheckSourceButton from '../components/CheckSourceButton';
 import updateWatchedState from '../api/actions/updateWatchedState';
 import ScrollToTopOnNavigate from '../components/ScrollToTop';
 import EmbeddableVideoPlayer from '../components/EmbeddableVideoPlayer';
@@ -357,6 +358,15 @@ const Playlist = () => {
                   />
                 </div>
               )}
+              {isAdmin && !isCustomPlaylist && (
+                <div className="button-box">
+                  <CheckSourceButton
+                    kind="playlist"
+                    id={playlist.playlist_id}
+                    name={playlist.playlist_name}
+                  />
+                </div>
+              )}
               {playlist.playlist_type !== 'custom' && (
                 <div className="toggle">
                   <span>Switch sort order:</span>
@@ -436,8 +446,9 @@ const Playlist = () => {
               )}
               {!isCustomPlaylist && (
                 <p>
-                  Try going to the <Link to={Routes.Downloads}>downloads page</Link> to start the
-                  scan and download tasks.
+                  Use <em>Check for new videos</em> above to look for this playlist's videos now, or
+                  see the <Link to={Routes.Downloads}>downloads page</Link> for videos already
+                  found.
                 </p>
               )}
             </>

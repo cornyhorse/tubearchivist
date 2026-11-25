@@ -58,6 +58,9 @@ CONFLICT = OpenApiResponse(
     description="action not allowed in the job's current status",
 )
 
+# jobs that take download_now: whether found videos are downloaded
+CHECK_TYPES = {"check_subscriptions", "check_channel", "check_playlist"}
+
 
 def target_title(kind: str, target_id: str | None) -> str | None:
     """display name of a job target, if TA knows it"""
@@ -154,10 +157,19 @@ class JobListView(ApiBaseView):
             return Response(
                 {"error": f"{data['type']} needs a target_id"}, status=400
             )
+        params = {}
+        if data.get("download_now") is not None:
+            if data["type"] not in CHECK_TYPES:
+                return Response(
+                    {"error": "download_now is for check jobs only"},
+                    status=400,
+                )
+            params["download_now"] = data["download_now"]
         job, merged = enqueue(
             data["type"],
             target_id if spec.target_kind != "none" else None,
             target_title=target_title(spec.target_kind, target_id),
+            params=params,
             priority=PRIORITY_BY_NAME[data["priority"]],
             created_by=CreatedBy.USER,
         )

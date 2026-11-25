@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  createJob,
   Job,
   jobAction,
   JobAction,
@@ -355,6 +356,23 @@ const Queue = () => {
                         >
                           Run now
                         </button>
+                        {item.name === 'update_subscribed' && (
+                          <button
+                            type="button"
+                            className="ux-row-button"
+                            title="Look for new videos on YouTube only: nothing is downloaded, so nothing is written to Emby. Found videos wait on the downloads page."
+                            aria-label={`Check only: ${item.label}`}
+                            onClick={async () => {
+                              await createJob({
+                                type: 'check_subscriptions',
+                                download_now: false,
+                              });
+                              reloadAll();
+                            }}
+                          >
+                            Check only
+                          </button>
+                        )}
                         {item.schedule && (
                           <button
                             type="button"
