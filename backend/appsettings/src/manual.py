@@ -440,6 +440,11 @@ class ManualImport:
             if not json_data and not self.ignore_error:
                 raise ValueError from err
 
+            if json_data:
+                # indexed from the embedded metadata
+                self._cleanup()
+                return
+
         if not json_data:
             return
 
@@ -453,18 +458,19 @@ class ManualImport:
         """get metadata from yt or json"""
         video_id = self.current_video["video_id"]
         video = YoutubeVideo(video_id)
-        video.build_json(
-            youtube_meta_overwrite=self._get_info_json(),
-            media_path=self.current_video["media"],
-        )
-        if not video.json_data:
-            message = (
-                f"{video_id}: manual import failed, and no metadata found."
+        try:
+            video.build_json(
+                youtube_meta_overwrite=self._get_info_json(),
+                media_path=self.current_video["media"],
             )
-            print(message)
-            if self.ignore_error:
-                return None
+        except Exception as exc:  # pylint: disable=broad-except
+            raise ValueError(
+                f"[{video_id}] metadata build failed: {exc}"
+            ) from exc
 
+        if not video.json_data:
+            message = f"[{video_id}]: no video remote data extracted"
+            print(message)
             raise ValueError(message)
 
         video.check_subtitles(subtitle_files=self.current_video["subtitle"])

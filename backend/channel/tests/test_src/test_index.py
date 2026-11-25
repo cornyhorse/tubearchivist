@@ -161,6 +161,23 @@ def test_build_json_falls_back_to_video_meta(yt, thumbs):
     assert not thumbs.calls
 
 
+def test_build_json_falls_back_when_youtube_raises(yt, thumbs):
+    # pylint: disable=unused-argument
+    yt.responses[CHANNEL_URL] = ConnectionError("bot detection")
+
+    channel = YoutubeChannel(CH)
+    channel.build_json(upload=True, fallback={"uploader": "From Video"})
+
+    assert Channel.objects.get().name == "From Video"
+
+
+def test_build_json_youtube_raises_without_fallback(yt):
+    yt.responses[CHANNEL_URL] = ConnectionError("bot detection")
+
+    with pytest.raises(ConnectionError, match="bot detection"):
+        YoutubeChannel(CH).build_json()
+
+
 def test_build_json_without_meta_raises(yt):
     yt.responses[CHANNEL_URL] = None
 
