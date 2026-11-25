@@ -141,7 +141,8 @@ class YoutubeSubtitle:
 
             parser = SubtitleParser(response_text, lang, source)
             parser.process()
-            if not parser.all_cues:
+            if not any(cue["text"].strip() for cue in parser.all_cues):
+                # blank refetch, keep what is stored for this language
                 rand_sleep(self.video.config)
                 continue
 

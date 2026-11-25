@@ -157,6 +157,19 @@ class TestDownloadSubtitles:
         assert not video.pending_subtitle_lines
         assert (dirs["media"] / "C" / "v.en.vtt").exists()
 
+    def test_download_blank_is_skipped(self, app_config, dirs, relevant):
+        """whitespace-only cues leave the stored subtitle alone"""
+        set_config(subtitle_index=True)
+        video = _video(app_config)
+        handler = YoutubeSubtitle(video)
+        body = json.dumps({"events": _events(" ", "\n")})
+        with mock.patch.object(handler, "_make_request", return_value=body):
+            indexed = handler.download_subtitles(relevant[:1])
+
+        assert not indexed
+        assert not getattr(video, "pending_subtitle_lines", None)
+        assert not (dirs["media"] / "C" / "v.en.vtt").exists()
+
 
 class TestMakeRequest:
     """subtitle request through yt-dlp"""

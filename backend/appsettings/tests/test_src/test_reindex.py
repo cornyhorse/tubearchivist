@@ -243,6 +243,7 @@ def fixture_yt(monkeypatch):  # noqa: C901
         "channels": {},
         "playlists": {},
         "meta": True,
+        "fresh_subtitles": None,
         "playlist_active": True,
         "cookie_valid": True,
         "calls": [],
@@ -278,13 +279,11 @@ def fixture_yt(monkeypatch):  # noqa: C901
             """record"""
             calls.append(("video_deactivate", self.youtube_id))
 
-        def delete_subtitles(self, subtitles):
-            """record"""
-            calls.append(("delete_subtitles", subtitles))
-
         def check_subtitles(self):
-            """record"""
+            """record, set the refetched subtitles if any"""
             calls.append(("check_subtitles",))
+            if state["fresh_subtitles"] is not None:
+                self.json_data["subtitles"] = state["fresh_subtitles"]
 
         def save_to_db(self):
             """store back"""
@@ -415,7 +414,10 @@ def test_reindex_all(env, yt, task):
     yt["videos"] = {
         "v1": {
             "media_url": "UCa/v1.mp4",
-            "subtitles": [{"lang": "en"}],
+            "subtitles": [
+                {"lang": "en", "url": "old-en"},
+                {"lang": "de", "url": "old-de"},
+            ],
             "player": {"watched": True},
             "date_downloaded": 5,
             "vid_type": "videos",
@@ -441,6 +443,7 @@ def test_reindex_all(env, yt, task):
             "playlist": ["PL1", "PLc", "PLmissing"],
         }
     )
+    yt["fresh_subtitles"] = [{"lang": "en", "url": "new-en"}]
     reindex = Reindex(task=task)
 
     reindex.reindex_all()
@@ -453,7 +456,11 @@ def test_reindex_all(env, yt, task):
     assert saved["date_downloaded"] == 5
     assert saved["playlist"] == ["PL1"]
     assert saved["channel"] == {"channel_id": "UCa"}
-    assert ("delete_subtitles", [{"lang": "en"}]) in calls
+    # en refetched, de failed and is kept
+    assert saved["subtitles"] == [
+        {"lang": "en", "url": "new-en"},
+        {"lang": "de", "url": "old-de"},
+    ]
     assert ("thumb_download", "https://thumb") in calls
     assert ("comments", "v1") in calls and ("video_embed", "v1") in calls
     channel_saves = [c[1] for c in calls if c[0] == "channel_save"]

@@ -357,8 +357,20 @@ class Reindex(ReindexBase):
             video.deactivate()
             return None
 
-        video.delete_subtitles(subtitles=stored.get("subtitles"))
         video.check_subtitles()
+
+        # keep stored languages unless refetched successfully
+        subtitles = {
+            subtitle["lang"]: subtitle
+            for subtitle in stored.get("subtitles") or []
+        }
+        subtitles.update(
+            {
+                subtitle["lang"]: subtitle
+                for subtitle in video.json_data.get("subtitles") or []
+            }
+        )
+        video.json_data["subtitles"] = list(subtitles.values())
 
         # add back
         video.json_data["player"] = stored.get("player")
