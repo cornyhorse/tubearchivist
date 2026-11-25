@@ -21,4 +21,4 @@ regex==2026.9.10
 requests==2.34.2
 ryd-client==0.0.6
 uvicorn==0.54.0
-yt-dlp[default]==2026.10.21
+yt-dlp[default]==2026.11.23
