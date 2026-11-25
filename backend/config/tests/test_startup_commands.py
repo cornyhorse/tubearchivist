@@ -427,12 +427,13 @@ def test_startup_fresh(startup):
 
 
 @pytest.mark.django_db
-def test_startup_existing_install(startup):
+def test_startup_existing_install(startup, monkeypatch):
+    monkeypatch.setattr(settings, "FORK_VERSION", "fork-v0.5.3")
     run("ta_startup")
     redis = RedisArchivist()
     redis.set_message("dl_queue", "1")
     redis.set_message("message:download:abc", {"status": "x"})
-    redis.set_message(ReleaseVersion.NEW_KEY, {"version": "v0.0.1"})
+    redis.set_message(ReleaseVersion.NEW_KEY, {"version": "fork-v0.0.1"})
     TaskRedis().set_key("t1", {"status": "PENDING", "task_id": "t1"})
     lost, _ = enqueue("thumbnail_check", dispatch=False)
     Job.objects.filter(pk=lost.pk).update(status="running", attempts=1)
@@ -461,7 +462,7 @@ def test_startup_existing_install(startup):
         CustomPeriodicTask.objects.values_list("kwargs", flat=True)
     ) == {'{"created_by": "schedule"}'}
     assert "✓ cleared 1 files" in output
-    assert f"✓ update to {settings.TA_VERSION} completed" in output
+    assert "✓ update to fork-v0.5.3 completed" in output
     assert "✓ send initial version check task" in output
     assert startup.sent == [("version_check", (), {})]
     assert "schedule init already done, skipping..." in output
