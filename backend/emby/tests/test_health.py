@@ -19,6 +19,7 @@ from emby.src.health import (
     HealthReport,
     check_emby_health,
 )
+from emby.src.playlist_sync import STATE_KEY as PLAYLIST_STATE_KEY
 from emby.src.playlist_sync import PlaylistSyncResult, record_run
 from emby.src.sync import (
     LAYOUT_KEY,
@@ -135,6 +136,7 @@ def test_stale_success_and_failing_series(library):
     sync_all(library)
     set_state(
         last_success=ago(hours=7),
+        last_run=ago(minutes=5),
         last_error=None,
         failing={
             "playlists/PL1": {"runs": 3, "error": "boom", "since": "t0"},
@@ -152,6 +154,32 @@ def test_stale_success_and_failing_series(library):
     assert check_emby_health(library, max_age_hours=8).problems == [
         "playlists/PL1 failed 3 syncs in a row since t0: boom"
     ]
+
+
+def test_quiet_library_is_healthy(library):
+    """no run since the last success, however long ago: nothing to do"""
+    old = ago(days=3)
+    set_state(last_success=old, last_run=old, last_error=None, failing={})
+
+    assert check_emby_health(library).healthy
+
+
+def test_quiet_playlist_sync_is_healthy(library):
+    sync_all(library)
+    media_settings.update({"playlists_enabled": True})
+    old = ago(days=3)
+    ConfigDocument.objects.update_or_create(
+        key=PLAYLIST_STATE_KEY,
+        defaults={"value": {"last_success": old, "last_run": old}},
+    )
+    assert check_emby_health(library).healthy
+
+    ConfigDocument.objects.update_or_create(
+        key=PLAYLIST_STATE_KEY,
+        defaults={"value": {"last_success": old, "last_run": ago(hours=1)}},
+    )
+    problems = check_emby_health(library).problems
+    assert problems == [f"no successful Emby playlist sync since {old}"]
 
 
 def test_too_long_names_are_shortened(library):
