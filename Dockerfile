@@ -30,6 +30,9 @@ RUN python -m pip install --no-cache-dir --upgrade "pip @ https://files.pythonho
 # install requirements
 COPY ./backend/requirements.txt /requirements.txt
 RUN pip install --user -r requirements.txt
+# fail the build when a runtime import is missing that the dev requirements
+# would hide in CI (fork-v0.6.0: kombu's redis transport without packaging)
+RUN python -c "import kombu.transport.redis, celery.bin.celery, django_celery_beat, uvicorn, yt_dlp"
 
 # build ffmpeg
 FROM python:3.13.11-slim-trixie AS ffmpeg-builder
