@@ -240,17 +240,18 @@ def test_dump_thumb_mkv_without_cover(import_dir, ffmpeg):
     assert len(ffmpeg["calls"]) == 1
 
 
-def test_dump_thumb_mp4(import_dir, ffmpeg):
+@pytest.mark.parametrize("codec", ["png", "mjpeg"])
+def test_dump_thumb_mp4(import_dir, ffmpeg, codec):
     media = touch(import_dir / f"{YT_ID}.mp4")
     ffmpeg["streams"][media] = [
         {"codec_type": "video", "codec_name": "h264"},
-        {"codec_type": "video", "codec_name": "png"},
+        {"codec_type": "video", "codec_name": codec},
     ]
     current = {"media": media, "thumb": False}
 
     ImportFolderScanner()._dump_thumb(current)  # pylint: disable=W0212
 
-    assert current["thumb"] == str(import_dir / f"{YT_ID}.png")
+    assert current["thumb"] == str(import_dir / f"{YT_ID}.{codec}")
     args, kwargs = ffmpeg["calls"][-1]
     assert args[:3] == ["ffmpeg", "-i", media] and kwargs["check"]
 
@@ -280,6 +281,19 @@ def test_convert_thumb(import_dir):
     assert other["thumb"] == str(import_dir / "b.jpg")
     assert Image.open(other["thumb"]).format == "JPEG"
     assert not (import_dir / "b.png").exists()
+
+
+def test_convert_thumb_mjpeg(import_dir):
+    """mp4 mjpeg cover is dumped as .mjpeg, converted to .jpg"""
+    mjpeg = import_dir / "c.mjpeg"
+    Image.new("RGB", (4, 4)).save(mjpeg, format="JPEG")
+    current = {"thumb": str(mjpeg)}
+
+    ImportFolderScanner()._convert_thumb(current)  # pylint: disable=W0212
+
+    assert current["thumb"] == str(import_dir / "c.jpg")
+    assert Image.open(current["thumb"]).format == "JPEG"
+    assert not mjpeg.exists()
 
 
 # subtitles and conversion
