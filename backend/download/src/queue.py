@@ -31,6 +31,18 @@ from video.models import Video
 from video.src.constants import VideoTypeEnum
 from video.src.index import YoutubeVideo
 
+TAB_NAMES = {
+    "videos": "Videos",
+    "streams": "Live",
+    "shorts": "Shorts",
+}
+
+
+def tab_name(vid_type) -> str:
+    """the channel tab a vid_type lists, as YouTube names it"""
+    value = str(getattr(vid_type, "value", vid_type) or "")
+    return TAB_NAMES.get(value.lower(), "Videos")
+
 
 class PendingIndex:
     """base class holding all export methods"""
@@ -155,12 +167,7 @@ class PendingList(PendingIndex):
         self.get_channels()
         total = len(self.youtube_ids)
         for idx, entry in enumerate(self.youtube_ids, start=1):
-            if self.task:
-                self.task.send_progress(
-                    message_lines=[f"Extracting URL {idx}/{total}"],
-                    progress=idx / total,
-                )
-
+            self._notify_entry(entry, idx, total)
             self._process_entry(entry, idx, total)
             self._flush_seen()
 
@@ -240,6 +247,7 @@ class PendingList(PendingIndex):
             vid_type = getattr(VideoTypeEnum, vid_type.upper())
 
         limit = entry.get("limit")
+        tab = tab_name(vid_type)
         video_results = get_last_channel_videos(
             channel_id=url,
             config=self.config,
@@ -248,16 +256,37 @@ class PendingList(PendingIndex):
         )
         if not video_results:
             print(f"{url}: no videos to add from channel, skipping")
+            self._progress([f"{tab}: no videos listed on YouTube"])
             return
 
+        known = set(self.to_skip)
+        new_total = sum(1 for i in video_results if i["id"] not in known)
+        self._progress(
+            [
+                f"{tab}: {len(video_results)} listed on YouTube",
+                f"{new_total} not in the archive yet",
+            ]
+        )
+        if not new_total:
+            for video_data in video_results:
+                self._see(video_data["id"])
+            return
+
+        self._progress([f"{tab}: reading the channel details"])
         channel_handler = YoutubeChannel(url)
         channel_handler.build_json(upload=False)
         if not channel_handler.json_data:
             print(f"{url}: channel metadata extraction failed, skipping")
+            self._progress(
+                [f"{tab}: reading the channel details failed"], level="error"
+            )
             return
 
-        total = len(video_results)
-        for idx, video_data in enumerate(video_results, start=1):
+        done = 0
+        for video_data in video_results:
+            if video_data["id"] not in known:
+                done += 1
+                self._notify_new_video(tab, done, new_total, video_data)
             to_add = self._parse_channel_video(
                 video_data, vid_type, channel_handler.json_data
             )
@@ -269,12 +298,6 @@ class PendingList(PendingIndex):
 
             self.missing_videos.append(to_add)
             self._stream()
-            self._notify_add(
-                item_type="channel",
-                name=channel_handler.json_data["channel_name"],
-                idx=idx,
-                total=total,
-            )
 
     def _parse_channel_video(
         self, video_data, vid_type, channel_json
@@ -618,9 +641,37 @@ class PendingList(PendingIndex):
             ]
         )
 
+    def _progress(self, lines: list[str], fraction=False, level="info"):
+        """one progress step, if a job is watching"""
+        if self.task:
+            self.task.send_progress(
+                message_lines=lines, progress=fraction, level=level
+            )
+
+    def _notify_entry(self, entry: ParsedURLType, idx: int, total: int):
+        """what the next url is, in words"""
+        step = f" ({idx}/{total})" if total > 1 else ""
+        if entry["type"] == "channel":
+            line = f"Listing the {tab_name(entry['vid_type'])} tab on YouTube"
+        elif entry["type"] == "playlist":
+            line = "Listing the playlist on YouTube"
+        else:
+            line = "Looking up the video on YouTube"
+        self._progress([line + step], (idx - 1) / total)
+
+    def _notify_new_video(self, tab: str, done: int, total: int, data: dict):
+        """one new video of a channel listing"""
+        verb = "adding" if self.flat else "fetching details of"
+        title = data.get("title")
+        lines = [f"{tab}: {verb} new video {done}/{total}"]
+        if title:
+            lines.append(str(title))
+        self._progress(lines, done / total)
+
     def _notify_start(self, total):
         """send notification for adding videos to download queue"""
-        if not self.task:
+        if not self.task or self.on_added:
+            # streamed one by one: the per-video steps say enough
             return
 
         self.task.send_progress(
@@ -632,7 +683,7 @@ class PendingList(PendingIndex):
 
     def _notify_done(self, total):
         """send done notification"""
-        if not self.task:
+        if not self.task or self.on_added:
             return
 
         self.task.send_progress(

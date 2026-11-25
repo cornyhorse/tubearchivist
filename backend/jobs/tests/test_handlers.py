@@ -812,3 +812,26 @@ def test_tag_drift_problems(monkeypatch, tmp_path):
 
     monkeypatch.setattr(handlers, "tag_drift", down)
     assert "can't read the Emby tags" in handlers.tag_drift_problems()[0]
+
+
+@pytest.mark.parametrize(
+    "counts, expected",
+    [
+        ({"found": 0}, "Done: no new videos"),
+        (
+            {"found": 1, "allowed": 1, "ignored": 0, "queued_downloads": 1},
+            "Done: 1 new video found, 1 queued for download",
+        ),
+        (
+            {"found": 3, "allowed": 2, "ignored": 1, "queued_downloads": 0},
+            "Done: 3 new videos found, waiting on the downloads page, "
+            "1 ignored by download rules",
+        ),
+        (
+            {"found": 2, "allowed": 0, "ignored": 2, "queued_downloads": 0},
+            "Done: 2 new videos found, 2 ignored by download rules",
+        ),
+    ],
+)
+def test_scan_summary(counts, expected):
+    assert handlers.scan_summary(counts) == expected
